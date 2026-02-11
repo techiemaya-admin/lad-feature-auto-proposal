@@ -4,10 +4,10 @@
   "description": "Quotation & pricing system - multi-tenant ready",
   "main": "src/index.js",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
-    "migration:run": "node node_modules/typeorm/cli.js migration:run -d src/config/data-source.js",
-    "lint": "eslint src --ext .js",
+    "start": "node backend/src/index.js",
+    "dev": "nodemon backend/src/index.js",
+    "migration:run": "node node_modules/typeorm/cli.js migration:run -d backend/src/config/data-source.js",
+    "lint": "eslint backend/src --ext .js",
     "test": "jest",
     "test:watch": "jest --watch"
   },
