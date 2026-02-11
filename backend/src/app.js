@@ -1,11 +1,11 @@
 const express = require('express');
-const tenantModule = require('./features/tenant/modules/tenant.module');
-const locationModule = require('./features/location/modules/location.module');
-const conceptModule = require('./features/concept/modules/concept.module');
-const leadModule = require('./features/lead/modules/lead.module');
-const pricingModule = require('./features/pricing/modules/pricing.module');
-const quotationModule = require('./features/quotation/modules/quotation.module');
-const quotationTemplateModule = require('./features/quotation-template/modules/quotation-template.module');
+const tenantRoute = require('../src/features/auto-proposal/routes/tenant-routes');
+const locationRoute =  require('../src/features/auto-proposal/routes/location-routes');
+const conceptRoute =  require('../src/features/auto-proposal/routes/concept-routes');
+const leadRoute = require('../src/features/auto-proposal/routes/lead-routes');
+const pricingRoute = require('../src/features/auto-proposal/routes/pricing-routes');
+const quotationRoute = require('../src/features/auto-proposal/routes/quotation-routes');
+const quotationTemplateRoute = require('../src/features/auto-proposal/routes/quotation-template-routes');
 
 const app = express();
 
@@ -15,13 +15,13 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-app.use('/api/tenants', tenantModule);
-app.use('/api/locations', locationModule);
-app.use('/api/concepts', conceptModule);
-app.use('/api/leads', leadModule);
-app.use('/api/pricing', pricingModule);
-app.use('/api/quotations', quotationModule);
-app.use('/api/quotation-templates', quotationTemplateModule);
+app.use('/api/tenants', tenantRoute);
+app.use('/api/locations', locationRoute);
+app.use('/api/concepts', conceptRoute);
+app.use('/api/leads', leadRoute);
+app.use('/api/pricing', pricingRoute);
+app.use('/api/quotations', quotationRoute);
+app.use('/api/quotation-templates', quotationTemplateRoute);
 
 app.use((err, req, res, next) => {
   const status = err.statusCode || 500;
