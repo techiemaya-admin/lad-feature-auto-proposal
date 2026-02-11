@@ -55,10 +55,10 @@ All tenant-scoped APIs require header: `X-Tenant-Id: <tenant-uuid>` (except tena
 ## Project structure
 
 - `src/config/` – DataSource, base columns
-- `src/entities/` – TypeORM EntitySchema (Tenant, Location, Concept, etc.)
-- `src/repositories/` – DB access only
-- `src/services/` – Business logic (including `pricing-engine.service.js`)
-- `src/controllers/` – HTTP handlers
-- `src/dtos/` – Request/response shapes
 - `src/middleware/` – Tenant context (X-Tenant-Id)
-- `src/modules/` – Feature routers
+- `src/features/**/entities/` – TypeORM EntitySchema (Tenant, Location, Concept, etc.)
+- `src/features/**/repositories/` – DB access only
+- `src/features/**/services/` – Business logic (including `pricing-engine.service.js`)
+- `src/features/**/controllers/` – HTTP handlers
+- `src/features/**/dtos/` – Request/response shapes
+- `src/features/**/modules/` – Feature routers

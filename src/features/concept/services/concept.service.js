@@ -1,7 +1,7 @@
-const conceptRepository = require('../../../repositories/concept.repository');
-const conceptLocationRepository = require('../../../repositories/concept-location.repository');
-const conceptPricingMatrixRepository = require('../../../repositories/concept-pricing-matrix.repository');
-const locationRepository = require('../../../repositories/location.repository');
+const conceptRepository = require('../repositories/concept.repository');
+const conceptLocationRepository = require('../repositories/concept-location.repository');
+const conceptPricingMatrixRepository = require('../repositories/concept-pricing-matrix.repository');
+const locationRepository = require('../../location/repositories/location.repository');
 
 async function createConcept(tenantId, data) {
   if (!data.name) {

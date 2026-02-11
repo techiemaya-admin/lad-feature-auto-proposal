@@ -1,9 +1,9 @@
-const conceptRepository = require('../../../repositories/concept.repository');
-const conceptLocationRepository = require('../../../repositories/concept-location.repository');
-const conceptPricingMatrixRepository = require('../../../repositories/concept-pricing-matrix.repository');
-const pricingRulesRepository = require('../../../repositories/pricing-rules.repository');
-const priceCalculationRepository = require('../../../repositories/price-calculation.repository');
-const locationRepository = require('../../../repositories/location.repository');
+const conceptRepository = require('../../concept/repositories/concept.repository');
+const conceptLocationRepository = require('../../concept/repositories/concept-location.repository');
+const conceptPricingMatrixRepository = require('../../concept/repositories/concept-pricing-matrix.repository');
+const pricingRulesRepository = require('../repositories/pricing-rules.repository');
+const priceCalculationRepository = require('../repositories/price-calculation.repository');
+const locationRepository = require('../../location/repositories/location.repository');
 
 async function calculatePrice(tenantId, options) {
   const { conceptId, locationId, quantity = 1, leadRequirementId = null } = options;

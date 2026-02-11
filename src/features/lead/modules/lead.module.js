@@ -1,3 +1,3 @@
-const leadRoutes = require('../features/lead/routes');
+const leadRoutes = require('../routes');
 
 module.exports = leadRoutes;

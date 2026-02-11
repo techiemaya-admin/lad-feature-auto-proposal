@@ -1,3 +1,3 @@
-const conceptRoutes = require('../features/concept/routes');
+const conceptRoutes = require('../routes');
 
 module.exports = conceptRoutes;

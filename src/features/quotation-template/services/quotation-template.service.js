@@ -1,4 +1,4 @@
-const quotationTemplateMetadataRepository = require('../../../repositories/quotation-template-metadata.repository');
+const quotationTemplateMetadataRepository = require('../repositories/quotation-template-metadata.repository');
 
 async function createTemplate(tenantId, data) {
   if (!data.name) {

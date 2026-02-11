@@ -1,6 +1,6 @@
-const leadRepository = require('../../../repositories/lead.repository');
-const quotationRepository = require('../../../repositories/quotation.repository');
-const quotationTemplateMetadataRepository = require('../../../repositories/quotation-template-metadata.repository');
+const leadRepository = require('../../lead/repositories/lead.repository');
+const quotationRepository = require('../repositories/quotation.repository');
+const quotationTemplateMetadataRepository = require('../../quotation-template/repositories/quotation-template-metadata.repository');
 const pricingEngineService = require('../../pricing/services/pricing-engine.service');
 
 async function generateQuotation(tenantId, options) {

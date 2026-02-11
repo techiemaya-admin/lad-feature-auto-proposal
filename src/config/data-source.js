@@ -3,29 +3,30 @@ const path = require('path');
 
 const isTest = process.env.NODE_ENV === 'test';
 const isDev = process.env.NODE_ENV === 'development';
-const synchronize = isTest || isDev;
-const entitiesDir = path.join(__dirname, '..', 'entities');
+const isProd = process.env.NODE_ENV === 'production';
+
+// Enable synchronize in development and test environments
+// In production, use migrations instead
+const synchronize = !isProd;
+const logging = isDev || isTest;
 
 module.exports = new DataSource({
   type: 'postgres',
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT || '5432', 10),
   username: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'rush_away',
+  password: process.env.DB_PASSWORD || 'l9837801673L#',
+  database: process.env.DB_NAME || 'lad_dev',
   synchronize,
-  logging: process.env.NODE_ENV === 'development',
+  logging,
   entities: [
-    path.join(entitiesDir, 'Tenant.js'),
-    path.join(entitiesDir, 'Location.js'),
-    path.join(entitiesDir, 'Concept.js'),
-    path.join(entitiesDir, 'ConceptLocation.js'),
-    path.join(entitiesDir, 'ConceptPricingMatrix.js'),
-    path.join(entitiesDir, 'PricingRule.js'),
-    path.join(entitiesDir, 'PriceCalculation.js'),
-    path.join(entitiesDir, 'LeadRequirement.js'),
-    path.join(entitiesDir, 'QuotationTemplateMetadata.js'),
-    path.join(entitiesDir, 'Quotation.js'),
+    path.join(__dirname, '..', 'features', 'tenant', 'entities', '*.js'),
+    path.join(__dirname, '..', 'features', 'location', 'entities', '*.js'),
+    path.join(__dirname, '..', 'features', 'concept', 'entities', '*.js'),
+    path.join(__dirname, '..', 'features', 'lead', 'entities', '*.js'),
+    path.join(__dirname, '..', 'features', 'pricing', 'entities', '*.js'),
+    path.join(__dirname, '..', 'features', 'quotation', 'entities', '*.js'),
+    path.join(__dirname, '..', 'features', 'quotation-template', 'entities', '*.js'),
   ],
   migrations: [path.join(__dirname, '..', 'migrations', '*.js')],
   subscribers: [],

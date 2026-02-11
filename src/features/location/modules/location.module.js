@@ -1,3 +1,3 @@
-const locationRoutes = require('../features/location/routes');
+const locationRoutes = require('../routes');
 
 module.exports = locationRoutes;

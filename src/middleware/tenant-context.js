@@ -1,4 +1,4 @@
-const tenantRepository = require('../repositories/tenant.repository');
+const tenantRepository = require('../features/tenant/repositories/tenant.repository');
 
 /**
  * Resolves tenant from X-Tenant-Id header and sets req.tenantId.

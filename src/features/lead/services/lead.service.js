@@ -1,5 +1,5 @@
-const leadRepository = require('../../../repositories/lead.repository');
-const locationRepository = require('../../../repositories/location.repository');
+const leadRepository = require('../repositories/lead.repository');
+const locationRepository = require('../../location/repositories/location.repository');
 
 async function createLead(tenantId, data) {
   if (data.location_id) {

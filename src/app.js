@@ -1,6 +1,6 @@
 const express = require('express');
 const tenantModule = require('./features/tenant/modules/tenant.module');
-const locationModule = require('./features/location//modules/location.module');
+const locationModule = require('./features/location/modules/location.module');
 const conceptModule = require('./features/concept/modules/concept.module');
 const leadModule = require('./features/lead/modules/lead.module');
 const pricingModule = require('./features/pricing/modules/pricing.module');

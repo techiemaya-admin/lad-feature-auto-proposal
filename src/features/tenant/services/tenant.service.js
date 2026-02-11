@@ -1,5 +1,6 @@
 const tenantRepository = require('../repositories/tenant.repository');
 
+
 async function createTenant(tenantData) {
   if (!tenantData.name) {
     const err = new Error('name is required');

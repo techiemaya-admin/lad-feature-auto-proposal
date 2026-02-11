@@ -1,3 +1,3 @@
-const quotationTemplateRoutes = require('../features/quotation-template/routes');
+const quotationTemplateRoutes = require('../routes');
 
 module.exports = quotationTemplateRoutes;

@@ -1,3 +1,3 @@
-const pricingRoutes = require('../features/pricing/routes');
+const pricingRoutes = require('../routes');
 
 module.exports = pricingRoutes;

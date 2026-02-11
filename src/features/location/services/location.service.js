@@ -1,5 +1,4 @@
-const locationRepository = require('../../../repositories/location.repository');
-
+const locationRepository = require('../repositories/location.repository');
 async function createLocation(tenantId, data) {
   if (!data.name) {
     const err = new Error('name is required');

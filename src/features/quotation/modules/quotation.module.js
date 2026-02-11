@@ -1,3 +1,3 @@
-const quotationRoutes = require('../features/quotation/routes');
+const quotationRoutes = require('../routes');
 
 module.exports = quotationRoutes;
