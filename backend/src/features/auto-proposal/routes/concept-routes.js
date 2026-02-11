@@ -1,5 +1,5 @@
 const express = require('express');
-const { tenantContext } = require('../../../../../src/middleware/tenant-context');
+const { tenantContext } = require('../../../middleware/tenant-context');
 const { validateBody } = require('../../../middleware/validate');
 const conceptController = require('../controllers/concept.controller');
 

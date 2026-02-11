@@ -1,9 +1,9 @@
-const conceptRepository = require('../../../../backend/src/features/auto-proposal/repositories/concept.repository');
-const conceptLocationRepository = require('../../../../backend/src/features/auto-proposal/repositories/concept-location.repository');
-const conceptPricingMatrixRepository = require('../../../../backend/src/features/auto-proposal/repositories/concept-pricing-matrix.repository');
-const pricingRulesRepository = require('../../../../backend/src/features/auto-proposal/repositories/pricing-rules.repository');
-const priceCalculationRepository = require('../../../../backend/src/features/auto-proposal/repositories/price-calculation.repository');
-const locationRepository = require('../../../../backend/src/features/auto-proposal/repositories/location.repository');
+const conceptRepository = require('../repositories/concept.repository');
+const conceptLocationRepository = require('../repositories/concept-location.repository');
+const conceptPricingMatrixRepository = require('../repositories/concept-pricing-matrix.repository');
+const pricingRulesRepository = require('../repositories/pricing-rules.repository');
+const priceCalculationRepository = require('../repositories/price-calculation.repository');
+const locationRepository = require('../repositories/location.repository');
 
 async function calculatePrice(tenantId, options) {
   const { conceptId, locationId, quantity = 1, leadRequirementId = null } = options;

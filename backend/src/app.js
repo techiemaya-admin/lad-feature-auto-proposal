@@ -1,11 +1,11 @@
 const express = require('express');
-const tenantRoute = require('../src/features/auto-proposal/routes/tenant-routes');
-const locationRoute =  require('../src/features/auto-proposal/routes/location-routes');
-const conceptRoute =  require('../src/features/auto-proposal/routes/concept-routes');
-const leadRoute = require('../src/features/auto-proposal/routes/lead-routes');
-const pricingRoute = require('../src/features/auto-proposal/routes/pricing-routes');
-const quotationRoute = require('../src/features/auto-proposal/routes/quotation-routes');
-const quotationTemplateRoute = require('../src/features/auto-proposal/routes/quotation-template-routes');
+const tenantRoute = require('./features/auto-proposal/routes/tenant-route');
+const locationRoute =  require('./features/auto-proposal/routes/location-routes');
+const conceptRoute =  require('./features/auto-proposal/routes/concept-routes');
+const leadRoute = require('./features/auto-proposal/routes/lead-routes');
+const pricingRoute = require('./features/auto-proposal/routes/pricing-routes');
+const quotationRoute = require('./features/auto-proposal/routes/quotation-routes');
+const quotationTemplateRoute = require('./features/auto-proposal/routes/quotation-template-routes');
 
 const app = express();
 

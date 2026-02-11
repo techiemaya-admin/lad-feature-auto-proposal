@@ -1,4 +1,4 @@
-const tenantRepository = require('../../backend/src/features/auto-proposal/repositories/tenant.repository');
+const tenantRepository = require('../features/auto-proposal/repositories/tenant.repository');
 
 /**
  * Resolves tenant from X-Tenant-Id header and sets req.tenantId.

@@ -1,6 +1,6 @@
 const express = require('express');
-const { tenantContext } = require('../../../../../src/middleware/tenant-context');
-const { validateBody } = require('../../../../../src/middleware/validate');
+const { tenantContext } = require('../../../middleware/tenant-context');
+const { validateBody } = require('../../../middleware/validate');
 const leadController = require('../controllers/lead.controller');
 
 const router = express.Router({ mergeParams: true });

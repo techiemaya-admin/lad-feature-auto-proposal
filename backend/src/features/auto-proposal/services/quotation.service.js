@@ -1,7 +1,7 @@
 const leadRepository = require('../repositories/lead.repository');
 const quotationRepository = require('../repositories/quotation.repository');
-const quotationTemplateMetadataRepository = require('../../../../../src/features/quotation-template/repositories/quotation-template-metadata.repository');
-const pricingEngineService = require('../../pricing/services/pricing-engine.service');
+const quotationTemplateMetadataRepository = require('../repositories/quotation-template-metadata.repository');
+const pricingEngineService = require('../services/pricing-engine.service');
 
 async function generateQuotation(tenantId, options) {
   const { lead_requirement_id, concept_id, quantity = 1, quotation_template_metadata_id: templateId } = options;

@@ -1,4 +1,4 @@
-const quotationTemplateService = require('../../../../../src/features/quotation-template/services/quotation-template.service');
+const quotationTemplateService = require('../services/quotation-template.service');
 const { createQuotationTemplateDto, toQuotationTemplateResponse } = require('../dtos/quotation-template.dto');
 
 async function create(req, res, next) {

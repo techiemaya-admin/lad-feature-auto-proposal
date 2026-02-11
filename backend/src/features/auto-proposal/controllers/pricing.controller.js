@@ -1,4 +1,4 @@
-const pricingEngineService = require('../../../../../src/features/pricing/services/pricing-engine.service');
+const pricingEngineService = require('../services/pricing-engine.service');
 const pricingRulesRepository = require('../repositories/pricing-rules.repository');
 
 async function calculate(req, res, next) {

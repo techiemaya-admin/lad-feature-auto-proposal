@@ -1,5 +1,5 @@
 const express = require('express');
-const { tenantContext } = require('../../../../../src/middleware/tenant-context');
+const { tenantContext } = require('../../../middleware/tenant-context');
 const quotationController = require('../controllers/quotation.controller');
 
 const router = express.Router({ mergeParams: true });

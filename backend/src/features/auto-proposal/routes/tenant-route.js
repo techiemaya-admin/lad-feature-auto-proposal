@@ -1,6 +1,6 @@
 const express = require('express');
 const tenantController = require('../controllers/tenant.controller');
-const { validateBody } = require('../../../../../src/middleware/validate');
+const { validateBody } = require('../../../middleware/validate');
 
 const router = express.Router();
 
