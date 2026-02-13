@@ -1,14 +1,15 @@
 const { EntitySchema } = require('typeorm');
 const { baseColumns } = require('../../../config/base-columns');
+const { tenant_metadata_columns } = require('../../../config/tenant-metadata-column');
+
 
 module.exports = new EntitySchema({
   name: 'ConceptLocation',
   tableName: 'concept_location',
   columns: {
-    ...baseColumns(),
-    concept_id: { type: 'uuid', nullable: false },
-    location_id: { type: 'uuid', nullable: false },
-    is_available: { type: 'boolean', default: true },
+    
+    concept_id: { type: 'uuid', nullable: false ,primary: true},
+    location_id: { type: 'uuid', nullable: false ,primary: true}
   },
   relations: {
     concept: {
@@ -23,8 +24,6 @@ module.exports = new EntitySchema({
     },
   },
   indices: [
-    { name: 'IDX_concept_location_tenant_id', columns: ['tenant_id'] },
     { name: 'IDX_concept_location_concept_location', columns: ['concept_id', 'location_id'] },
-    { name: 'IDX_concept_location_is_deleted', columns: ['is_deleted'] },
   ],
 });

@@ -9,17 +9,9 @@ function baseColumns() {
       primary: true,
       generated: 'uuid',
     },
-    tenant_id: {
-      type: 'uuid',
-      nullable: false,
-    },
     is_deleted: {
       type: 'boolean',
       default: false,
-    },
-    metadata: {
-      type: 'jsonb',
-      nullable: true,
     },
     created_at: {
       type: 'timestamp',

@@ -1,11 +1,14 @@
 const { EntitySchema } = require('typeorm');
 const { baseColumns } = require('../../../config/base-columns');
+const { tenant_metadata_columns } = require('../../../config/tenant-metadata-column');
+
 
 module.exports = new EntitySchema({
   name: 'PricingRule',
   tableName: 'pricing_rules',
   columns: {
     ...baseColumns(),
+    ...tenant_metadata_columns(),
     name: { type: 'varchar', length: 255, nullable: false },
     rule_type: { type: 'varchar', length: 50, nullable: false },
     parameters: { type: 'jsonb', nullable: true },

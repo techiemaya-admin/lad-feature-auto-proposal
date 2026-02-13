@@ -1,11 +1,14 @@
 const { EntitySchema } = require('typeorm');
 const { baseColumns } = require('../../../config/base-columns');
+const { tenant_metadata_columns } = require('../../../config/tenant-metadata-column');
+
 
 module.exports = new EntitySchema({
   name: 'LeadRequirement',
   tableName: 'lead_requirement',
   columns: {
     ...baseColumns(),
+    ...tenant_metadata_columns(),
     location_id: { type: 'uuid', nullable: true },
     status: { type: 'varchar', length: 50, default: 'draft' },
   },

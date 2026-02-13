@@ -1,11 +1,14 @@
 const { EntitySchema } = require('typeorm');
 const { baseColumns } = require('../../../config/base-columns');
+const { tenant_metadata_columns } = require('../../../config/tenant-metadata-column');
+
 
 module.exports = new EntitySchema({
   name: 'ConceptPricingMatrix',
   tableName: 'concept_pricing_matrix',
   columns: {
     ...baseColumns(),
+    ...tenant_metadata_columns(),
     concept_id: { type: 'uuid', nullable: false },
     base_price: { type: 'decimal', precision: 14, scale: 2, nullable: false },
     min_quantity: { type: 'int', default: 1 },

@@ -1,13 +1,17 @@
 const { EntitySchema } = require('typeorm');
 const { baseColumns } = require('../../../config/base-columns');
+const { tenant_metadata_columns } = require('../../../config/tenant-metadata-column');
+
 
 module.exports = new EntitySchema({
   name: 'Concept',
   tableName: 'concept',
   columns: {
     ...baseColumns(),
+    ...tenant_metadata_columns(),
     name: { type: 'varchar', length: 255, nullable: false },
-    code: { type: 'varchar', length: 50, nullable: true },
+    marshal_ratio: { type: 'varchar', length: 255, nullable: true },
+    minimum_cost: { type: 'decimal', precision: 10, scale: 2, nullable: true },
     description: { type: 'text', nullable: true },
   },
   relations: {

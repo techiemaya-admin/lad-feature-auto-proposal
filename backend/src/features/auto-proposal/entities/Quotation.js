@@ -1,11 +1,14 @@
 const { EntitySchema } = require('typeorm');
 const { baseColumns } = require('../../../config/base-columns');
+const { tenant_metadata_columns } = require('../../../config/tenant-metadata-column');
+
 
 module.exports = new EntitySchema({
   name: 'Quotation',
   tableName: 'quotation',
   columns: {
     ...baseColumns(),
+    ...tenant_metadata_columns(),
     lead_requirement_id: { type: 'uuid', nullable: false },
     price_calculation_id: { type: 'uuid', nullable: true },
     quotation_template_metadata_id: { type: 'uuid', nullable: true },
