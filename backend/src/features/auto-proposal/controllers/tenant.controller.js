@@ -1,5 +1,6 @@
 const tenantService = require('../services/tenant.service');
 const { createTenantDto, toTenantResponse } = require('../dtos/tenant.dto');
+const logger = require('../../../utils/logger');
 
 async function create(req, res, next) {
   try {
@@ -7,6 +8,7 @@ async function create(req, res, next) {
     const tenant = await tenantService.createTenant(dto);
     res.status(201).json(toTenantResponse(tenant));
   } catch (err) {
+    logger.error('Error creating tenant:', err);
     next(err);
   }
 }
