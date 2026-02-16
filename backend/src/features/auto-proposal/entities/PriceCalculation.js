@@ -10,13 +10,17 @@ module.exports = new EntitySchema({
     ...baseColumns(),
     ...tenant_metadata_columns(),
     lead_requirement_id: { type: 'uuid', nullable: true },
-    concept_id: { type: 'uuid', nullable: true },
-    location_id: { type: 'uuid', nullable: true },
+    concept_pricing_matrix: { type: 'uuid', nullable: true },
+    markup_price: { type: 'decimal', precision: 14, scale: 2, nullable: false },
+    discount_price: { type: 'decimal', precision: 14, scale: 2, nullable: false },
     base_price: { type: 'decimal', precision: 14, scale: 2, nullable: false },
-    final_price: { type: 'decimal', precision: 14, scale: 2, nullable: false },
-    currency: { type: 'varchar', length: 3, default: 'USD' },
-    calculation_input: { type: 'jsonb', nullable: true },
-    rules_applied: { type: 'jsonb', nullable: true },
+  is_mininum_cost_applied: {
+      type: 'boolean',    
+  default: false }
+  
+  
+  
+  
   },
   relations: {
     quotations: {

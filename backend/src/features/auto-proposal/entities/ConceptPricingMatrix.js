@@ -10,16 +10,23 @@ module.exports = new EntitySchema({
     ...baseColumns(),
     ...tenant_metadata_columns(),
     concept_id: { type: 'uuid', nullable: false },
-    base_price: { type: 'decimal', precision: 14, scale: 2, nullable: false },
-    min_quantity: { type: 'int', default: 1 },
-    unit: { type: 'varchar', length: 50, nullable: true },
-    location_multiplier: { type: 'decimal', precision: 10, scale: 4, nullable: true, default: 1 },
+    location_id: { type: 'uuid', nullable: false },
+    price_per_person: { type: 'decimal', precision: 14, scale: 2, nullable: false },
+    min_pax: { type: 'int', default: 1 },
+    max_pax: { type: 'int', default: 1 },
+    markup_percentage: { type: 'decimal', precision: 14, scale: 2, nullable: false },
+    discount_percentage: { type: 'decimal', precision: 14, scale: 2, nullable: false },
   },
   relations: {
     concept: {
       type: 'many-to-one',
       target: 'Concept',
       joinColumn: { name: 'concept_id' },
+    },
+    location: {
+      type: 'many-to-one',
+      target: 'Location',
+      joinColumn: { name: 'location_id' },
     },
   },
   indices: [
