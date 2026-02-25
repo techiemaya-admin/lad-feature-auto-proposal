@@ -10,6 +10,7 @@ const isProd = process.env.NODE_ENV === 'production';
 const synchronize = !isProd;
 const logging = isDev || isTest;
 
+
 module.exports = new DataSource({
   type: 'postgres',
   host: process.env.DB_HOST || 'localhost',
@@ -19,9 +20,5 @@ module.exports = new DataSource({
   database: process.env.DB_NAME || 'lad_dev',
   synchronize,
   logging,
-  entities: [
-    path.join(__dirname, '..', 'features','auto-proposal', 'entities', '*.js')
-  ],
-  migrations: [path.join(__dirname, '..', 'migrations', '*.js')],
   subscribers: [],
 });

@@ -6,10 +6,14 @@ const leadRoute = require('./features/auto-proposal/routes/lead-routes');
 const pricingRoute = require('./features/auto-proposal/routes/pricing-routes');
 const quotationRoute = require('./features/auto-proposal/routes/quotation-routes');
 const quotationTemplateRoute = require('./features/auto-proposal/routes/quotation-template-routes');
+const gmailRoutes = require("../src/features/auto-proposal/routes/gmail-routes");
 
 const app = express();
-
 app.use(express.json());
+
+
+app.use("/api/gmail", gmailRoutes);
+
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

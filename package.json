@@ -1,5 +1,5 @@
 {
-  "name": "rush-away-node-js",
+  "name": "rush-away-node",
   "version": "1.0.0",
   "description": "Quotation & pricing system - multi-tenant ready",
   "main": "src/index.js",
@@ -15,10 +15,12 @@
     "node": ">=18"
   },
   "dependencies": {
-    "dotenv": "^16.4.5",
+    "@google/generative-ai": "^0.24.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
-    "express": "^4.21.0",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.1",
+    "googleapis": "^171.4.0",
     "pg": "^8.13.0",
     "typeorm": "^0.3.20",
     "uuid": "^10.0.0"
@@ -27,5 +29,17 @@
     "eslint": "^9.14.0",
     "jest": "^29.7.0",
     "nodemon": "^3.1.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/techiemaya-admin/lad-feature-auto-proposal.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/techiemaya-admin/lad-feature-auto-proposal/issues"
+  },
+  "homepage": "https://github.com/techiemaya-admin/lad-feature-auto-proposal#readme"
 }
