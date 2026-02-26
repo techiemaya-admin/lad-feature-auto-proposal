@@ -7,6 +7,7 @@ const { logger } = require("../../../utils/logger");
 const aiService = require("./ai-response.service");
 const leadRequirementRepository = require("../repositories/lead-requirement.repository");  
 
+
 async function saveEmailToDB(emailData, tenantId) {
   const threadId = emailData.threadId;
 console.log("Saving email to DB, threadId:", threadId);
@@ -85,9 +86,8 @@ console.log("body : "+body)
 // console.log(" Saving enmail to conversation tables ")
 
 try {
-    const response = await aiService.generateAIResponse(
-      body
-    );
+   const response= await createLeadRequirementViaPrompt(body);
+       res.json(response);
 console.log("Generated AI response:", response);
   } catch (err) {
   }

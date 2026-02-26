@@ -5,7 +5,7 @@ class LeadRequirementRepository {
   async create(data) {
     console.log("Creating lead requirement with data:", data);
     const sql = `
-      INSERT INTO public.lead_requirement
+      INSERT INTO lead_requirement
       (tenant_id, lead_id, metadata, location, event_type, duration, pax)
       VALUES ($1,$2,$3,$4,$5,$6,$7)
       RETURNING *;

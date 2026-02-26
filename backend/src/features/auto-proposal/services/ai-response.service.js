@@ -99,9 +99,12 @@ Fields:
 - duration (in hours, float)
 
 Rules:
-- Fix spelling mistakes
-- Convert words like "ten" into numbers
-- If missing, return null
+- Fix spelling mistakes (e.g., "dubi" → "Dubai", "pprox" → "approx")
+- Convert numbers in words to integers
+- Convert minutes to fraction of hours
+- If a field is missing, return "null"
+- Do NOT include JSON, markdown, or explanation
+
 
 Email:
 "${emailContent}"
