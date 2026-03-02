@@ -205,20 +205,6 @@ CREATE TABLE IF NOT EXISTS concept (
         REFERENCES tenants (id)
 );
 
--- ============================================
--- CONCEPT LOCATION (M2M)
--- ============================================
-CREATE TABLE IF NOT EXISTS concept_location (
-    concept_id uuid NOT NULL,
-    location_id uuid NOT NULL,
-    PRIMARY KEY (concept_id, location_id),
-    FOREIGN KEY (concept_id)
-        REFERENCES concept (id)
-        ON DELETE CASCADE,
-    FOREIGN KEY (location_id)
-        REFERENCES location (id)
-        ON DELETE CASCADE
-);
 
 -- ============================================
 -- LEAD REQUIREMENT
@@ -234,7 +220,14 @@ CREATE TABLE IF NOT EXISTS lead_requirement (
     location  varchar(255),
     event_type varchar(255),
     duration decimal(5,2),
-    pax integer NOT NULL,
+    event_category varchar(255),
+    main_event_guests integer NOT NULL,
+    catering_guests integer NOT NULL,
+    function_hall_guests integer NOT NULL,
+    services_requested jsonb,
+    client_type varchar(255),
+    inquiry_type varchar(255),
+    support_level varchar(255),
     FOREIGN KEY (tenant_id)
         REFERENCES tenants (id),
     FOREIGN KEY (lead_id)
@@ -257,37 +250,13 @@ CREATE TABLE IF NOT EXISTS concept_pricing_matrix (
     max_pax integer DEFAULT 1,
     discount_percentage numeric(14,2) NOT NULL,
     markup_percentage numeric(14,2) NOT NULL,
-    location_id uuid NOT NULL,
+    location_id uuid,
     FOREIGN KEY (tenant_id)
         REFERENCES tenants (id),
     FOREIGN KEY (concept_id)
         REFERENCES concept (id),
     FOREIGN KEY (location_id)
         REFERENCES location (id)
-);
-
--- ============================================
--- PRICE CALCULATION
--- ============================================
-CREATE TABLE IF NOT EXISTS price_calculation (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    is_deleted boolean DEFAULT false,
-    created_at timestamptz DEFAULT now(),
-    updated_at timestamptz DEFAULT now(),
-    tenant_id uuid NOT NULL,
-    metadata jsonb,
-    lead_requirement_id uuid,
-    concept_pricing_matrix_id uuid,
-    base_price numeric(14,2) NOT NULL,
-    markup_price numeric(14,2) NOT NULL,
-    discount_price numeric(14,2) NOT NULL,
-    is_minimum_cost_applied boolean DEFAULT false,
-    FOREIGN KEY (tenant_id)
-        REFERENCES tenants (id),
-    FOREIGN KEY (lead_requirement_id)
-        REFERENCES lead_requirement (id),
-    FOREIGN KEY (concept_pricing_matrix_id)
-        REFERENCES concept_pricing_matrix (id)
 );
 
 -- ============================================
@@ -318,7 +287,6 @@ CREATE TABLE IF NOT EXISTS lead_attachments (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id uuid NOT NULL,
     lead_id uuid NOT NULL,
-    price_calculation_id uuid,
     quotation_template_metadata_id uuid,
     file_url text NOT NULL,
     file_name varchar(255),
@@ -335,10 +303,59 @@ CREATE TABLE IF NOT EXISTS lead_attachments (
     FOREIGN KEY (uploaded_by)
         REFERENCES users (id)
         ON DELETE SET NULL,
-    FOREIGN KEY (price_calculation_id)
-        REFERENCES price_calculation (id)
-        ON DELETE SET NULL,
     FOREIGN KEY (quotation_template_metadata_id)
         REFERENCES quotation_template_metadata (id)
         ON DELETE SET NULL
+);
+
+
+-- ============================================
+-- PROPOSAL DRAFT
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS proposal_draft (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    is_deleted boolean DEFAULT false,
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now(),
+
+    tenant_id uuid NOT NULL,
+    lead_requirement_id uuid,
+    final_price numeric(14,2) NOT NULL,
+    gcs_storage_path varchar(1500) NOT NULL,
+    file_name varchar(255) NOT NULL,
+    status varchar(20) NOT NULL DEFAULT 'DRAFTED',
+
+    metadata jsonb,
+    quotation_template_metadata_id uuid,
+    FOREIGN KEY (tenant_id)
+        REFERENCES tenants (id),
+
+    FOREIGN KEY (lead_requirement_id)
+        REFERENCES lead_requirement (id),
+
+    FOREIGN KEY (quotation_template_metadata_id)
+        REFERENCES quotation_template_metadata (id)
+        ON DELETE SET NULL
+);
+
+-- ============================================
+-- PROPOSAL DRAFT <-> CONCEPT PRICING MATRIX (M:N)
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS proposal_draft_concept_pricing_matrix (
+
+    proposal_draft_id uuid NOT NULL,
+    concept_pricing_matrix_id uuid NOT NULL,
+
+    
+    FOREIGN KEY (proposal_draft_id)
+        REFERENCES proposal_draft (id)
+        ON DELETE CASCADE,
+
+    FOREIGN KEY (concept_pricing_matrix_id)
+        REFERENCES concept_pricing_matrix (id)
+        ON DELETE CASCADE,
+
+    UNIQUE (proposal_draft_id, concept_pricing_matrix_id)
 );

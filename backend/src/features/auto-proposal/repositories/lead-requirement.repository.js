@@ -6,22 +6,30 @@ class LeadRequirementRepository {
     console.log("Creating lead requirement with data:", data);
     const sql = `
       INSERT INTO lead_requirement
-      (tenant_id, lead_id, metadata, location, event_type, duration, pax)
-      VALUES ($1,$2,$3,$4,$5,$6,$7)
+      (tenant_id, lead_id, metadata, location, event_type, duration, event_category, main_event_guests, catering_guests, function_hall_guests, services_requested, client_type, inquiry_type, support_level)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
       RETURNING *;
     `;
 
     const values = [
       data.tenant_id || "550e8400-e29b-41d4-a716-446655440001",
       data.lead_id ||"660e8400-e29b-41d4-a716-446655440001",
-      data.metadata || {},
+      data || {},
       data.location,
       data.event_type,
       data.duration,
-      data.pax
+      data.event_category,
+      data.guest_counts ? data.guest_counts.main_event || 0 : 0,
+      data.guest_counts ? data.guest_counts.catering || 0 : 0,
+      data.guest_counts ? data.guest_counts.function_hall || 0 : 0,
+      JSON.stringify(data.services_requested) || [],
+      data.client_type || null,
+      data.inquiry_type || null,
+      data.support_level || null
     ];
 
     const result = await AppDataSource.query(sql, values);
+    console.log("Lead requirement created with ID:", result[0].id);
     return result[0];
   }
 

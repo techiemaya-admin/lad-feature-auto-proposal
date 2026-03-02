@@ -104,9 +104,9 @@ try {
     const response = await aiService.generateAIResponse(
       body
     );
-console.log("Generated AI response:", response);
-leadRequirementRepository.create(response);
-return response;
+    console.log("Generated AI response:", response);
+    const leadDetails=leadRequirementRepository.create(response);
+    return leadDetails;
   } catch (err) {
     console.error("Error in createLeadRequirementViaPrompt:", err.message);
   }

@@ -7,6 +7,7 @@ const pricingRoute = require('./features/auto-proposal/routes/pricing-routes');
 const quotationRoute = require('./features/auto-proposal/routes/quotation-routes');
 const quotationTemplateRoute = require('./features/auto-proposal/routes/quotation-template-routes');
 const gmailRoutes = require("../src/features/auto-proposal/routes/gmail-routes");
+const proposalDraftRoute = require("../src/features/auto-proposal/routes/proposal-draft.routes");
 
 const app = express();
 app.use(express.json());
@@ -26,6 +27,7 @@ app.use('/api/leads', leadRoute);
 app.use('/api/pricing', pricingRoute);
 app.use('/api/quotations', quotationRoute);
 app.use('/api/quotation-templates', quotationTemplateRoute);
+app.use('/api/proposal-draft', proposalDraftRoute);
 
 app.use((err, req, res, next) => {
   const status = err.statusCode || 500;
