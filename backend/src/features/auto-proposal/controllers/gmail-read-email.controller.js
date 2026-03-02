@@ -23,14 +23,12 @@ console.log("Webhook data:", data);
     const historyId = data.historyId;
 console.log("History ID:", historyId);
 
-    // await gmailService.fetchNewEmails(historyId);
-// await gmailService.fetchNewEmails(5556770);
-await gmailService.fetchNewEmails(39529);
+await gmailService.fetchNewEmails(data.emailAddress,historyId);
 
     res.status(200).send("Processed");
   } catch (err) {
     console.error(err);
-    res.status(500).send("Error");
+    res.status(200).send("Error");
   }
 }
 
@@ -45,7 +43,7 @@ await gmailService.fetchNewEmails(39529);
 
         const calculatedPriceDetails = await finalPriceCalculationService.calculateFinalPrice(leadDetails.tenant_id, leadDetails.location, leadDetails.main_event_guests,leadDetails.catering_guests, leadDetails.function_hall_guests);
         console.log("Final price calculated:", calculatedPriceDetails);
-        const formattedData = formatConceptPricingResponse(calculatedPriceDetails, leadDetails.location, leadDetails.main_event_guests, leadDetails.catering_guests, leadDetails.function_hall_guests, leadDetails.event_category);
+        const formattedData = await gmailService.formatConceptPricingResponse(calculatedPriceDetails, leadDetails.location, leadDetails.main_event_guests, leadDetails.catering_guests, leadDetails.function_hall_guests, leadDetails.event_category);
         console.log("formatted>>>>>")
         console.log(formattedData);
 
@@ -69,51 +67,4 @@ console.log(matrixIds);
         return res.json({ leadDetails, calculatedPriceDetails });
      }
 
-     function formatConceptPricingResponse(
-  results,
-  locationName,
-  mainEventGuestCount,
-  cateringGuestCount,
-  functionHallGuestCount,
-  eventCategory) {
-  const data = {
-    location: locationName || null,
-    mainEventGuestCount,
-    cateringGuestCount,
-    functionHallGuestCount,
-    eventCategory,
-  };
-
-  for (const concept of results) {
-    const conceptName = concept.concept_name.toUpperCase();
-
-    if (conceptName === "LITE") {
-      data.mainEventGuestLitePrice =
-        concept.breakdown.main_event_price;
-
-      data.cateringGuestLitePrice =
-        concept.breakdown.catering_price;
-
-      data.functionHallGuestLitePrice =
-        concept.breakdown.functionhall_price;
-
-      data.totalLitePrice = concept.final_price;
-    }
-
-    if (conceptName === "IMPACT") {
-      data.mainEventGuestImpactPrice =
-        concept.breakdown.main_event_price;
-
-      data.cateringGuestImpactPrice =
-        concept.breakdown.catering_price;
-
-      data.functionHallGuestImpactPrice =
-        concept.breakdown.functionhall_price;
-
-      data.totalImpactPrice = concept.final_price;
-    }
-  }
-
-  return data;
-}
 module.exports = { startWatch, webhook, testprompt };

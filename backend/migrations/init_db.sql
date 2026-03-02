@@ -359,3 +359,23 @@ CREATE TABLE IF NOT EXISTS proposal_draft_concept_pricing_matrix (
 
     UNIQUE (proposal_draft_id, concept_pricing_matrix_id)
 );
+
+CREATE TABLE gmail_watch (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID NOT NULL,
+    user_identities_id UUID NOT NULL UNIQUE,
+
+    history_id VARCHAR(255),
+    expiration VARCHAR(255),
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_user_identity
+        FOREIGN KEY (user_identities_id)
+        REFERENCES user_identities(id)
+        ON DELETE CASCADE,
+    FOREIGN KEY (tenant_id)
+        REFERENCES tenants (id)
+
+);
