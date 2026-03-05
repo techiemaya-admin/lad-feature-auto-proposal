@@ -3,6 +3,7 @@ const gmailWatchRepository = require("../repositories/gmail-watch.repository");
 class GmailWatchService {
 
   async initializeWatch(data) {
+  
     const existing = await gmailWatchRepository.findByUserIdentity(
       data.user_identities_id
     );

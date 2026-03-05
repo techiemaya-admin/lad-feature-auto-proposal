@@ -152,28 +152,28 @@ Email:
       this.updateUsage(modelInfo);
 
       const text = result.response.text();
-let cleanedText = text.trim();
+      let cleanedText = text.trim();
 
-// Remove ```json and ```
-if (cleanedText.startsWith("```")) {
-  cleanedText = cleanedText
-    .replace(/```json/i, "")
-    .replace(/```/g, "")
-    .trim();
-}
+      // Remove ```json and ```
+      if (cleanedText.startsWith("```")) {
+        cleanedText = cleanedText
+          .replace(/```json/i, "")
+          .replace(/```/g, "")
+          .trim();
+      }
 
-const parsed = JSON.parse(cleanedText);
+      const parsed = JSON.parse(cleanedText);
       return parsed;
     } catch (err) {
       console.error("AI Generation Error:", err.message);
-    
+
     }
   }
 
-   async generateQuotationProposal(data) {
-    console.log("data : "+data)
+  async generateQuotationProposal(data) {
+    console.log("data : " + data)
     try {
-      
+
       const modelInfo = this.getNextApiKey();
       console.log(
         "Using Gemini API Key Index:",
@@ -187,7 +187,7 @@ const parsed = JSON.parse(cleanedText);
       });
 
 
-const prompt = `
+      const prompt = `
 You are a professional document formatting system.
 
 Generate a clean, professional event quotation formatted EXACTLY as described below.
@@ -243,14 +243,14 @@ ${JSON.stringify(data)}
       const fileName = `quotation-${uuidv4()}.pdf`;
       const localPath = path.join(__dirname, "../", fileName);
 
-      await generatePDF(data,localPath);
-      
+      await generatePDF(data, localPath);
+
       // Upload to GCS
       const gcsUrl = await uploadToGCS(localPath, fileName);
-console.log("gcsUrl: "+gcsUrl)
+      console.log("gcsUrl: " + gcsUrl)
       // Save draft in proposal draft DB
-      
-       return {"gcsUrl":gcsUrl,"fileName":fileName};
+
+      return { "gcsUrl": gcsUrl, "fileName": fileName };
     } catch (err) {
       console.error("Quotation Generation Error:", err);
       throw err;

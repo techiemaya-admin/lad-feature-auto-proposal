@@ -29,7 +29,7 @@ class UserIdentityRepository {
     const values = [provider, providerUserId];
 
     const result = await AppDataSource.query(sql, values);
-    return result[0].id || null;
+    return result[0]?.id || null;
   }
 
 }

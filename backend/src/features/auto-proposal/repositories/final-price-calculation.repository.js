@@ -6,9 +6,9 @@ async function calculateFinalPrice(
   locationName,
   mainEventGuestCount,
   cateringGuestCount,
-    functionHallGuestCount
+  functionHallGuestCount
 ) {
-    console.log("locationame : "+locationName)
+  console.log("locationame : " + locationName)
   const queryRunner = dataSource;
 
   // 1️⃣ Fetch All Concepts for Tenant
@@ -35,7 +35,7 @@ async function calculateFinalPrice(
     functionHallGuestCount
   );
 
-  console.log("concepts: "+concepts.length);
+  console.log("concepts: " + concepts.length);
   for (const concept of concepts) {
     let pricing;
 
@@ -83,20 +83,26 @@ async function calculateFinalPrice(
       );
     }
 
-    console.log("pricing: "+pricing.length);
+    console.log("pricing: " + pricing.length);
     if (!pricing.length) continue;
 
     const matrix = pricing[0];
 
     // 4️⃣ Calculate Individual Prices
     const pricePerPerson = Number(matrix.price_per_person);
-    const mainEventBasePrice=(pricePerPerson * mainEventGuestCount);
-    const mainEventPrice = mainEventBasePrice+ (mainEventBasePrice * Number(matrix.markup_percentage)) / 100 - (mainEventBasePrice * Number(matrix.discount_percentage)) / 100;
-    const cateringBasePrice=(pricePerPerson * cateringGuestCount);
-    const cateringPrice = cateringBasePrice+ (cateringBasePrice * Number(matrix.markup_percentage)) / 100 - (cateringBasePrice * Number(matrix.discount_percentage)) / 100;
-    const functionHallBasePrice=(pricePerPerson * functionHallGuestCount);
-    const functionHallPrice = functionHallBasePrice+ (functionHallBasePrice * Number(matrix.markup_percentage)) / 100 - (functionHallBasePrice * Number(matrix.discount_percentage)) / 100;
-    
+    const mainEventBasePrice = (pricePerPerson * mainEventGuestCount);
+    const mainEventPrice = mainEventBasePrice
+      + (mainEventBasePrice * Number(matrix.markup_percentage)) / 100
+      - (mainEventBasePrice * Number(matrix.discount_percentage)) / 100;
+    const cateringBasePrice = (pricePerPerson * cateringGuestCount);
+    const cateringPrice = cateringBasePrice
+      + (cateringBasePrice * Number(matrix.markup_percentage)) / 100
+      - (cateringBasePrice * Number(matrix.discount_percentage)) / 100;
+    const functionHallBasePrice = (pricePerPerson * functionHallGuestCount);
+    const functionHallPrice = functionHallBasePrice
+      + (functionHallBasePrice * Number(matrix.markup_percentage)) / 100
+      - (functionHallBasePrice * Number(matrix.discount_percentage)) / 100;
+
     let finalPrice = mainEventPrice + cateringPrice + functionHallPrice;
 
     // 5️⃣ Minimum Cost Check
@@ -125,8 +131,8 @@ async function calculateFinalPrice(
       final_price: finalPrice,
       is_minimum_cost_applied: isMinimumCostApplied,
     });
-    
-console.log("result: "+results)
+
+    console.log("result: " + results)
   }
   return results;
 }
