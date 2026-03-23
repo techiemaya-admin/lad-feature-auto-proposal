@@ -221,9 +221,6 @@ CREATE TABLE IF NOT EXISTS lead_requirement (
     event_type varchar(255),
     duration decimal(5,2),
     event_category varchar(255),
-    main_event_guests integer NOT NULL,
-    catering_guests integer NOT NULL,
-    function_hall_guests integer NOT NULL,
     services_requested jsonb,
     client_type varchar(255),
     inquiry_type varchar(255),
@@ -379,3 +376,51 @@ CREATE TABLE gmail_watch (
         REFERENCES tenants (id)
 
 );
+
+-- lead_requirement
+--     ↓
+-- lead_requirement_config   (what fields exist)
+--     ↓
+-- lead_requirement_values   (actual data)
+
+CREATE TABLE lead_requirement_config (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    tenant_id uuid NOT NULL,
+
+    field_key varchar(100) NOT NULL,   -- "duration"
+    label varchar(255),                -- "Duration (Days)"
+    field_type varchar(50) NOT NULL,   -- text, number, dropdown
+
+    is_required boolean DEFAULT false,
+    is_active boolean DEFAULT true,
+
+    options jsonb,                     -- dropdown values
+    default_value jsonb,
+
+    order_index integer,
+
+    created_at timestamptz DEFAULT now()
+);
+
+
+
+CREATE TABLE lead_requirement_values (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    lead_requirement_id uuid NOT NULL,
+    field_id uuid NOT NULL,
+
+    value_text text,
+    value_number decimal,
+    value_json jsonb,
+
+    created_at timestamptz DEFAULT now(),
+
+    FOREIGN KEY (lead_requirement_id)
+        REFERENCES lead_requirement (id),
+
+    FOREIGN KEY (field_id)
+        REFERENCES lead_requirement_config (id)
+);
+

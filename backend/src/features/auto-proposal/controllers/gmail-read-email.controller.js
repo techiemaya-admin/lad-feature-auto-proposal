@@ -15,9 +15,12 @@ async function startWatch(req, res) {
 }
 
 // This is the webhook endpoint that will be called by Google when there is a new email in the user's inbox. We will receive the email details in the request body and we can process it accordingly.
+
 async function webhook(req, res) {
+
   // Log the incoming webhook request for debugging
   console.log('Received webhook:');
+
   // Start try to protect from exceptions. Any error should not cause the webhook to fail because Google expects a 200 response to consider the webhook successful. We can log the error and return a 200 response with an error message in the body.
   try {
     // Extract Pub/Sub message object sent by Google (request body shape: { message: { data: "base64-encoded-string", ...}}

@@ -6,8 +6,8 @@ class LeadRequirementRepository {
     console.log("Creating lead requirement with data:", data);
     const sql = `
       INSERT INTO lead_requirement
-      (tenant_id, lead_id, metadata, location, event_type, duration, event_category, main_event_guests, catering_guests, function_hall_guests, services_requested, client_type, inquiry_type, support_level)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      (tenant_id, lead_id, metadata, location, event_type, duration, event_category, services_requested, client_type, inquiry_type, support_level)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
       RETURNING *;
     `;
 
@@ -19,9 +19,6 @@ class LeadRequirementRepository {
       data.event_type,
       data.duration,
       data.event_category,
-      data.guest_counts ? data.guest_counts.main_event || 0 : 0,
-      data.guest_counts ? data.guest_counts.catering || 0 : 0,
-      data.guest_counts ? data.guest_counts.function_hall || 0 : 0,
       JSON.stringify(data.services_requested) || [],
       data.client_type || null,
       data.inquiry_type || null,
