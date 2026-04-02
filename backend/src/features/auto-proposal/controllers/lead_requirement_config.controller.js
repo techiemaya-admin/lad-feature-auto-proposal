@@ -1,4 +1,4 @@
-const service = require("../services/config.service");
+const service = require("../services/lead_requirement_config.service");
 
 exports.create = async (req, res) => {
   const data = await service.createField(req.body);

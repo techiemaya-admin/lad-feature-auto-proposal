@@ -388,14 +388,12 @@ CREATE TABLE lead_requirement_config (
 
     tenant_id uuid NOT NULL,
 
-    field_key varchar(100) NOT NULL,   -- "duration"
-    label varchar(255),                -- "Duration (Days)"
-    field_type varchar(50) NOT NULL,   -- text, number, dropdown
+    field_key varchar(100) NOT NULL,   -- "main_event"
+    label varchar(255),                -- "Main Event"
 
     is_required boolean DEFAULT false,
     is_active boolean DEFAULT true,
 
-    options jsonb,                     -- dropdown values
     default_value jsonb,
 
     order_index integer,
@@ -424,3 +422,7 @@ CREATE TABLE lead_requirement_values (
         REFERENCES lead_requirement_config (id)
 );
 
+
+ALTER TABLE lead_requirement_values 
+ADD CONSTRAINT unique_lead_req_field 
+UNIQUE (lead_requirement_id, field_id);

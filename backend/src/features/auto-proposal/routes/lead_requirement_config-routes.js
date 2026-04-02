@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const controller = require("../controllers/config.controller");
+const controller = require("../controllers/lead_requirement_config.controller");
 
 router.post("/", controller.create);
 router.get("/:tenant_id", controller.get);

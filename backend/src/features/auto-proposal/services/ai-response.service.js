@@ -3,6 +3,9 @@ const { v4: uuidv4 } = require("uuid");
 const path = require("path");
 const { generatePDF } = require("../../../utils/pdfGenerator");
 const { uploadToGCS } = require("../../../utils/gcsUploader");
+const leadRequirementConfigRepo = require("../repositories/lead_requirement_config.repository");
+const puppeteer = require('puppeteer');
+const proposalDraftService  = require('./proposal-draft.service');
 
 class AIService {
   constructor() {
@@ -77,16 +80,18 @@ class AIService {
     modelInfo.lastUsed = new Date();
   }
 
-  async generateAIResponse(emailContent) {
+  async generateAIResponse(emailContent, tenant_id) {
     try {
       const modelInfo = this.getNextApiKey();
       console.log(
         "Using Gemini API Key Index:",
         modelInfo ? modelInfo.keyIndex : "None"
       );
-
+      // fetch lead_requirement_config for tenant and include in prompt for better accuracy.
       if (!modelInfo) return this.getFallbackResponse();
 
+      var keys = await leadRequirementConfigRepo.getFieldKeysAsString(tenant_id);
+      console.log("Fetched field keys for prompt:", keys);
       const prompt = `
 You are an AI information extraction system.
 
@@ -101,7 +106,7 @@ Fields:
 - event_category (type of event: e.g., wedding, corporate, birthday, family_gathering, etc.)
 - event_type (type of event requested , LITE or IMPACT)
 - location
-- guest_counts (object with possible keys: main_event, catering, function_hall)
+- guest_counts (object with possible keys: "${keys}")
 - services_requested array of strings)
 - support_level (basic_support, partial_management, full_event_management)
 - inquiry_type (must be ONE of: "pricing", "availability", "booking", "general", null)
@@ -170,7 +175,47 @@ Email:
     }
   }
 
-  async generateQuotationProposal(data) {
+  async generateQuotationProposal(data,leadDetails, priceDetails) {
+    try {
+      const fileName = `quotation-${uuidv4()}.pdf`;
+      const localPath = path.join(__dirname, "../", fileName);
+
+      // 1. Launch Puppeteer
+      const browser = await puppeteer.launch({
+        headless: "new",
+        args: ['--no-sandbox']
+      });
+      const page = await browser.newPage();
+
+      // 2. Generate the HTML from the modal-copy template
+      const html = await proposalDraftService.generateProposalHtml(data,
+        { name: leadDetails.name },
+        { markup: priceDetails.markup, discount: priceDetails.discount });
+
+      await page.setContent(html, { waitUntil: 'networkidle0' });
+
+      // 3. Print to PDF in Landscape to match the modal width
+      await page.pdf({
+        path: localPath,
+        format: 'A4',
+        landscape: true,
+        printBackground: true, // MUST be true for the indigo background
+        margin: { top: '0', right: '0', bottom: '0', left: '0' }
+      });
+
+      await browser.close();
+
+      // 4. Upload to GCS (Existing logic)
+      const gcsUrl = await uploadToGCS(localPath, fileName);
+console.log("Generated PDF GCS URL:", gcsUrl);
+      return { gcsUrl, fileName };
+    } catch (err) {
+      console.error("PDF Generation Failed:", err);
+      throw err;
+    }
+  }
+
+  async generateQuotationProposalWithAI(data) {
     console.log("data : " + data)
     try {
 

@@ -12,8 +12,8 @@ class LeadRequirementRepository {
     `;
 
     const values = [
-      data.tenant_id || "550e8400-e29b-41d4-a716-446655440001",
-      data.lead_id ||"660e8400-e29b-41d4-a716-446655440001",
+      data.tenant_id,
+      data.lead_id,
       data || {},
       data.location,
       data.event_type,

@@ -38,7 +38,7 @@ console.log("Draft proposal found:", result[0]);
     `;
 
     const values = [
-      data.tenant_id || "550e8400-e29b-41d4-a716-446655440001",
+      data.tenant_id || "e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5",
       data.lead_requirement_id || null,
       data.final_price,
       data.gcsUrl || null,
