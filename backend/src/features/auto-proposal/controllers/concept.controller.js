@@ -3,8 +3,10 @@ const { createConceptDto, toConceptResponse } = require('../dtos/concept.dto');
 
 async function create(req, res, next) {
   try {
+    console.log('Creating concept with data:', req.body);
     const dto = createConceptDto(req.body);
-    const concept = await conceptService.createConcept(req.tenantId, dto);
+    console.log('DTO after validation:', dto);
+    const concept = await conceptService.createConcept(req.body.tenant_id, dto);
     res.status(201).json(toConceptResponse(concept));
   } catch (err) {
     next(err);
@@ -21,20 +23,9 @@ async function getById(req, res, next) {
 }
 
 async function list(req, res, next) {
-  try {
-    const limit = Math.min(parseInt(req.query.limit, 10) || 100, 100);
-    const offset = parseInt(req.query.offset, 10) || 0;
-    const locationId = req.query.location_id;
-    let concepts;
-    if (locationId) {
-      concepts = await conceptService.listConceptsByLocation(req.tenantId, locationId);
-    } else {
-      concepts = await conceptService.listConcepts(req.tenantId, limit, offset);
-    }
-    res.json(concepts.map(toConceptResponse));
-  } catch (err) {
-    next(err);
-  }
+  console.log('Listing concepts for tenant:', req.params.tenant_id);
+  const data = await conceptService.listConcepts(req.params.tenant_id);
+  res.json(data);
 }
 
 async function linkLocation(req, res, next) {
@@ -69,10 +60,27 @@ async function addPricing(req, res, next) {
   }
 }
 
+async function update(req, res, next) {
+  try {
+    const concept = await conceptService.updateConcept(req.tenantId, req.params.id, req.body);
+    res.json(toConceptResponse(concept));
+  } catch (err) { next(err); }
+}
+
+async function remove(req, res, next) {
+  try {
+    console.log('Deleting concept with ID:', req.params.id);
+    await conceptService.deleteConcept(req.params.id);
+    res.status(204).send();
+  } catch (err) { next(err); }
+}
+
 module.exports = {
   create,
   getById,
   list,
+  update,
+  remove,
   linkLocation,
   addPricing,
 };

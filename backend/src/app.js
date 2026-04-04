@@ -9,6 +9,7 @@ const quotationTemplateRoute = require('./features/auto-proposal/routes/quotatio
 const gmailRoutes = require("../src/features/auto-proposal/routes/gmail-routes");
 const proposalDraftRoute = require("../src/features/auto-proposal/routes/proposal-draft.routes");
 const leadRequirementConfigRoute = require("../src/features/auto-proposal/routes/lead_requirement_config-routes");
+const conceptPricingRoute = require("./features/auto-proposal/routes/concept-pricing.routes");
 
 const app = express();
 const cors = require('cors'); // 1. Import cors
@@ -31,6 +32,7 @@ app.get('/health', (req, res) => {
 app.use('/api/tenants', tenantRoute);
 app.use('/api/locations', locationRoute);
 app.use('/api/concepts', conceptRoute);
+app.use('/api/concept-pricing-matrix', conceptPricingRoute);
 app.use('/api/leads', leadRoute);
 app.use('/api/pricing', pricingRoute);
 app.use('/api/quotations', quotationRoute);

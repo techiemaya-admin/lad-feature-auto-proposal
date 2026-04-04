@@ -22,8 +22,8 @@ async function getConceptById(tenantId, id) {
   return concept;
 }
 
-async function listConcepts(tenantId, limit, offset) {
-  return conceptRepository.findAll(tenantId, limit, offset);
+async function listConcepts(tenantId) {
+  return conceptRepository.findAll(tenantId);
 }
 
 /** List concepts available at a given location (for lead flow). */
@@ -56,6 +56,16 @@ async function addPricing(tenantId, conceptId, data) {
   return conceptPricingMatrixRepository.create(tenantId, conceptId, data);
 }
 
+// concept.service.js - Add these methods
+async function updateConcept(tenantId, id, data) {
+  const concept = await getConceptById(tenantId, id); // Reuse your existing check
+  return conceptRepository.update(tenantId, id, data);
+}
+
+async function deleteConcept(id) {
+  return conceptRepository.hardDelete(id);
+}
+
 module.exports = {
   createConcept,
   getConceptById,
@@ -63,4 +73,6 @@ module.exports = {
   listConceptsByLocation,
   linkConceptToLocation,
   addPricing,
+  updateConcept,
+  deleteConcept,
 };

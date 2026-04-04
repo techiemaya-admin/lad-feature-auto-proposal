@@ -1,9 +1,11 @@
 function createConceptDto(body) {
   return {
     name: body.name,
-    code: body.code || null,
     description: body.description || null,
     metadata: body.metadata || null,
+    marshal_ratio: body.marshal_ratio || null,
+    minimum_cost: body.minimum_cost || 0,
+
   };
 }
 
