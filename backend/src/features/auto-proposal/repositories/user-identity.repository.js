@@ -17,6 +17,9 @@ class UserIdentityRepository {
   }
 
 
+  //  =====================================================    
+    // Fetch the user identity record based on provider and provider_user_id, but only return the id of the user_identities record
+    //  =====================================================
   async findByProvider(provider, providerUserId) {
     const sql = `
       SELECT *
