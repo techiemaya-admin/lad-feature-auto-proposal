@@ -1,7 +1,7 @@
 const db = require('../../../config/data-source');
 
 exports.create = async (data) => {
-  const query = `
+    const query = `
     INSERT INTO pricing_rules (
       concept_id, name, priority, is_active,
       condition_field, condition_operator, condition_value,
@@ -12,47 +12,47 @@ exports.create = async (data) => {
     RETURNING *;
   `;
 
-  const values = [
-    data.concept_id,
-    data.name,
-    data.priority,
-    data.is_active,
-    data.condition_field,
-    data.condition_operator,
-    data.condition_value,
-    data.action_type,
-    data.action_mode,
-    data.action_value,
-    data.action_value_type,
-    data.tenant_id,
-    data.metadata || {}
-  ];
+    const values = [
+        data.concept_id,
+        data.name,
+        data.priority,
+        data.is_active,
+        data.condition_field,
+        data.condition_operator,
+        data.condition_value,
+        data.action_type,
+        data.action_mode,
+        data.action_value,
+        data.action_value_type,
+        data.tenant_id,
+        data.metadata || {}
+    ];
 
-  const result = await db.query(query, values);
-  return result[0];
+    const result = await db.query(query, values);
+    return result[0];
 };
 
 exports.findAll = async (tenant_id) => {
-  const query = `
+    const query = `
     SELECT * FROM pricing_rules
     WHERE tenant_id = $1 AND is_deleted = false
     ORDER BY priority ASC
   `;
-  const result = await db.query(query, [tenant_id]);
-  return result;
+    const result = await db.query(query, [tenant_id]);
+    return result;
 };
 
 exports.findById = async (id, tenant_id) => {
-  const query = `
+    const query = `
     SELECT * FROM pricing_rules
     WHERE id = $1 AND tenant_id = $2 AND is_deleted = false
   `;
-  const result = await db.query(query, [id, tenant_id]);
-  return result[0];
+    const result = await db.query(query, [id, tenant_id]);
+    return result[0];
 };
 
 exports.update = async (id, data) => {
-  const query = `
+    const query = `
     UPDATE pricing_rules SET
       name=$1,
       priority=$2,
@@ -70,31 +70,32 @@ exports.update = async (id, data) => {
     RETURNING *;
   `;
 
-  const values = [
-    data.name,
-    data.priority,
-    data.is_active,
-    data.condition_field,
-    data.condition_operator,
-    data.condition_value,
-    data.action_type,
-    data.action_mode,
-    data.action_value,
-    data.action_value_type,
-    data.metadata || {},
-    id,
-    data.tenant_id
-  ];
+    const values = [
+        data.name,
+        data.priority,
+        data.is_active,
+        data.condition_field,
+        data.condition_operator,
+        data.condition_value,
+        data.action_type,
+        data.action_mode,
+        data.action_value,
+        data.action_value_type,
+        data.metadata || {},
+        id,
+        data.tenant_id
+    ];
 
-  const result = await db.query(query, values);
-  return result[0];
+    const result = await db.query(query, values);
+    return result[0];
 };
 
-exports.delete = async (id, tenant_id) => {
-  const query = `
+exports.delete = async (id) => {
+    console.log('Soft deleting pricing rule with ID:', id);
+    const query = `
     UPDATE pricing_rules
     SET is_deleted = true, updated_at = now()
-    WHERE id = $1 AND tenant_id = $2
+    WHERE id = $1
   `;
-  await db.query(query, [id, tenant_id]);
+    await db.query(query, [id]);
 };

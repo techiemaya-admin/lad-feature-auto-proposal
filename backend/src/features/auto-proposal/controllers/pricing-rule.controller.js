@@ -21,6 +21,7 @@ exports.update = async (req, res) => {
 };
 
 exports.delete = async (req, res) => {
-  await service.remove(req.params.id, req.query.tenant_id);
+  console.log('Deleting pricing rule with ID:', req.params.id);
+  await service.remove(req.params.id);
   res.json({ message: 'Deleted successfully' });
 };
