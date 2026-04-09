@@ -3,7 +3,7 @@ const gmailService = require("../services/gmail-read-email.service");
 
 const logger = require('../../../utils/logger');
 const finalPriceCalculationService = require("../services/final-price-calculaton.service");
-const aiResponseService = require("../services/ai-response.service");
+const aiService = require("../services/ai-response.service");
 const proposalDraftRepository = require("../repositories/proposal-draft.repository");
 const { file } = require("pdfkit");
 
@@ -30,7 +30,7 @@ async function webhook(req, res) {
     const data = JSON.parse(
       Buffer.from(message.data, "base64").toString()
     );
-      // print the decoded data for debugging
+    // print the decoded data for debugging
     console.log("Webhook data:", data);
 
     // Extract historyId from payload. The historyId is a unique identifier for the email event and can be used to fetch the new email details from Gmail API. 
@@ -59,35 +59,19 @@ async function webhook(req, res) {
 
 async function testprompt(req, res) {
 
-
-  console.log("Testing AI prompt in controller : " + req.body.prompt);
-  const leadDetails = await gmailService.createLeadRequirementViaPrompt(req.body.prompt);
-  console.log("Lead details received in controller:", leadDetails);
-
-  const calculatedPriceDetails = await finalPriceCalculationService.calculateFinalPrice(leadDetails.tenant_id, leadDetails.location, leadDetails.main_event_guests, leadDetails.catering_guests, leadDetails.function_hall_guests);
-  console.log("Final price calculated:", calculatedPriceDetails);
-  const formattedData = await gmailService.formatConceptPricingResponse(calculatedPriceDetails, leadDetails.location, leadDetails.main_event_guests, leadDetails.catering_guests, leadDetails.function_hall_guests, leadDetails.event_category);
-  console.log("formatted>>>>>")
-  console.log(formattedData);
-
-  const matrixIds = calculatedPriceDetails.map(
-    item => item.concept_pricing_matrix_id
-  );
-  const final_price = (formattedData.totalImpactPrice || 0) + (formattedData.totalLitePrice || 0);
-  console.log(matrixIds);
-  const prosalPathDetails = await aiResponseService.generateQuotationProposal(formattedData);
-  const dataToSave = {
-    tenant_id: leadDetails.tenant_id,
-    lead_requirement_id: leadDetails.id,
-    final_price: final_price,
-    gcsUrl: prosalPathDetails.gcsUrl,
-    file_name: prosalPathDetails.fileName,
-    status: "DRAFTED",
-    metadata: { formattedData },
-    concept_pricing_matrix_ids: matrixIds
+  const body = req.body.prompt;
+  const leadData = {
+    id: "fe2c9488-c7a6-44f4-a8f9-ee0b00c9e0da",
+    name: "Test Lead",
+    email: "abc@gmail.com",
+    phone: "1234567890"
   }
-  proposalDraftRepository.create(dataToSave)
-  return res.json({ leadDetails, calculatedPriceDetails });
+  const tenantId = "e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5";
+  console.log("Testing AI prompt in controller : " + req.body.prompt);
+  const { leadRequirementDetails, values } = await gmailService.createLeadRequirementViaPrompt(body, leadData.id, tenantId);
+  console.log("Lead requirement details:", leadRequirementDetails);
+  console.log("Saved requirement values:", values);
+  await gmailService.createProposalDraft(leadRequirementDetails, leadData);
 }
 
 module.exports = { startWatch, webhook, testprompt };

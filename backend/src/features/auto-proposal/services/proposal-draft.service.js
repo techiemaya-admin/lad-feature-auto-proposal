@@ -3,25 +3,26 @@ const proposalRepo = require("../repositories/proposal-draft.repository");
 const leadRepo = require("../repositories/lead.repository");
 const attachmentRepo = require("../repositories/lead-attachment.repository");
 const gmailService = require("./gmail-send-email.service");
+const e = require("express");
 
 class ProposalDraftService {
 
 
   async generateProposalHtml(data, leadInfo, globalPricing) {
-  // 1. Find the specific concepts from the results array
-  const liteConcept = data.find(c => c.concept_name === 'LITE');
-  const impactConcept = data.find(c => c.concept_name === 'IMPACT');
+    // 1. Find the specific concepts from the results array
+    const liteConcept = data.find(c => c.concept_name === 'LITE');
+    const impactConcept = data.find(c => c.concept_name === 'IMPACT');
 
-  // 2. Summary Logic (Using IMPACT as the base for the final quote)
-  const baseProposal = impactConcept ? impactConcept.final_price : 0;
-  
-  // Note: If markup/discount are already calculated in final_price, 
-  // you might just want to display globalPricing values here for the label.
-  const markupAmount = (baseProposal * globalPricing.markup) / 100;
-  const discountAmount = (baseProposal * globalPricing.discount) / 100;
-  const finalQuote = baseProposal; // Or your custom math logic
+    // 2. Summary Logic (Using IMPACT as the base for the final quote)
+    const baseProposal = impactConcept ? impactConcept.final_price : 0;
 
-  return `
+    // Note: If markup/discount are already calculated in final_price, 
+    // you might just want to display globalPricing values here for the label.
+    const markupAmount = (baseProposal * globalPricing.markup) / 100;
+    const discountAmount = (baseProposal * globalPricing.discount) / 100;
+    const finalQuote = baseProposal; // Or your custom math logic
+
+    return `
     <!DOCTYPE html>
     <html>
     <head>
@@ -151,8 +152,146 @@ class ProposalDraftService {
     </body>
     </html>
   `;
-}
+  }
 
+  async generateProposalForLeadHtml(data, leadInfo, globalPricing, event_type, tenantDetails) {
+
+    const impactConcept = data.find(c => c.concept_name === event_type);
+    console.log("Impact concept for event type", event_type, "is", impactConcept, " data : ",
+      data, " globalPricing : ", globalPricing, " leadInfo : ", leadInfo, " tenantDetails : ", tenantDetails);
+
+    const baseProposal = impactConcept ? impactConcept.total_base_price : 0;
+
+    // Financial Calculations
+    const markupAmount = globalPricing.markup;
+    const discountAmount = globalPricing.discount;
+    const subtotal = baseProposal + markupAmount - discountAmount;
+    const finalQuote = subtotal;
+
+    return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+      <style>
+        body { font-family: 'Inter', sans-serif; color: #333; line-height: 1.6; padding: 0; margin: 0; background: #fff; }
+        .quote-container { max-width: 850px; margin: 40px auto; padding: 40px; border: 1px solid #eee; }
+        
+        /* Header */
+        .header { text-align: center; margin-bottom: 40px; }
+        .header h1 { color: #8B5E3C; font-size: 32px; letter-spacing: 2px; text-transform: uppercase; margin: 0; }
+        .header-details { margin-top: 10px; font-size: 14px; color: #666; }
+
+        /* Address Section */
+        .address-grid { display: flex; justify-content: space-between; margin-bottom: 40px; font-size: 14px; }
+        .address-box b { text-transform: uppercase; display: block; margin-bottom: 5px; color: #000; }
+
+        /* Table Style */
+        table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+        th { background: #F3E5D8; color: #000; text-transform: uppercase; font-size: 12px; padding: 12px; text-align: left; border: 1px solid #D9C5B2; }
+        td { padding: 12px; border: 1px solid #D9C5B2; font-size: 14px; }
+        .text-right { text-align: right; }
+        
+        /* Calculation Rows */
+        .summary-row td { background: #F9F3EE; font-weight: 600; }
+        .total-row td { background: #EBD9C8; font-weight: 800; font-size: 16px; }
+
+        /* Terms */
+        .terms { margin-top: 40px; font-size: 12px; }
+        .terms h3 { font-size: 14px; text-transform: uppercase; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+        .terms ul { padding-left: 18px; color: #555; }
+        .terms li { margin-bottom: 5px; }
+
+        /* Signatures */
+        .signature-section { margin-top: 60px; display: flex; justify-content: space-between; font-size: 14px; font-weight: 600; }
+        .sig-box { width: 200px; border-top: 1px solid #000; padding-top: 10px; text-align: center; }
+      </style>
+    </head>
+    <body>
+      <div class="quote-container">
+        <div class="header">
+          <h1>Sales Quotation</h1>
+          <div class="header-details">
+            <b>Quotation Number:</b> SQ-${new Date().getFullYear()}-001<br>
+            <b>Date:</b> ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}<br>
+            <b>Valid Until:</b> ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+          </div>
+        </div>
+
+        <div class="address-grid">
+          <div class="address-box">
+                 <b>From:</b>
+                  ${tenantDetails.name}<br>
+                  Email: ${tenantDetails.email}<br>
+                  Phone: ${tenantDetails.phone}<br>
+                  Website: ${tenantDetails.website || 'N/A'}<br>
+              </div>
+          <div class="address-box text-right">
+            <b>To:</b>
+            ${leadInfo.name}<br>
+            ${leadInfo.company_name}<br>
+            Email: ${leadInfo.email}<br>
+            Phone: ${leadInfo.phone}
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Item Description</th>
+              <th class="text-right">Quantity</th>
+              <th class="text-right">Unit Price</th>
+              <th class="text-right">Total Price</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${impactConcept.breakdown.map(item => `
+              <tr>
+                <td>${item.label}</td>
+                <td class="text-right">${item.count}</td>
+                <td class="text-right">₹${(item.price / item.count).toLocaleString()}</td>
+                <td class="text-right">₹${item.price.toLocaleString()}</td>
+              </tr>
+            `).join('')}
+            
+            <tr class="summary-row">
+              <td colspan="3" class="text-right">Subtotal</td>
+              <td class="text-right">₹${baseProposal.toLocaleString()}</td>
+            </tr>
+            <tr class="summary-row">
+              <td colspan="3" class="text-right">Markup (${globalPricing.markup}%)</td>
+              <td class="text-right" style="color:#16a34a">+₹${markupAmount.toLocaleString()}</td>
+            </tr>
+            <tr class="summary-row">
+              <td colspan="3" class="text-right">Discount (${globalPricing.discount}%)</td>
+              <td class="text-right" style="color:#dc2626">-₹${discountAmount.toLocaleString()}</td>
+            </tr>
+            <tr class="total-row">
+              <td colspan="3" class="text-right">Total Amount</td>
+              <td class="text-right">₹${finalQuote.toLocaleString()}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="terms">
+          <h3>Terms and Conditions:</h3>
+          <ul>
+            <li>Payment Terms: Payment is due within 30 days of the invoice date.</li>
+            <li>Validity: This quotation is valid for 7 days from the date of issue.</li>
+            <li>Cancellation: 50% cancellation fee applies if cancelled within 48 hours of the event.</li>
+            <li>All services listed are subject to availability at the time of confirmation.</li>
+          </ul>
+        </div>
+
+        <div class="signature-section">
+          <div class="sig-box">Prepared By</div>
+          <div class="sig-box">Approved By</div>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+  }
   // async generateProposalHtml(data) {
   //   // Logic to calculate totals just like your React component
   //   const calculateTotal = (tier) =>
@@ -176,7 +315,7 @@ class ProposalDraftService {
   //     <style>
   //       body { font-family: 'Inter', sans-serif; background-color: #f9fafb; margin: 0; padding: 40px; }
   //       .modal-container { background: white; border-radius: 40px; overflow: hidden; border: 1px solid #f3f4f6; box-shadow: 0 32px 64px -12px rgba(0,0,0,0.1); }
-        
+
   //       /* Top Bar */
   //       .top-bar { padding: 24px 48px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f3f4f6; background: #f9fafb; }
   //       .logo-box { width: 48px; height: 48px; background: #4f46e5; border-radius: 16px; display: flex; align-items: center; justify-content: center; float: left; margin-right: 24px; }
@@ -193,7 +332,7 @@ class ProposalDraftService {
   //       .card { border-radius: 40px; padding: 40px; position: relative; }
   //       .lite-card { background: #f9fafb; border: 1px solid #f3f4f6; }
   //       .impact-card { background: #4f46e5; color: white; }
-        
+
   //       .tier-title { font-size: 30px; font-weight: 900; font-style: italic; margin-bottom: 8px; }
   //       .badge { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 10px; font-weight: 900; text-transform: uppercase; }
   //       .lite-badge { background: #e5e7eb; color: #6b7280; }

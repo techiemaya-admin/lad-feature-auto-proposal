@@ -1,5 +1,5 @@
 const AppDataSource = require("../../../config/data-source");
-const proposalDraftConceptPricingMatrixRepository = require("../repositories/proposal-draft-concept-pricing.repository");
+const proposalDraftItemRepository = require("./proposal-draft-items.repository");
 
 class ProposalDraftRepository {
   async findDraftById(id) {
@@ -11,11 +11,11 @@ class ProposalDraftRepository {
       AND is_deleted = false;
     `;
     const result = await AppDataSource.query(sql, [id]);
-console.log("Draft proposal found:", result[0]);
+    console.log("Draft proposal found:", result[0]);
     return result[0];
   }
 
- 
+
   // =====================================================
   // CREATE PROPOSAL DRAFT
   // =====================================================
@@ -31,9 +31,10 @@ console.log("Draft proposal found:", result[0]);
         gcs_storage_path,
         status,
         metadata,
-        file_name
+        file_name,
+        calculation_snapshot
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
       RETURNING *;
     `;
 
@@ -44,25 +45,35 @@ console.log("Draft proposal found:", result[0]);
       data.gcsUrl || null,
       data.status || "DRAFTED",
       data.metadata ? JSON.stringify(data.metadata) : null,
-      data.file_name || null
+      data.file_name || null,
+      data.calculation_snapshot ? JSON.stringify(data.calculation_snapshot) : null
     ];
 
     const result = await AppDataSource.query(sql, values);
-     const proposalDraftId = result[0].id;
-    console.log("Proposal Draft created:", proposalDraftId);
-  
-    for (let i = 0; i < data.concept_pricing_matrix_ids.length; i++) {
-  const conceptPricingMatrixId = data.concept_pricing_matrix_ids[i];
-  await proposalDraftConceptPricingMatrixRepository.create({
-    proposal_draft_id: proposalDraftId,
-    concept_pricing_matrix_id: conceptPricingMatrixId
-  });
-}
+    const proposalDraftId = result[0].id;
+    console.log("Proposal Draft created: {} ", proposalDraftId);
+    console.log("data.calculation_snapshot: {} ", data.calculation_snapshot);
+    const itemsForBulkCreate = data.calculation_snapshot.flatMap(concept =>
+      concept.breakdown.map(item => ({
+        tenant_id:data.tenant_id || "e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5",
+        proposal_draft_id: proposalDraftId, // The ID of the parent draft you just created
+        concept_name: concept.concept_name,
+        label: item.label,
+        unit_count: item.count,
+        total_price: item.price,
+        applied_rules: item.applied_rules.map(ruleId => ({
+          rule_id: ruleId,
+          discount: item.total_discount,
+          surcharge: item.total_surcharge
+        }))
+      }))
+    );
+    await proposalDraftItemRepository.bulkCreate(itemsForBulkCreate);
     return result[0];
   }
 
   async approveProposalDraft(id) {
-  const sql = `
+    const sql = `
     UPDATE proposal_draft
     SET status = 'APPROVED',
         updated_at = now()
@@ -71,9 +82,9 @@ console.log("Draft proposal found:", result[0]);
     RETURNING *;
   `;
 
-  const result = await AppDataSource.query(sql, [id]);
-  return result[0];
-}
+    const result = await AppDataSource.query(sql, [id]);
+    return result[0];
+  }
 
   // =====================================================
   // FIND BY ID

@@ -1,10 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const controller = require('../controllers/pricingModel.controller');
+const controller = require('../controllers/pricing-model.controller');
 
 router.post('/', controller.create);
-router.get('/', controller.getAll);
-router.get('/:id', controller.getById);
+router.get('/:tenant_id', controller.getAll);
 router.put('/:id', controller.update);
 router.delete('/:id', controller.delete);
 

@@ -62,7 +62,8 @@ async function addPricing(req, res, next) {
 
 async function update(req, res, next) {
   try {
-    const concept = await conceptService.updateConcept(req.tenantId, req.params.id, req.body);
+    console.log('Updating concept with ID:', req.params.id, 'and data:', req.body);
+    const concept = await conceptService.updateConcept(req.body.tenant_id, req.params.id, req.body);
     res.json(toConceptResponse(concept));
   } catch (err) { next(err); }
 }

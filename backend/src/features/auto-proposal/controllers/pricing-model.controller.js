@@ -1,4 +1,4 @@
-const service = require('../services/pricingRule.service');
+const service = require('../services/pricingModel.service');
 
 exports.create = async (req, res) => {
   const data = await service.create(req.body);
@@ -6,7 +6,8 @@ exports.create = async (req, res) => {
 };
 
 exports.getAll = async (req, res) => {
-  const data = await service.getAll(req.query.tenant_id);
+  console.log('Fetching pricing models for tenant:', req.params.tenant_id);
+  const data = await service.getAll(req.params.tenant_id);
   res.json(data);
 };
 

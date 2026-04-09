@@ -18,6 +18,7 @@ const gmailWatchRepository = require("../repositories/gmail-watch.repository");
 const leadService = require("./lead.service");
 const CommonUtil = require("../../../utils/common-utils");
 const leadRequirementValueRepo = require("../repositories/lead_requirement_values.repository");
+const tenatDetailsRepo = require("../repositories/tenant.repository");
 
 //
 async function saveEmailToDB(emailData, tenantId) {
@@ -80,6 +81,45 @@ async function startWatch() {
   return response.data;
 }
 
+async function createProposalDraft(leadRequirementDetails, leadData) {
+
+  const calculatedPriceDetails = await finalPriceCalculationService.calculateFinalPrice(leadRequirementDetails.tenant_id, leadRequirementDetails.location, leadRequirementDetails.id, leadRequirementDetails.event_type);
+  console.log("Final price calculated:", calculatedPriceDetails);
+  calculatedPriceDetails.forEach(item => {
+    console.log(`Concept: ${item.concept_name}, Final Price: ${item.final_price}, Breakdown: ${JSON.stringify(item.breakdown)}`);
+  });
+
+  const ruleIds = calculatedPriceDetails.map(
+    item => item.concept_pricing_matrix_id
+  );
+  console.log("Matrix ids : " + ruleIds);
+  const pricingDetails = calculatedPriceDetails.filter(item => item.concept_name.toLowerCase() === leadRequirementDetails.event_type.toLowerCase()).map(item => ({
+    markup: item.total_concept_discount,
+    discount: item.total_concept_surcharge
+  }
+  ))[0];
+
+  const final_price = calculatedPriceDetails.reduce((sum, item) => sum + item.final_price, 0);
+  console.log("Total detailed price (sum of all concepts): " + final_price);
+  console.log("pricingDetails : " + JSON.stringify(pricingDetails));
+  const tenantDetails = await tenatDetailsRepo.findById(leadRequirementDetails.tenant_id);
+  console.log("tenantDetails : " + JSON.stringify(tenantDetails));
+  const prosalPathDetails = await aiService.generateQuotationProposal(calculatedPriceDetails, leadData, pricingDetails, leadRequirementDetails.event_type, tenantDetails);
+
+  const dataToSave = {
+    tenant_id: leadRequirementDetails.tenant_id,
+    lead_requirement_id: leadRequirementDetails.id,
+    final_price: final_price,
+    gcsUrl: prosalPathDetails.gcsUrl,
+    file_name: prosalPathDetails.fileName,
+    status: "DRAFTED",
+    metadata: calculatedPriceDetails,
+    calculation_snapshot: calculatedPriceDetails,
+    pricing_rule_ids: ruleIds
+  }
+  proposalDraftRepository.create(dataToSave)
+
+}
 
 async function fetchNewEmails(email, historyIdFromWebhook) {
   console.log("Fetching new emails for email:", email);
@@ -136,43 +176,7 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
           const { leadRequirementDetails, values } = await createLeadRequirementViaPrompt(body, leadData.id, tenantId);
           console.log("Lead requirement details:", leadRequirementDetails);
           console.log("Saved requirement values:", values);
-
-          const calculatedPriceDetails = await finalPriceCalculationService.calculateFinalPrice(leadRequirementDetails.tenant_id, leadRequirementDetails.location, leadRequirementDetails.id);
-          console.log("Final price calculated:", calculatedPriceDetails);
-          calculatedPriceDetails.forEach(item => {
-            console.log(`Concept: ${item.concept_name}, Final Price: ${item.final_price}, Breakdown: ${JSON.stringify(item.breakdown)}`);
-          });
-          // const formattedData = await formatConceptPricingResponse(calculatedPriceDetails, leadRequirementDetails);
-          // console.log("formatted>>>>>")
-          // console.log(formattedData);
-
-          const matrixIds = calculatedPriceDetails.map(
-            item => item.concept_pricing_matrix_id
-          );
-          console.log("Matrix ids : " + matrixIds);
-          // const final_price = (formattedData.totalImpactPrice || 0) + (formattedData.totalLitePrice || 0);
-          // console.log("Final price : " + final_price);
-          const pricingDetails=calculatedPriceDetails.filter(item => item.concept_name.toLowerCase() === leadRequirementDetails.event_type.toLowerCase()).map(item => ({
-            markup: item.markup,
-            discount: item.discount}
-          ))[0];
-
-          const final_price = calculatedPriceDetails.reduce((sum, item) => sum + item.final_price, 0);
-          console.log("Total detailed price (sum of all concepts): " + final_price);
-          console.log("pricingDetails : " + JSON.stringify(pricingDetails));
-          const prosalPathDetails = await aiService.generateQuotationProposal(calculatedPriceDetails,leadData, pricingDetails);
-          const dataToSave = {
-            tenant_id: leadRequirementDetails.tenant_id,
-            lead_requirement_id: leadRequirementDetails.id,
-            final_price: final_price,
-            gcsUrl: prosalPathDetails.gcsUrl,
-            file_name: prosalPathDetails.fileName,
-            status: "DRAFTED",
-            metadata:  calculatedPriceDetails,
-            concept_pricing_matrix_ids: matrixIds
-          }
-          proposalDraftRepository.create(dataToSave)
-
+          createProposalDraft(leadRequirementDetails, leadData);
           // process emails...
 
           await gmailWatchService.updateHistoryId(
@@ -315,18 +319,42 @@ async function createLeadRequirementViaPrompt(body, lead_id, tenant_id) {
   try {
 
     console.log("Testing AI prompt :", body);
-    const response = await aiService.generateAIResponse(
-      body, tenant_id
-    );
+    const response = await aiService.generateAIResponse(body, tenant_id);
+
+    // {
+    //   "dynamic_requirements": {
+    //     "main event guest count": 80,
+    //     "catering guest count": 100,
+    //     "function hall guest count": 100
+    //   },
+    //   "location": null,
+    //   "event_category": "wedding",
+    //   "event_type": "IMPACT",
+    //   "support_level": "full_event_management",
+    //   "inquiry_type": "pricing",
+    //   "duration": null,
+    //   "client_type": "B2C",
+    //   "services_requested": [
+    //     "venue coordination",
+    //     "décor",
+    //     "wedding photography",
+    //     "videography",
+    //     "event execution",
+    //     "catering services",
+    //     "function hall arrangement"
+    //   ]
+    // }
+
     console.log("Generated AI response:", response);
     response.lead_id = lead_id;
     response.tenant_id = tenant_id;
     const leadRequirementDetails = await leadRequirementRepository.create(response);
-    const results = await leadRequirementValueRepo.saveRequirementValues(tenant_id, leadRequirementDetails.id, response.guest_counts);
+    console.log("Lead requirement created with :", leadRequirementDetails);
+    const results = await leadRequirementValueRepo.saveRequirementValues(tenant_id, leadRequirementDetails.id, response.dynamic_requirements);
     return { leadRequirementDetails: leadRequirementDetails, values: results };
   } catch (err) {
-    console.error("Error in createLeadRequirementViaPrompt:", err.message);
+    console.error("Error in createLeadRequirementViaPrompt:", err);
   }
 }
 
-module.exports = { startWatch, fetchNewEmails, createLeadRequirementViaPrompt, formatConceptPricingResponse };
+module.exports = { startWatch, fetchNewEmails, createLeadRequirementViaPrompt, formatConceptPricingResponse, createProposalDraft };

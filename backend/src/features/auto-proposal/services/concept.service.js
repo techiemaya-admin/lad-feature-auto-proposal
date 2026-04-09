@@ -58,12 +58,13 @@ async function addPricing(tenantId, conceptId, data) {
 
 // concept.service.js - Add these methods
 async function updateConcept(tenantId, id, data) {
+  console.log(`Updating concept ${id} for tenant ${tenantId} with data:`, data);
   const concept = await getConceptById(tenantId, id); // Reuse your existing check
   return conceptRepository.update(tenantId, id, data);
 }
 
 async function deleteConcept(id) {
-  return conceptRepository.hardDelete(id);
+  return conceptRepository.softDelete(id);
 }
 
 module.exports = {

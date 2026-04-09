@@ -194,7 +194,7 @@ CREATE TABLE IF NOT EXISTS location (
 CREATE TABLE pricing_models (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   type VARCHAR(20) NOT NULL,        -- per_unit | hourly | fixed | package
-
+  label VARCHAR(100),              -- Optional human-friendly label
 
   is_deleted boolean DEFAULT false,
     created_at timestamptz DEFAULT now(),
@@ -357,6 +357,7 @@ CREATE TABLE IF NOT EXISTS proposal_draft (
     final_price numeric(14,2) NOT NULL,
     gcs_storage_path varchar(1500) NOT NULL,
     file_name varchar(255) NOT NULL,
+    calculation_snapshot JSONB NOT NULL,
     status varchar(20) NOT NULL DEFAULT 'DRAFTED',
 
     metadata jsonb,
@@ -372,25 +373,24 @@ CREATE TABLE IF NOT EXISTS proposal_draft (
         ON DELETE SET NULL
 );
 
--- ============================================
--- PROPOSAL DRAFT <-> pricing_rules (M:N)
--- ============================================
-
-CREATE TABLE IF NOT EXISTS proposal_draft_pricing_rules (
-
-    proposal_draft_id uuid NOT NULL,
-    pricing_rule_id uuid NOT NULL,
-
+CREATE TABLE IF NOT EXISTS proposal_draft_items (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    proposal_draft_id uuid REFERENCES proposal_draft(id) ON DELETE CASCADE,
+    concept_name text NOT NULL, -- 'LITE' or 'IMPACT'
+    label text NOT NULL,        -- 'Catering'
+    unit_count int NOT NULL,
+    total_price decimal(12, 2) NOT NULL,
+    applied_rules jsonb,
     
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now(),
+    tenant_id uuid NOT NULL,
+    metadata jsonb,
+    FOREIGN KEY (tenant_id)
+        REFERENCES tenants (id),
     FOREIGN KEY (proposal_draft_id)
         REFERENCES proposal_draft (id)
-        ON DELETE CASCADE,
-
-    FOREIGN KEY (pricing_rule_id)
-        REFERENCES pricing_rules (id)
-        ON DELETE CASCADE,
-
-    UNIQUE (proposal_draft_id, pricing_rule_id)
+        ON DELETE CASCADE
 );
 
 CREATE TABLE gmail_watch (

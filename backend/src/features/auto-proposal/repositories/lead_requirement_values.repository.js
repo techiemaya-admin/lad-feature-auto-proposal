@@ -5,25 +5,31 @@ class LeadRequirementValuesRepository {
   /**
    * Create a new value entry
    */
-  async saveRequirementValues(tenantId, leadRequirementId, guestCounts) {
-    // 1. Get the keys from the object (e.g., ["main_event", "catering"])
-    const keys = Object.keys(guestCounts);
-    console.log("Saving requirement values for tenant:", tenantId, "leadRequirementId:", leadRequirementId, "with guestCounts:", guestCounts);
+  async saveRequirementValues(tenantId, leadRequirementId, dynamic_requirements) {
+    const keys = Object.keys(dynamic_requirements);
+
+    // 1. Fetch all configs for this tenant ONCE to avoid multiple DB calls
+    const configs = await leadRequirementConfigRepo.findByTenant(tenantId);
+
+    // Create a quick lookup map: { "catering_count": "uuid-123" }
+    const fieldKeyMap = configs.reduce((acc, config) => {
+      acc[config.field_key] = config.id;
+      return acc;
+    }, {});
 
     const results = [];
 
+    // 2. Use a transaction or batch if your DB driver supports it
     for (const key of keys) {
-      const value = guestCounts[key];
-      console.log(`Processing key: ${key} with value: ${value}`);
-      // 2. Find the field_id for this specific key and tenant
-      const fieldId = await leadRequirementConfigRepo.findIdByFieldKey(tenantId, key);
+      const value = dynamic_requirements[key];
+      const fieldId = fieldKeyMap[key];
 
       if (!fieldId) {
-        console.warn(`Field key "${key}" not found in config for tenant ${tenantId}. Skipping.`);
+        console.warn(`Field key "${key}" not found for tenant ${tenantId}. Skipping.`);
         continue;
       }
 
-      // 3. Prepare data object for the values repository
+      // 3. Prepare data object
       const valueData = {
         lead_requirement_id: leadRequirementId,
         field_id: fieldId,
@@ -32,23 +38,33 @@ class LeadRequirementValuesRepository {
         value_json: null
       };
 
-      // 4. Determine value type automatically
+      // 4. Type detection
+      if (value === null || value === undefined) continue;
+
       if (typeof value === 'number') {
+        // It's already a true number
         valueData.value_number = value;
+      } else if (typeof value === 'string' && value.trim() !== '' && !isNaN(value)) {
+        // It's a string that CAN be a number (e.g., '100')
+        valueData.value_number = value.includes('.') ? parseFloat(value) : parseInt(value);
       } else if (typeof value === 'object') {
-        valueData.value_json = value;
+        // It's an object/array
+        valueData.value_json = JSON.stringify(value);
       } else {
+        // It's a true string (e.g., 'Dubai')
         valueData.value_text = String(value);
       }
-
-      // 5. Save (using upsert to prevent duplicates)
-      const savedValue = await this.upsert(valueData);
-      results.push(savedValue);
+      // 5. Save using your upsert method
+      try {
+        const savedValue = await this.upsert(valueData);
+        results.push(savedValue);
+      } catch (err) {
+        console.error(`Error upserting key ${key}:`, err);
+      }
     }
 
     return results;
   }
-
   async create(data) {
     const sql = `
       INSERT INTO lead_requirement_values 

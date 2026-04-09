@@ -3,9 +3,9 @@ function createConceptDto(body) {
     name: body.name,
     description: body.description || null,
     metadata: body.metadata || null,
-    marshal_ratio: body.marshal_ratio || null,
     minimum_cost: body.minimum_cost || 0,
-
+    base_price: body.base_price || null,
+    pricing_type: body.pricing_type || null,
   };
 }
 

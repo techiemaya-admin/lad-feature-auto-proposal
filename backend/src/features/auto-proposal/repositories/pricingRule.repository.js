@@ -1,4 +1,4 @@
-const db = require('../db/db');
+const db = require('../../../config/data-source');
 
 exports.create = async (data) => {
   const query = `
@@ -29,7 +29,7 @@ exports.create = async (data) => {
   ];
 
   const result = await db.query(query, values);
-  return result.rows[0];
+  return result[0];
 };
 
 exports.findAll = async (tenant_id) => {
@@ -39,7 +39,7 @@ exports.findAll = async (tenant_id) => {
     ORDER BY priority ASC
   `;
   const result = await db.query(query, [tenant_id]);
-  return result.rows;
+  return result;
 };
 
 exports.findById = async (id, tenant_id) => {
@@ -48,7 +48,7 @@ exports.findById = async (id, tenant_id) => {
     WHERE id = $1 AND tenant_id = $2 AND is_deleted = false
   `;
   const result = await db.query(query, [id, tenant_id]);
-  return result.rows[0];
+  return result[0];
 };
 
 exports.update = async (id, data) => {
@@ -87,7 +87,7 @@ exports.update = async (id, data) => {
   ];
 
   const result = await db.query(query, values);
-  return result.rows[0];
+  return result[0];
 };
 
 exports.delete = async (id, tenant_id) => {

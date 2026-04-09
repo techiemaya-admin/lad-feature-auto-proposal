@@ -5,7 +5,8 @@ const { generatePDF } = require("../../../utils/pdfGenerator");
 const { uploadToGCS } = require("../../../utils/gcsUploader");
 const leadRequirementConfigRepo = require("../repositories/lead_requirement_config.repository");
 const puppeteer = require('puppeteer');
-const proposalDraftService  = require('./proposal-draft.service');
+const proposalDraftService = require('./proposal-draft.service');
+const conceptRepo = require("../repositories/concept.repository");
 
 class AIService {
   constructor() {
@@ -90,62 +91,91 @@ class AIService {
       // fetch lead_requirement_config for tenant and include in prompt for better accuracy.
       if (!modelInfo) return this.getFallbackResponse();
 
-      var keys = await leadRequirementConfigRepo.getFieldKeysAsString(tenant_id);
-      console.log("Fetched field keys for prompt:", keys);
+      // 1. Fetch active concepts for this tenant
+      const concepts = await conceptRepo.findAll(tenant_id);
+      const conceptNames = concepts.map(c => c.name).join(', '); // e.g., "LITE, IMPACT, PREMIUM"
+      console.log("Fetched concepts for prompt:", conceptNames);
+      // Fetch the full config objects instead of just keys
+      const configs = await leadRequirementConfigRepo.findByTenantAndActive(tenant_id);
+
+      // Create a detailed map for the AI
+      const dynamicFieldsPrompt = configs.map(c =>
+        `- ${c.field_key}: (${c.label})`
+      ).join('\n');
+
+      // Create a sample JSON structure for the AI to follow
+      const dynamicJsonStructure = configs.reduce((acc, c) => {
+        acc[c.field_key] = "value or null";
+        return acc;
+      }, {});
+      console.log("dynamicJsonStructure: " + JSON.stringify(dynamicJsonStructure));
+
       const prompt = `
-You are an AI information extraction system.
+                You are an expert Data Extraction AI. 
+                Extract structured event details from the provided email and map them PRECISELY to the following custom schema.
 
-Extract structured event details from this email.
+                ### CUSTOM SCHEMA FIELDS (MANDATORY):
+                ${dynamicFieldsPrompt}
 
-Return ONLY valid raw JSON.
-No markdown.
-No explanation.
+                ### STANDARD FIELDS:
+                - location: (City or Country)
+                - event_type: (Must be one of [${conceptNames}] or null. Classify based on email content. If unclear, return null.)
+                - event_category: (wedding, corporate, birthday, etc.)
+                - support_level: (basic_support, partial_management, full_event_management)
+                - inquiry_type: (booking > pricing > availability > general)
+                - duration: (in hours, float)
+                - client_type: (B2B for corporate, B2C for personal)
+                - services_requested: (array of strings)
 
-Fields:
-- location (city or country)
-- event_category (type of event: e.g., wedding, corporate, birthday, family_gathering, etc.)
-- event_type (type of event requested , LITE or IMPACT)
-- location
-- guest_counts (object with possible keys: "${keys}")
-- services_requested array of strings)
-- support_level (basic_support, partial_management, full_event_management)
-- inquiry_type (must be ONE of: "pricing", "availability", "booking", "general", null)
-- duration (in hours, float)
-- client_type (must be one of: "B2B", "B2C", null)
-
-
-Classification Rules:
-- If email explicitly says "LITE" → event_type = "LITE"
-- If email explicitly says "IMPACT" → event_type = "IMPACT"
-- If it describes small-scale, casual, short-duration, low-complexity events, light, fun, casual, short, relaxed event → classify as "LITE"
-- If it describes large-scale, premium, high-budget, complex, full-service events, intense, premium, powerful, grand, high-energy event → classify as "IMPACT"
-- If unclear → return null
-
-Client Type Rules:
-- Corporate/company/organization events → B2B
-- Personal events (wedding, birthday, private celebration) → B2C
-- If unclear → null
-
-Inquiry Type Rules:
-
-- Determine the PRIMARY intent only.
-- If multiple intents exist, use this priority: booking > pricing > availability > general.
-- Return only one value.
+                ### EXTRACTION RULES:
+                1. Map values ONLY to the keys provided in the CUSTOM SCHEMA.
+                2. If the email mentions a value that fits a custom field (e.g., "50 guests" for a key named "pax"), assign it to that key.
+                3. Fix spelling (e.g., "dubai" -> "Dubai").
+                4. Return ONLY raw valid JSON. No markdown, no backticks, no explanations.
 
 
+                Rules:
+                - Fix spelling mistakes (e.g., "dubi" → "Dubai", "pprox" → "approx")
+                - Convert numbers in words to integers
+                - Convert minutes to fraction of hours
+                - If a field is missing, return "null"
+                - Do NOT include JSON, markdown, or explanation
 
-Rules:
-- Fix spelling mistakes (e.g., "dubi" → "Dubai", "pprox" → "approx")
-- Convert numbers in words to integers
-- Convert minutes to fraction of hours
-- If a field is missing, return "null"
-- Do NOT include JSON, markdown, or explanation
+
+                Inquiry Type Rules:
+
+                - Determine the PRIMARY intent only.
+                - If multiple intents exist, use this priority: booking > pricing > availability > general.
+                - Return only one value.
 
 
-Email:
-"${emailContent}"
-`;
+                Client Type Rules:
+                - Corporate/company/organization events → B2B
+                - Personal events (wedding, birthday, private celebration) → B2C
+                - If unclear → null
 
+                ### Rules for event_type (VALID CONCEPTS (Use for event_type)):
+                - [${conceptNames}]
+                You MUST pick the closest matching name from this list: [${conceptNames}]. 
+                Do NOT return null if there is enough info to guess the scale of the event.
+
+                ### REQUIRED JSON STRUCTURE:
+                {
+                  "dynamic_requirements": ${JSON.stringify(dynamicJsonStructure)},
+                  "location": null,
+                  "event_category": null,
+                  "event_type": "Pick ONE from [${conceptNames}]",
+                  "support_level": null,
+                  "inquiry_type": null,
+                  "duration": null,
+                  "client_type": null,
+                  "services_requested": []
+                  
+                }
+
+                Email Content:
+                "${emailContent}"
+                `;
 
       // ✅ Correct SDK usage
       const model = modelInfo.client.getGenerativeModel({
@@ -175,7 +205,7 @@ Email:
     }
   }
 
-  async generateQuotationProposal(data,leadDetails, priceDetails) {
+  async generateQuotationProposal(data, leadDetails, priceDetails, event_type, tenantDetails) {
     try {
       const fileName = `quotation-${uuidv4()}.pdf`;
       const localPath = path.join(__dirname, "../", fileName);
@@ -188,9 +218,11 @@ Email:
       const page = await browser.newPage();
 
       // 2. Generate the HTML from the modal-copy template
-      const html = await proposalDraftService.generateProposalHtml(data,
-        { name: leadDetails.name },
-        { markup: priceDetails.markup, discount: priceDetails.discount });
+      const html = await proposalDraftService.generateProposalForLeadHtml(data,
+        leadDetails,
+        priceDetails,
+        event_type,
+        tenantDetails);
 
       await page.setContent(html, { waitUntil: 'networkidle0' });
 
@@ -207,7 +239,7 @@ Email:
 
       // 4. Upload to GCS (Existing logic)
       const gcsUrl = await uploadToGCS(localPath, fileName);
-console.log("Generated PDF GCS URL:", gcsUrl);
+      console.log("Generated PDF GCS URL:", gcsUrl);
       return { gcsUrl, fileName };
     } catch (err) {
       console.error("PDF Generation Failed:", err);

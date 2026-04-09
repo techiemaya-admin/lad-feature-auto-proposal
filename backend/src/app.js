@@ -10,6 +10,8 @@ const gmailRoutes = require("../src/features/auto-proposal/routes/gmail-routes")
 const proposalDraftRoute = require("../src/features/auto-proposal/routes/proposal-draft.routes");
 const leadRequirementConfigRoute = require("../src/features/auto-proposal/routes/lead_requirement_config-routes");
 const conceptPricingRoute = require("./features/auto-proposal/routes/concept-pricing.routes");
+const pricingModelRoute = require("./features/auto-proposal/routes/pricingModel.routes");
+const pricingRuleRoute = require("./features/auto-proposal/routes/pricingRule.routes");
 
 const app = express();
 const cors = require('cors'); // 1. Import cors
@@ -39,6 +41,8 @@ app.use('/api/quotations', quotationRoute);
 app.use('/api/quotation-templates', quotationTemplateRoute);
 app.use('/api/proposal-draft', proposalDraftRoute);
 app.use('/api/lead-requirement-config', leadRequirementConfigRoute);
+app.use('/api/pricing-models', pricingModelRoute);
+app.use('/api/pricing-rules', pricingRuleRoute);
 
 app.use((err, req, res, next) => {
   const status = err.statusCode || 500;
