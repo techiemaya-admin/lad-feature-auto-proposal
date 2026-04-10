@@ -12,6 +12,7 @@ const leadRequirementConfigRoute = require("../src/features/auto-proposal/routes
 const conceptPricingRoute = require("./features/auto-proposal/routes/concept-pricing.routes");
 const pricingModelRoute = require("./features/auto-proposal/routes/pricingModel.routes");
 const pricingRuleRoute = require("./features/auto-proposal/routes/pricingRule.routes");
+const conversationRoutes = require('./features/auto-proposal/routes/conversation.route');
 
 const app = express();
 const cors = require('cors'); // 1. Import cors
@@ -19,7 +20,8 @@ const cors = require('cors'); // 1. Import cors
 app.use(cors({
   origin: 'http://localhost:3000', // Allow only your frontend
   methods: ['GET', 'POST', 'PUT', 'DELETE'], // Allowed actions
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true // Allow cookies/auth headers
 }));
 app.use(express.json());
 
@@ -43,6 +45,10 @@ app.use('/api/proposal-draft', proposalDraftRoute);
 app.use('/api/lead-requirement-config', leadRequirementConfigRoute);
 app.use('/api/pricing-models', pricingModelRoute);
 app.use('/api/pricing-rules', pricingRuleRoute);
+
+
+// Use the exact prefix your frontend Axios client expects
+app.use('/api/conversations', conversationRoutes);
 
 app.use((err, req, res, next) => {
   const status = err.statusCode || 500;

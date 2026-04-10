@@ -5,7 +5,7 @@ const { google } = require("googleapis");
 const { oAuth2Client } = require("../../../config/google.config");
 
 const conversationRepository = require("../repositories/conversation.repository");
-const messageRepository = require("../repositories/conversationMessage.repository");
+const messageRepository = require("../repositories/conversation-message.repository");
 const { logger } = require("../../../utils/logger");
 const aiService = require("./ai-response.service");
 const leadRequirementRepository = require("../repositories/lead-requirement.repository");
@@ -19,6 +19,8 @@ const leadService = require("./lead.service");
 const CommonUtil = require("../../../utils/common-utils");
 const leadRequirementValueRepo = require("../repositories/lead_requirement_values.repository");
 const tenatDetailsRepo = require("../repositories/tenant.repository");
+const leadRepository = require("../repositories/lead.repository");
+const conversationParticipantsRepository = require("../repositories/conversation-participants.repository");
 
 //
 async function saveEmailToDB(emailData, tenantId) {
@@ -121,6 +123,67 @@ async function createProposalDraft(leadRequirementDetails, leadData) {
 
 }
 
+function extractGmailData(fullMessage) {
+  const headers = fullMessage.data.payload.headers;
+
+  // Extract "From" (e.g., "John Doe <john@example.com>")
+  const fromHeader = headers.find(h => h.name === 'From')?.value || "";
+  const emailMatch = fromHeader.match(/<(.+)>|(\S+@\S+)/);
+  const senderEmail = emailMatch ? (emailMatch[1] || emailMatch[2]) : null;
+
+  // Extract Subject
+  const subject = headers.find(h => h.name === 'Subject')?.value || "No Subject";
+
+  return {
+    threadId: fullMessage.data.threadId,
+    messageId: fullMessage.data.id,
+    senderEmail: senderEmail,
+    subject: subject,
+    snippet: fullMessage.data.snippet,
+    // Store the full data for the raw_payload column
+    raw: fullMessage.data
+  };
+}
+
+async function processIncomingEmail(tenantId, fullMessage,lead_id) {
+  const emailData = extractGmailData(fullMessage);
+
+  console.log("Processing incoming email for tenant: {} , and emailData: {}", tenantId, emailData);
+
+  // 2. Upsert the Conversation
+  // This uses threadId to group messages into a single chat history
+  const conversation = await conversationRepository.upsertByThread({
+    tenant_id: tenantId,
+    lead_id: lead_id,
+    external_thread_id: emailData.threadId,
+    channel: 'email',
+    metadata: { subject: emailData.subject }
+  });
+
+  // 3. Ensure the Lead is a Participant
+  // You can check if they exist first, or write the repo to handle conflicts
+  await conversationParticipantsRepository.addParticipant(
+    conversation.id,
+    'lead',
+    lead_id
+  );
+
+  // 4. Save the Message
+  // We set sender_type to 'lead' so your UI knows who sent it
+  const message = await messageRepository.createMessage({
+    tenant_id: tenantId,
+    conversation_id: conversation.id,
+    sender_type: 'lead',
+    sender_id: lead_id,
+    channel: 'email',
+    message_type: 'text',
+    content: emailData.snippet, // Or your parsed full body
+    raw_payload: emailData.raw
+  });
+
+  return message;
+}
+
 async function fetchNewEmails(email, historyIdFromWebhook) {
   console.log("Fetching new emails for email:", email);
   const tenantId = "e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5";
@@ -172,11 +235,14 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
           console.log("Lead created from email:", leadData.id);
           const body = getEmailBody(fullMessage.data.payload);
           console.log("body : " + body)
+          
+          await processIncomingEmail(tenantId, fullMessage, leadData.id);
 
           const { leadRequirementDetails, values } = await createLeadRequirementViaPrompt(body, leadData.id, tenantId);
           console.log("Lead requirement details:", leadRequirementDetails);
           console.log("Saved requirement values:", values);
-          createProposalDraft(leadRequirementDetails, leadData);
+          
+          await createProposalDraft(leadRequirementDetails, leadData);
           // process emails...
 
           await gmailWatchService.updateHistoryId(

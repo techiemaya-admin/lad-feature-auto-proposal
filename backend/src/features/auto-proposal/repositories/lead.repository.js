@@ -84,6 +84,20 @@ class LeadRepository {
     return result;
   }
 
+  
+  /**
+   * Fetch all leads for a specific tenant (excluding deleted)
+   */
+  async findByEmailAndTenant(email, tenantId) {
+    const sql = `
+      SELECT * FROM leads 
+      WHERE email = $1 AND tenant_id = $2 AND is_deleted = false 
+      ORDER BY created_at DESC
+    `;
+    const result = await AppDataSource.query(sql, [email, tenantId]);
+    return result;
+  }
+
   /**
    * Fetch a lead by its ID and Tenant
    */

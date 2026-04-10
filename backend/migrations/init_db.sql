@@ -462,3 +462,5 @@ CREATE TABLE lead_requirement_values (
 ALTER TABLE lead_requirement_values 
 ADD CONSTRAINT unique_lead_req_field 
 UNIQUE (lead_requirement_id, field_id);
+
+ALTER TABLE conversations ADD CONSTRAINT unique_external_thread_id UNIQUE (external_thread_id);
