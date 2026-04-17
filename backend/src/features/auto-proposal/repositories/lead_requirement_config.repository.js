@@ -3,12 +3,13 @@ const db = require("../../../config/data-source");
 class LeadRequirementConfigRepository {
   /**
    * Create a new config
+   * Updated: Added base_price and pricing_model_id
    */
   async create(data) {
     console.log("Creating lead requirement config with data:", data);
     const sql = `
       INSERT INTO lead_requirement_config 
-      (tenant_id, field_key, label, is_active, default_value, order_index) 
+      (tenant_id, field_key, label, is_active,base_price, pricing_model_id) 
       VALUES ($1, $2, $3, $4, $5, $6) 
       RETURNING *`;
 
@@ -17,54 +18,56 @@ class LeadRequirementConfigRepository {
       data.field_key,
       data.label,
       data.is_active ?? true,
-      data.default_value ? JSON.stringify(data.default_value) : null,
-      data.order_index || 0
+      data.base_price || 0,          // New field
+      data.pricing_model_id || null  // New field
     ];
 
     const result = await db.query(sql, values);
-    
+
     if (result && result.length > 0) {
-      console.log("Lead requirement config created:", result[0]);
       return result[0];
     }
     return null;
   }
 
   /**
-   * Fetch all configs for a tenant
+   * NEW: Fetch configs specifically mapped to a Concept
+   * Uses the simple mapping table you created
    */
-  async findByTenant(tenant_id) {
-    console.log("Fetching lead requirement configs for tenant_id:", tenant_id);
-    const sql = `SELECT * FROM lead_requirement_config WHERE tenant_id=$1 ORDER BY order_index ASC`;
-    const result = await db.query(sql, [tenant_id]);
-    return result;
+  async findByConcept(conceptId) {
+    const sql = `
+      SELECT lrc.* FROM lead_requirement_config lrc
+      JOIN concept_requirement_config_mapping crcm ON lrc.id = crcm.requirement_config_id
+      WHERE crcm.concept_id = $1 AND lrc.is_active = true
+    `;
+    return await db.query(sql, [conceptId]);
   }
 
   /**
-   * Fetch only active configs for a tenant
+   * Fetch all configs for a tenant
    */
-  async findByTenantAndActive(tenant_id) {
-    const sql = `SELECT * FROM lead_requirement_config WHERE tenant_id=$1 AND is_active=true ORDER BY order_index ASC`;
-    const result = await db.query(sql, [tenant_id]);
-    return result;
+  async findByTenant(tenant_id) {
+    const sql = `SELECT * FROM lead_requirement_config WHERE tenant_id=$1`;
+    return await db.query(sql, [tenant_id]);
   }
 
   /**
    * Update an existing config
+   * Updated: Added base_price and pricing_model_id
    */
   async update(id, data) {
     const sql = `
       UPDATE lead_requirement_config
-      SET label=$1, field_key=$2, is_active=$3, default_value=$4, order_index=$5
+      SET label=$1, field_key=$2, is_active=$3, base_price=$4, pricing_model_id=$5
       WHERE id=$6 
       RETURNING *`;
-    
+
     const values = [
       data.label,
       data.field_key,
       data.is_active,
-      data.default_value ? JSON.stringify(data.default_value) : null,
-      data.order_index,
+      data.base_price,      // New field
+      data.pricing_model_id, // New field
       id
     ];
 
@@ -73,8 +76,29 @@ class LeadRequirementConfigRepository {
   }
 
   /**
-   * Soft delete (Deactivate)
+   * NEW: Add a mapping between a concept and a requirement config
    */
+  async addMappingToConcept(conceptId, requirementConfigId) {
+    const sql = `
+      INSERT INTO concept_requirement_config_mapping (concept_id, requirement_config_id)
+      VALUES ($1, $2)
+      ON CONFLICT DO NOTHING
+      RETURNING *`;
+    const result = await db.query(sql, [conceptId, requirementConfigId]);
+    return result[0];
+  }
+
+  /**
+   * NEW: Remove a mapping between a concept and a requirement config
+   */
+  async removeMappingFromConcept(conceptId, requirementConfigId) {
+    const sql = `
+      DELETE FROM concept_requirement_config_mapping 
+      WHERE concept_id = $1 AND requirement_config_id = $2
+    `;
+    await db.query(sql, [conceptId, requirementConfigId]);
+  }
+
   async deactivate(id) {
     await db.query(
       `UPDATE lead_requirement_config SET is_active=false WHERE id=$1`,
@@ -82,9 +106,6 @@ class LeadRequirementConfigRepository {
     );
   }
 
-  /**
-   * Hard delete (Permanent)
-   */
   async delete(id) {
     const result = await db.query(
       `DELETE FROM lead_requirement_config WHERE id = $1 RETURNING *`,
@@ -93,10 +114,6 @@ class LeadRequirementConfigRepository {
     return result[0];
   }
 
-  /**
-   * NEW: Fetches field_keys as a comma-separated string
-   * Example: "duration, budget, location"
-   */
   async getFieldKeysAsString(tenantId) {
     try {
       const sql = `
@@ -122,17 +139,21 @@ class LeadRequirementConfigRepository {
         AND is_active = true
         LIMIT 1
       `;
-      
       const result = await db.query(sql, [tenantId, fieldKey]);
-      
-      // Return the ID if found, otherwise return null
       return result[0]?.id || null;
     } catch (error) {
-      console.error(`Error fetching ID for field_key: ${fieldKey}`, error);
       return null;
     }
   }
+  
+  /**
+   * Fetch only active configs for a tenant
+   */
+  async findByTenantAndActive(tenant_id) {
+    const sql = `SELECT * FROM lead_requirement_config WHERE tenant_id=$1 AND is_active=true `;
+    const result = await db.query(sql, [tenant_id]);
+    return result;
+  }
 }
 
-// Export an instance of the class
 module.exports = new LeadRequirementConfigRepository();

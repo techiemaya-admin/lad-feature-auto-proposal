@@ -21,6 +21,7 @@ const leadRequirementValueRepo = require("../repositories/lead_requirement_value
 const tenatDetailsRepo = require("../repositories/tenant.repository");
 const leadRepository = require("../repositories/lead.repository");
 const conversationParticipantsRepository = require("../repositories/conversation-participants.repository");
+const gmailSendService = require("./gmail-send-email.service");
 
 //
 async function saveEmailToDB(emailData, tenantId) {
@@ -85,7 +86,7 @@ async function startWatch() {
 
 async function createProposalDraft(leadRequirementDetails, leadData) {
 
-  const calculatedPriceDetails = await finalPriceCalculationService.calculateFinalPrice(leadRequirementDetails.tenant_id, leadRequirementDetails.location, leadRequirementDetails.id, leadRequirementDetails.event_type);
+  const calculatedPriceDetails = await finalPriceCalculationService.calculateFinalPrice(leadRequirementDetails.tenant_id, leadRequirementDetails.id, leadRequirementDetails.event_type);
   console.log("Final price calculated:", calculatedPriceDetails);
   calculatedPriceDetails.forEach(item => {
     console.log(`Concept: ${item.concept_name}, Final Price: ${item.final_price}, Breakdown: ${JSON.stringify(item.breakdown)}`);
@@ -95,19 +96,14 @@ async function createProposalDraft(leadRequirementDetails, leadData) {
     item => item.concept_pricing_matrix_id
   );
   console.log("Matrix ids : " + ruleIds);
-  const pricingDetails = calculatedPriceDetails.filter(item => item.concept_name.toLowerCase() === leadRequirementDetails.event_type.toLowerCase()).map(item => ({
-    markup: item.total_concept_discount,
-    discount: item.total_concept_surcharge
-  }
-  ))[0];
-
+ 
   const final_price = calculatedPriceDetails.reduce((sum, item) => sum + item.final_price, 0);
   console.log("Total detailed price (sum of all concepts): " + final_price);
-  console.log("pricingDetails : " + JSON.stringify(pricingDetails));
   const tenantDetails = await tenatDetailsRepo.findById(leadRequirementDetails.tenant_id);
   console.log("tenantDetails : " + JSON.stringify(tenantDetails));
-  const prosalPathDetails = await aiService.generateQuotationProposal(calculatedPriceDetails, leadData, pricingDetails, leadRequirementDetails.event_type, tenantDetails);
-
+  const prosalPathDetails = await aiService.generateQuotationProposal(calculatedPriceDetails, leadData, leadRequirementDetails.event_type, tenantDetails);
+   gmailSendService.sendQuotationEmail(leadData.email, prosalPathDetails.gcsUrl, final_price);
+  
   const dataToSave = {
     tenant_id: leadRequirementDetails.tenant_id,
     lead_requirement_id: leadRequirementDetails.id,
@@ -386,31 +382,33 @@ async function createLeadRequirementViaPrompt(body, lead_id, tenant_id) {
 
     console.log("Testing AI prompt :", body);
     const response = await aiService.generateAIResponse(body, tenant_id);
+    
+//     {
+//   "dynamic_requirements": {
+//     "main event guest count": 100,
+//     "catering": null,
+//     "function_hall": null,
+//     "Videography": 1
+//   },
+//   "location": null,
+//   "event_category": "wedding",
+//   "event_type": "Technical",
+//   "support_level": "full_event_management",
+//   "inquiry_type": "pricing",
+//   "duration": null,
+//   "client_type": "B2C",
+//   "services_requested": [
+//     "venue coordination",
+//     "décor",
+//     "wedding photography and videography",
+//     "overall event execution",
+//     "catering services",
+//     "function hall arrangement"
+//   ]
+// }
+    
 
-    // {
-    //   "dynamic_requirements": {
-    //     "main event guest count": 80,
-    //     "catering guest count": 100,
-    //     "function hall guest count": 100
-    //   },
-    //   "location": null,
-    //   "event_category": "wedding",
-    //   "event_type": "IMPACT",
-    //   "support_level": "full_event_management",
-    //   "inquiry_type": "pricing",
-    //   "duration": null,
-    //   "client_type": "B2C",
-    //   "services_requested": [
-    //     "venue coordination",
-    //     "décor",
-    //     "wedding photography",
-    //     "videography",
-    //     "event execution",
-    //     "catering services",
-    //     "function hall arrangement"
-    //   ]
-    // }
-
+    
     console.log("Generated AI response:", response);
     response.lead_id = lead_id;
     response.tenant_id = tenant_id;

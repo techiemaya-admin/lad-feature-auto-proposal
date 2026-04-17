@@ -93,6 +93,7 @@ class AIService {
 
       // 1. Fetch active concepts for this tenant
       const concepts = await conceptRepo.findAll(tenant_id);
+      console.log("Fetched concepts for tenant:", tenant_id, concepts.length);
       const conceptNames = concepts.map(c => c.name).join(', '); // e.g., "LITE, IMPACT, PREMIUM"
       console.log("Fetched concepts for prompt:", conceptNames);
       // Fetch the full config objects instead of just keys
@@ -109,73 +110,132 @@ class AIService {
         return acc;
       }, {});
       console.log("dynamicJsonStructure: " + JSON.stringify(dynamicJsonStructure));
+      concepts.forEach(concept => {
+        console.log(`Concept: ${JSON.stringify(concept)}`);
+      });
+      // Example logic to prepare the prompt variables
+      const conceptServicesMapping = concepts.map(c =>
+        `${c.name}: [${c.requirement_configs.map(r => r.field_key).join(', ')}]`
+      ).join('\n');
+
+      // ... (Keep your existing schema and mapping variables)
 
       const prompt = `
-                You are an expert Data Extraction AI. 
-                Extract structured event details from the provided email and map them PRECISELY to the following custom schema.
+    You are an expert Data Extraction AI. 
+    Extract structured event details from the provided email and map them PRECISELY to the following custom schema.
 
-                ### CUSTOM SCHEMA FIELDS (MANDATORY):
-                ${dynamicFieldsPrompt}
+    ### CUSTOM SCHEMA FIELDS (MANDATORY):
+    ${dynamicFieldsPrompt}
 
-                ### STANDARD FIELDS:
-                - location: (City or Country)
-                - event_type: (Must be one of [${conceptNames}] or null. Classify based on email content. If unclear, return null.)
-                - event_category: (wedding, corporate, birthday, etc.)
-                - support_level: (basic_support, partial_management, full_event_management)
-                - inquiry_type: (booking > pricing > availability > general)
-                - duration: (in hours, float)
-                - client_type: (B2B for corporate, B2C for personal)
-                - services_requested: (array of strings)
+    ### STANDARD FIELDS:
+    - location: (City or Country)
+    - event_category: (wedding, corporate, birthday, etc.)
+    - support_level: (basic_support, partial_management, full_event_management)
+    - inquiry_type: (booking > pricing > availability > general)
+    - duration: (in hours, float)
+    - client_type: (B2B for corporate, B2C for personal)
+    - services_requested: (array of strings extracted from the email)
 
-                ### EXTRACTION RULES:
-                1. Map values ONLY to the keys provided in the CUSTOM SCHEMA.
-                2. If the email mentions a value that fits a custom field (e.g., "50 guests" for a key named "pax"), assign it to that key.
-                3. Fix spelling (e.g., "dubai" -> "Dubai").
-                4. Return ONLY raw valid JSON. No markdown, no backticks, no explanations.
+    ### EVENT CLASSIFICATION (CRITICAL):
+    You must determine the "event_type" by matching the services requested in the email against the Concept Service Mapping below. 
+    Pick the Concept that includes the most "services_requested" found in the email.
+
+    **CONCEPT SERVICE MAPPING:**
+    ${conceptServicesMapping}
+
+    - event_type: (Must be one of [${conceptNames}]. Select based on which concept's services most closely align with the email content.)
+
+    ### EXTRACTION RULES:
+    1. Map values ONLY to the keys provided in the CUSTOM SCHEMA.
+    2. FIXED NUMERIC RULE: For keys like "pax", "guest_count", "catering", or "function_hall", extract ONLY the specific numeric value associated with that service in the email.
+    3. NO BOOLEANS: Do not use "yes", "no", or "true/false". If a number is mentioned (e.g., "catering for 100 persons"), the value for "catering" must be 100.
+    4. MAPPING COUNTS: If the email says "Function hall for 100 members", map the number 100 to the "function_hall" key.
+    5. NULL VALUES: If a service is mentioned but NO specific count/number is provided for it, return null. (e.g., If they want "Videography" but don't say "for X hours" or "X cameras", return "Videography": null).
+    6.Fix spelling (e.g., "dubai" -> "Dubai").
+    7. Return ONLY raw valid JSON. No markdown, no backticks, no explanations.
+
+    ### REQUIRED JSON STRUCTURE:
+    {
+      "dynamic_requirements": ${JSON.stringify(dynamicJsonStructure)},
+      "location": null,
+      "event_category": null,
+      "event_type": "Select Concept Name based on Service Mapping",
+      "support_level": null,
+      "inquiry_type": null,
+      "duration": null,
+      "client_type": null,
+      "services_requested": []
+    }
+
+    Email Content:
+    "${emailContent}"
+`;
+      // const prompt = `
+      // You are an expert Data Extraction AI. 
+      // Extract structured event details from the provided email and map them PRECISELY to the following custom schema.
+
+      // ### CUSTOM SCHEMA FIELDS (MANDATORY):
+      // ${dynamicFieldsPrompt}
+
+      // ### STANDARD FIELDS:
+      // - location: (City or Country)
+      // - event_type: (Must be one of [${conceptNames}] or null. Classify based on email content. If unclear, return null.)
+      // - event_category: (wedding, corporate, birthday, etc.)
+      // - support_level: (basic_support, partial_management, full_event_management)
+      // - inquiry_type: (booking > pricing > availability > general)
+      // - duration: (in hours, float)
+      // - client_type: (B2B for corporate, B2C for personal)
+      // - services_requested: (array of strings)
+
+      // ### EXTRACTION RULES:
+      // 1. Map values ONLY to the keys provided in the CUSTOM SCHEMA.
+      // 2. If the email mentions a value that fits a custom field (e.g., "50 guests" for a key named "pax"), assign it to that key.
+      // 3. Fix spelling (e.g., "dubai" -> "Dubai").
+      // 4. Return ONLY raw valid JSON. No markdown, no backticks, no explanations.
 
 
-                Rules:
-                - Fix spelling mistakes (e.g., "dubi" → "Dubai", "pprox" → "approx")
-                - Convert numbers in words to integers
-                - Convert minutes to fraction of hours
-                - If a field is missing, return "null"
-                - Do NOT include JSON, markdown, or explanation
+      // Rules:
+      // - Fix spelling mistakes (e.g., "dubi" → "Dubai", "pprox" → "approx")
+      // - Convert numbers in words to integers
+      // - Convert minutes to fraction of hours
+      // - If a field is missing, return "null"
+      // - Do NOT include JSON, markdown, or explanation
 
 
-                Inquiry Type Rules:
+      // Inquiry Type Rules:
 
-                - Determine the PRIMARY intent only.
-                - If multiple intents exist, use this priority: booking > pricing > availability > general.
-                - Return only one value.
+      // - Determine the PRIMARY intent only.
+      // - If multiple intents exist, use this priority: booking > pricing > availability > general.
+      // - Return only one value.
 
 
-                Client Type Rules:
-                - Corporate/company/organization events → B2B
-                - Personal events (wedding, birthday, private celebration) → B2C
-                - If unclear → null
+      // Client Type Rules:
+      // - Corporate/company/organization events → B2B
+      // - Personal events (wedding, birthday, private celebration) → B2C
+      // - If unclear → null
 
-                ### Rules for event_type (VALID CONCEPTS (Use for event_type)):
-                - [${conceptNames}]
-                You MUST pick the closest matching name from this list: [${conceptNames}]. 
-                Do NOT return null if there is enough info to guess the scale of the event.
+      // ### Rules for event_type (VALID CONCEPTS (Use for event_type)):
+      // - [${conceptNames}]
+      // You MUST pick the closest matching name from this list: [${conceptNames}]. 
+      // Do NOT return null if there is enough info to guess the scale of the event.
 
-                ### REQUIRED JSON STRUCTURE:
-                {
-                  "dynamic_requirements": ${JSON.stringify(dynamicJsonStructure)},
-                  "location": null,
-                  "event_category": null,
-                  "event_type": "Pick ONE from [${conceptNames}]",
-                  "support_level": null,
-                  "inquiry_type": null,
-                  "duration": null,
-                  "client_type": null,
-                  "services_requested": []
-                  
-                }
+      // ### REQUIRED JSON STRUCTURE:
+      // {
+      //   "dynamic_requirements": ${JSON.stringify(dynamicJsonStructure)},
+      //   "location": null,
+      //   "event_category": null,
+      //   "event_type": "Pick ONE from [${conceptNames}]",
+      //   "support_level": null,
+      //   "inquiry_type": null,
+      //   "duration": null,
+      //   "client_type": null,
+      //   "services_requested": []
 
-                Email Content:
-                "${emailContent}"
-                `;
+      // }
+
+      // Email Content:
+      // "${emailContent}"
+      // `;
 
       // ✅ Correct SDK usage
       const model = modelInfo.client.getGenerativeModel({
@@ -200,12 +260,12 @@ class AIService {
       const parsed = JSON.parse(cleanedText);
       return parsed;
     } catch (err) {
-      console.error("AI Generation Error:", err.message);
+      console.error("AI Generation Error:", err);
 
     }
   }
 
-  async generateQuotationProposal(data, leadDetails, priceDetails, event_type, tenantDetails) {
+  async generateQuotationProposal(data, leadDetails, event_type, tenantDetails) {
     try {
       const fileName = `quotation-${uuidv4()}.pdf`;
       const localPath = path.join(__dirname, "../", fileName);
@@ -220,7 +280,6 @@ class AIService {
       // 2. Generate the HTML from the modal-copy template
       const html = await proposalDraftService.generateProposalForLeadHtml(data,
         leadDetails,
-        priceDetails,
         event_type,
         tenantDetails);
 

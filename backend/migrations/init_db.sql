@@ -219,15 +219,48 @@ CREATE TABLE IF NOT EXISTS concept (
     name varchar(255) NOT NULL,
     minimum_cost numeric(10,2),
     description text,
-    base_price numeric(10,2) NOT NULL,
-    pricing_model_id UUID,
-    FOREIGN KEY (pricing_model_id) REFERENCES pricing_models (id),
     FOREIGN KEY (tenant_id)
         REFERENCES tenants (id)
 
 );
 
+CREATE TABLE lead_requirement_config (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 
+    tenant_id uuid NOT NULL,
+
+    field_key varchar(100) NOT NULL,   -- "main_event"
+    label varchar(255),                -- "Main Event"
+
+    is_required boolean DEFAULT false,
+    is_active boolean DEFAULT true,
+    
+    base_price numeric(10,2) NOT NULL,
+    pricing_model_id UUID,
+    FOREIGN KEY (pricing_model_id) REFERENCES pricing_models (id),
+
+    created_at timestamptz DEFAULT now()
+);
+
+
+
+
+-- ============================================
+-- MAPPING: CONCEPT <-> LEAD_REQUIREMENT_CONFIG
+-- ============================================
+CREATE TABLE IF NOT EXISTS concept_requirement_config_mapping (
+    concept_id uuid NOT NULL,
+    requirement_config_id uuid NOT NULL,
+
+    -- Foreign Keys
+    FOREIGN KEY (concept_id) 
+        REFERENCES concept (id) ON DELETE CASCADE,
+    FOREIGN KEY (requirement_config_id) 
+        REFERENCES lead_requirement_config (id) ON DELETE CASCADE,
+
+    -- Composite Primary Key (Prevents duplicate pairs and creates a natural index)
+    PRIMARY KEY (concept_id, requirement_config_id)
+);
 
 -- ============================================
 -- QUOTATION TEMPLATE METADATA
@@ -309,38 +342,48 @@ CREATE TABLE IF NOT EXISTS lead_attachments (
 );
 
 -- ============================================
--- PRICING RULES
+-- TABLE: PRICING_RULES (Updated for Service/Package logic)
 -- ============================================
+CREATE TABLE IF NOT EXISTS pricing_rules (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL,
+    
+    -- UI Logic: 'service' (Radio: Services) vs 'package' (Radio: Package)
+    target_type VARCHAR(20) NOT NULL DEFAULT 'service' CHECK (target_type IN ('service', 'package')),
+    
+    -- Relationships (Both optional depending on target_type)
+    concept_id uuid,               -- Selected when target_type is 'package'
+    requirement_config_id uuid,    -- Selected when target_type is 'service'
+    
+    name VARCHAR(100) NOT NULL,
+    priority INT DEFAULT 1,
+    is_active BOOLEAN DEFAULT TRUE,
+    is_deleted BOOLEAN DEFAULT FALSE,
 
+    -- Condition Logic (e.g., Guest Count > 100)
+    condition_field VARCHAR(50), 
+    condition_operator VARCHAR(10),
+    condition_value NUMERIC(10,2),
 
-CREATE TABLE pricing_rules (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  concept_id UUID NOT NULL,
+    -- Action Logic (e.g., Discount Subtract 500)
+    action_type VARCHAR(20),       -- e.g., 'discount', 'surcharge'
+    action_mode VARCHAR(20),       -- e.g., 'subtract', 'add', 'set'
+    action_value NUMERIC(10,2),
+    action_value_type VARCHAR(20), -- e.g., 'fixed', 'percentage'
 
-  name VARCHAR(100),
-  priority INT DEFAULT 1,
-  is_active BOOLEAN DEFAULT TRUE,
+    -- Audit & Metadata
+    metadata jsonb,
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now(),
 
-  condition_field VARCHAR(50),  
-  condition_operator VARCHAR(10),
-  condition_value NUMERIC(10,2),
-
-  action_type VARCHAR(20),
-  action_mode VARCHAR(20),
-  action_value NUMERIC(10,2),
-  action_value_type VARCHAR(20),
-
-  created_at TIMESTAMP DEFAULT NOW(),
-  is_deleted boolean DEFAULT false,
-  updated_at timestamptz DEFAULT now(),
-  metadata jsonb,
-  tenant_id uuid NOT NULL,
-  FOREIGN KEY (tenant_id)
-      REFERENCES tenants (id),
-  FOREIGN KEY (concept_id)
-       REFERENCES concept (id)
+    -- Foreign Keys
+    FOREIGN KEY (tenant_id) REFERENCES tenants (id),
+    FOREIGN KEY (concept_id) REFERENCES concept (id) ON DELETE CASCADE,
+    FOREIGN KEY (requirement_config_id) REFERENCES lead_requirement_config (id) ON DELETE CASCADE
 );
 
+-- Indexing for fast calculation lookups
+CREATE INDEX idx_pricing_rules_tenant_target ON pricing_rules(tenant_id, target_type, is_active);
 
 -- ============================================
 -- PROPOSAL DRAFT
@@ -418,24 +461,6 @@ CREATE TABLE gmail_watch (
 -- lead_requirement_config   (what fields exist)
 --     ↓
 -- lead_requirement_values   (actual data)
-
-CREATE TABLE lead_requirement_config (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-
-    tenant_id uuid NOT NULL,
-
-    field_key varchar(100) NOT NULL,   -- "main_event"
-    label varchar(255),                -- "Main Event"
-
-    is_required boolean DEFAULT false,
-    is_active boolean DEFAULT true,
-
-    default_value jsonb,
-
-    order_index integer,
-
-    created_at timestamptz DEFAULT now()
-);
 
 
 

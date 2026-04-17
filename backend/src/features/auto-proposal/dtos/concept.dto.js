@@ -4,8 +4,7 @@ function createConceptDto(body) {
     description: body.description || null,
     metadata: body.metadata || null,
     minimum_cost: body.minimum_cost || 0,
-    base_price: body.base_price || null,
-    pricing_type: body.pricing_type || null,
+    requirement_config_ids: body.requirement_config_ids || [],
   };
 }
 

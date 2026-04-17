@@ -154,19 +154,13 @@ class ProposalDraftService {
   `;
   }
 
-  async generateProposalForLeadHtml(data, leadInfo, globalPricing, event_type, tenantDetails) {
+  async generateProposalForLeadHtml(data, leadInfo, event_type, tenantDetails) {
 
-    const impactConcept = data.find(c => c.concept_name === event_type);
+    const impactConcept = data[0];
     console.log("Impact concept for event type", event_type, "is", impactConcept, " data : ",
-      data, " globalPricing : ", globalPricing, " leadInfo : ", leadInfo, " tenantDetails : ", tenantDetails);
+      data,  " leadInfo : ", leadInfo, " tenantDetails : ", tenantDetails);
 
     const baseProposal = impactConcept ? impactConcept.total_base_price : 0;
-
-    // Financial Calculations
-    const markupAmount = globalPricing.markup;
-    const discountAmount = globalPricing.discount;
-    const subtotal = baseProposal + markupAmount - discountAmount;
-    const finalQuote = subtotal;
 
     return `
     <!DOCTYPE html>
@@ -249,26 +243,27 @@ class ProposalDraftService {
               <tr>
                 <td>${item.label}</td>
                 <td class="text-right">${item.count}</td>
-                <td class="text-right">₹${(item.price / item.count).toLocaleString()}</td>
-                <td class="text-right">₹${item.price.toLocaleString()}</td>
+                <td class="text-right">₹${(item.base_unit_price).toLocaleString()}</td>
+                <td class="text-right">₹${(item.base_unit_price * item.count).toLocaleString()}</td>
               </tr>
             `).join('')}
+            
             
             <tr class="summary-row">
               <td colspan="3" class="text-right">Subtotal</td>
               <td class="text-right">₹${baseProposal.toLocaleString()}</td>
             </tr>
             <tr class="summary-row">
-              <td colspan="3" class="text-right">Markup (${globalPricing.markup}%)</td>
-              <td class="text-right" style="color:#16a34a">+₹${markupAmount.toLocaleString()}</td>
+              <td colspan="3" class="text-right">Markup </td>
+              <td class="text-right" style="color:#16a34a">+${impactConcept.total_concept_surcharge?.toLocaleString()}</td>
             </tr>
             <tr class="summary-row">
-              <td colspan="3" class="text-right">Discount (${globalPricing.discount}%)</td>
-              <td class="text-right" style="color:#dc2626">-₹${discountAmount.toLocaleString()}</td>
+              <td colspan="3" class="text-right">Discount </td>
+              <td class="text-right" style="color:#dc2626">-${impactConcept.total_concept_discount?.toLocaleString()}</td>
             </tr>
             <tr class="total-row">
               <td colspan="3" class="text-right">Total Amount</td>
-              <td class="text-right">₹${finalQuote.toLocaleString()}</td>
+              <td class="text-right">${impactConcept.final_price?.toLocaleString()}</td>
             </tr>
           </tbody>
         </table>

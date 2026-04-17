@@ -42,7 +42,8 @@ class PricingModelRepository {
         // Map the raw types to the labels expected by your UI 
         return rows.map(row => ({
             value: row.type,
-            label: row.label
+            label: row.label,
+            id:row.id
         }));
     }
 

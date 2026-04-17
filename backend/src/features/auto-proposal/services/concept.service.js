@@ -23,7 +23,7 @@ async function getConceptById(tenantId, id) {
 }
 
 async function listConcepts(tenantId) {
-  return conceptRepository.findAll(tenantId);
+  return conceptRepository.findAllWithRequirements(tenantId);
 }
 
 /** List concepts available at a given location (for lead flow). */

@@ -1,101 +1,149 @@
-const db = require('../../../config/data-source');
+const db = require("../../../config/data-source");
+const lead_requirement_configRepository = require("./lead_requirement_config.repository");
 
-exports.create = async (data) => {
-    const query = `
-    INSERT INTO pricing_rules (
-      concept_id, name, priority, is_active,
-      condition_field, condition_operator, condition_value,
-      action_type, action_mode, action_value, action_value_type,
-      tenant_id, metadata
-    )
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-    RETURNING *;
-  `;
+class PricingRuleRepository {
+  /**
+   * Create a new pricing rule
+   * Handles target_type: 'service' or 'package'
+   */
+  async create(data) {
+    console.log("Creating pricing rule with data:", data);
+    console.log("data.concept_id:", data.concept_id);
+    console.log("data.requirement_config_id:", data.requirement_config_id);
+
+    const requirement_config_id= data.target_type === 'service' ? await lead_requirement_configRepository.findIdByFieldKey(data.tenant_id,data.condition_field) : null;
+    console.log("Derived requirement_config_id for service target:", requirement_config_id);
+    const sql = `
+      INSERT INTO pricing_rules 
+      (
+        tenant_id, name, target_type, concept_id, requirement_config_id, 
+        priority, is_active, condition_field, condition_operator, 
+        condition_value, action_type, action_mode, action_value, 
+        action_value_type, metadata
+      ) 
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) 
+      RETURNING *`;
 
     const values = [
-        data.concept_id,
-        data.name,
-        data.priority,
-        data.is_active,
-        data.condition_field,
-        data.condition_operator,
-        data.condition_value,
-        data.action_type,
-        data.action_mode,
-        data.action_value,
-        data.action_value_type,
-        data.tenant_id,
-        data.metadata || {}
+      data.tenant_id,
+      data.name,
+      data.target_type, // 'service' or 'package'
+      data.target_type === 'package' ? data.concept_id : null,
+      data.target_type === 'service' ? requirement_config_id : null,
+      data.priority || 1,
+      data.is_active ?? true,
+      data.target_type === 'service' ? data.condition_field : null,
+      data.target_type === 'service' ? data.condition_operator : null,
+      data.target_type === 'service' ? data.condition_value : null,
+      data.action_type,
+      data.action_mode,
+      data.action_value,
+      data.action_value_type,
+      data.metadata ? JSON.stringify(data) : null
     ];
 
-    const result = await db.query(query, values);
-    return result[0];
-};
+    const result = await db.query(sql, values);
+    return result[0] || null;
+  }
 
-exports.findAll = async (tenant_id) => {
-    const query = `
-    SELECT * FROM pricing_rules
-    WHERE tenant_id = $1 AND is_deleted = false
-    ORDER BY priority ASC
-  `;
-    const result = await db.query(query, [tenant_id]);
+  /**
+   * Fetch all active rules for a tenant
+   */
+  async findAll(tenantId) {
+    const sql = `
+      SELECT pr.*, 
+             c.name as concept_name, 
+             lrc.label as service_label
+      FROM pricing_rules pr
+      LEFT JOIN concept c ON pr.concept_id = c.id
+      LEFT JOIN lead_requirement_config lrc ON pr.requirement_config_id = lrc.id
+      WHERE pr.tenant_id = $1 AND pr.is_deleted = false
+      ORDER BY pr.priority DESC, pr.created_at DESC
+    `;
+    const result = await db.query(sql, [tenantId]);
+    return Array.isArray(result) ? result : result.rows || [];
+  }
+
+  /**
+   * Fetch rules specific to a target (e.g., when calculating price for a Concept)
+   */
+  async findByTarget(tenantId, targetType, targetId) {
+    let column = targetType === 'package' ? 'concept_id' : 'requirement_config_id';
+
+    const sql = `
+      SELECT * FROM pricing_rules 
+      WHERE tenant_id = $1 
+      AND target_type = $2 
+      AND ${column} = $3 
+      AND is_active = true 
+      AND is_deleted = false
+      ORDER BY priority DESC
+    `;
+
+    const result = await db.query(sql, [tenantId, targetType, targetId]);
     return result;
-};
+  }
 
-exports.findById = async (id, tenant_id) => {
-    const query = `
-    SELECT * FROM pricing_rules
-    WHERE id = $1 AND tenant_id = $2 AND is_deleted = false
-  `;
-    const result = await db.query(query, [id, tenant_id]);
-    return result[0];
-};
-
-exports.update = async (id, data) => {
-    const query = `
-    UPDATE pricing_rules SET
-      name=$1,
-      priority=$2,
-      is_active=$3,
-      condition_field=$4,
-      condition_operator=$5,
-      condition_value=$6,
-      action_type=$7,
-      action_mode=$8,
-      action_value=$9,
-      action_value_type=$10,
-      metadata=$11,
-      updated_at=now()
-    WHERE id=$12 AND tenant_id=$13
-    RETURNING *;
-  `;
+  /**
+   * Update a pricing rule
+   */
+  async update(id, tenantId, data) {
+    const sql = `
+      UPDATE pricing_rules
+      SET 
+        name = COALESCE($1, name),
+        target_type = COALESCE($2, target_type),
+        concept_id = $3,
+        requirement_config_id = $4,
+        priority = COALESCE($5, priority),
+        is_active = COALESCE($6, is_active),
+        condition_field = COALESCE($7, condition_field),
+        condition_operator = COALESCE($8, condition_operator),
+        condition_value = COALESCE($9, condition_value),
+        action_type = COALESCE($10, action_type),
+        action_mode = COALESCE($11, action_mode),
+        action_value = COALESCE($12, action_value),
+        action_value_type = COALESCE($13, action_value_type),
+        metadata = COALESCE($14, metadata),
+        updated_at = NOW()
+      WHERE id = $15 AND tenant_id = $16
+      RETURNING *`;
 
     const values = [
-        data.name,
-        data.priority,
-        data.is_active,
-        data.condition_field,
-        data.condition_operator,
-        data.condition_value,
-        data.action_type,
-        data.action_mode,
-        data.action_value,
-        data.action_value_type,
-        data.metadata || {},
-        id,
-        data.tenant_id
+      data.name,
+      data.target_type,
+      data.target_type === 'package' ? data.concept_id : null,
+      data.target_type === 'service' ? data.requirement_config_id : null,
+      data.priority,
+      data.is_active,
+      data.condition_field,
+      data.condition_operator,
+      data.condition_value,
+      data.action_type,
+      data.action_mode,
+      data.action_value,
+      data.action_value_type,
+      data.metadata ? JSON.stringify(data.metadata) : null,
+      id,
+      tenantId
     ];
 
-    const result = await db.query(query, values);
-    return result[0];
-};
+    const result = await db.query(sql, values);
+    return result[0] || null;
+  }
 
-exports.delete = async (id) => {
-    console.log('Soft deleting pricing rule with ID:', id);
-    const query = `
-    UPDATE pricing_rules
-    SET is_deleted = true, updated_at = now()
-    WHERE id = $1
-  `;
-    await db.query(query, [id]);
-};
+  /**
+   * Soft delete a rule
+   */
+  async softDelete(id, tenantId) {
+    const sql = `
+      UPDATE pricing_rules 
+      SET is_deleted = true, updated_at = NOW() 
+      WHERE id = $1 AND tenant_id = $2
+      RETURNING id`;
+    const result = await db.query(sql, [id, tenantId]);
+    return result[0] || null;
+  }
+}
+
+module.exports = new PricingRuleRepository();

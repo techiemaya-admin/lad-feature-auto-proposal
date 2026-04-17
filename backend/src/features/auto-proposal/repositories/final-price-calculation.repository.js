@@ -1,357 +1,465 @@
 const { v4: uuidv4 } = require("uuid");
 const dataSource = require("../../../config/data-source"); // adjust path
+const conceptRepository = require("./concept.repository");
 
 
-// Added eventType as the 4th argument
-async function calculateFinalPrice(tenantId, locationName, leadRequirementId, eventType = null) {
+async function calculateFinalPrice(tenantId, leadRequirementId) {
   const db = dataSource;
 
-  // 1️⃣ Fetch Dynamic Values (Same as before)
-  const requirementValues = await db.query(
-    `SELECT cv.value_number, cfg.field_key, cfg.label, cfg.order_index 
-     FROM lead_requirement_values cv
-     JOIN lead_requirement_config cfg ON cv.field_id = cfg.id
-     WHERE cv.lead_requirement_id = $1
-     ORDER BY cfg.order_index ASC`,
-    [leadRequirementId]
+  const leadData = await db.query(
+    `SELECT cv.id AS value_record_id, cv.value_number, cfg.id AS field_id, cfg.field_key, cfg.label, cfg.base_price, pm.type AS pricing_model
+    FROM lead_requirement_values cv
+    JOIN lead_requirement_config cfg ON cv.field_id = cfg.id
+    LEFT JOIN pricing_models pm ON cfg.pricing_model_id = pm.id
+    WHERE cv.lead_requirement_id = $1 AND cfg.tenant_id = $2 AND cfg.is_active = true`,
+    [leadRequirementId, tenantId]
   );
+  console.log("1. Raw Lead Data Fetched:", JSON.stringify(leadData));
 
-  if (!requirementValues.length) {
-    throw new Error("No requirement values found for this lead");
-  }
+  const inputValues = {};
+  leadData.forEach(row => { inputValues[row.field_key] = Number(row.value_number) || 0; });
+  console.log("2. Transformed Input Values (Conditions):", JSON.stringify(inputValues));
 
-  const dynamicGuestData = requirementValues.map(row => ({
-    key: row.field_key,
-    count: Number(row.value_number) || 0,
-    label: row.label,
-    order_index: row.order_index
-  }));
+  const rulesRes = await db.query(
+    `SELECT * FROM pricing_rules WHERE tenant_id = $1 AND is_active = true AND is_deleted = false`,
+    [tenantId]
+  );
+  const allRules = rulesRes;
+  console.log("3. All Active Pricing Rules:", JSON.stringify(allRules));
 
-  const input = {};
-  dynamicGuestData.forEach(item => { input[item.key] = item.count; });
+  const concepts = await conceptRepository.findAllWithRequirements(tenantId);
+  console.log("4. Available Concepts with Mappings:", JSON.stringify(concepts));
 
-  // 3️⃣ Fetch Concepts - Updated with optional eventType filter
-  let conceptSql = `
-    SELECT c.*, pm.type AS pricing_type
-    FROM concept c
-    LEFT JOIN pricing_models pm ON c.pricing_model_id = pm.id
-    WHERE c.tenant_id = $1 AND c.is_deleted = false
-  `;
-
-  const queryParams = [tenantId];
-
-  // If eventType is provided, filter the SQL query
-  if (eventType) {
-    conceptSql += ` AND c.name = $2`;
-    queryParams.push(eventType);
-  }
-
-  const concepts = await db.query(conceptSql, queryParams);
   const results = [];
-  const conceptList = Array.isArray(concepts) ? concepts : (concepts.rows || []);
 
-  for (const concept of conceptList) {
+  for (const concept of concepts) {
+    const conceptFieldIds = concept.requirement_configs.map(rc => rc.id);
+    const leadFieldIds = leadData.map(ld => ld.field_id);
+    console.log(`5. Checking Concept [${concept.name}]. Required IDs:`, JSON.stringify(conceptFieldIds));
+
+    const isMatch = conceptFieldIds.every(id => leadFieldIds.includes(id));
+    console.log(`6. Does Lead Match Concept [${concept.name}]?`, isMatch);
+
+    if (!isMatch) continue;
+
     const breakdown = [];
-    let totalCalculatedPrice = 0;
+    let currentTotalBasePrice = 0;
+    let conceptServicesSubtotal = 0;
+    let addonServicesSubtotal = 0;
+    let totalDiscount = 0;
+    let totalSurcharge = 0;
 
-    // 4️⃣ Calculate price for EACH dynamic field
-    for (const item of dynamicGuestData) {
-      let itemBasePrice = 0;
-      const rate = Number(concept.base_price) || 0;
+    for (const item of leadData) {
+      const count = Number(item.value_number) || 0;
+      const base = Number(item.base_price) || 0;
+      let itemBasePrice = (item.pricing_model === 'Fixed') ? base : (base * count);
 
-      switch (concept.pricing_type) {
-        case "per_person": itemBasePrice = rate * item.count; break;
-        case "per_hour": itemBasePrice = item.key.includes('hour') ? rate * item.count : rate; break;
-        case "per_day": itemBasePrice = item.key.includes('day') ? rate * item.count : rate; break;
-        case "fixed": itemBasePrice = rate; break;
-        default: itemBasePrice = rate * item.count;
-      }
+      currentTotalBasePrice += itemBasePrice;
 
       let itemFinalPrice = itemBasePrice;
-      const appliedRules = [];
+      let itemDiscount = 0;
+      let itemSurcharge = 0;
+      let appliedRules = [];
 
-      // 5️⃣ Fetch rules for this specific concept
-      const rulesRes = await db.query(
-        `SELECT * FROM pricing_rules WHERE concept_id = $1 AND tenant_id = $2 AND is_active = true AND is_deleted = false ORDER BY priority ASC`,
-        [concept.id, tenantId]
-      );
+      // --- HANDLE SERVICES OUTSIDE THE CONCEPT (ADD-ONS) ---
+      if (!conceptFieldIds.includes(item.field_id)) {
+        console.log(`7a. Item [${item.label}] is an ADD-ON. Checking Service Rules.`);
+        const serviceRules = allRules.filter(r => r.target_type === 'service' && r.requirement_config_id === item.field_id);
 
-      const rulesList = Array.isArray(rulesRes) ? rulesRes : (rulesRes.rows || []);
+        const ruleResult = applyRuleMathWithDetails(itemBasePrice, serviceRules, inputValues, false);
+        console.log(`7b. Rule Result for Add-on [${item.label}]:`, JSON.stringify(ruleResult));
 
-      let totalDiscount = 0;
-      let totalSurcharge = 0;
+        itemFinalPrice = ruleResult.finalAmount;
+        itemDiscount = ruleResult.discount;
+        itemSurcharge = ruleResult.surcharge;
+        appliedRules = ruleResult.appliedRules;
 
-      for (const rule of rulesList) {
-        const fieldValue = input[rule.condition_field];
-
-        // Skip if field missing or if rule is intended for a different line item
-        if (fieldValue === undefined || rule.condition_field !== item.key) continue;
-
-        let matched = false;
-        const val = Number(fieldValue);
-        const cond = Number(rule.condition_value);
-
-        switch (rule.condition_operator) {
-          case ">": matched = val > cond; break;
-          case "<": matched = val < cond; break;
-          case "=": matched = val == cond; break;
-          case ">=": matched = val >= cond; break;
-          case "<=": matched = val <= cond; break;
-        }
-
-        if (matched) {
-          let impact = (rule.action_mode === "percentage")
-            ? (itemFinalPrice * Number(rule.action_value)) / 100
-            : Number(rule.action_value);
-
-          if (rule.action_type === "discount") {
-            itemFinalPrice -= impact;
-            totalDiscount += impact;
-          } else if (rule.action_type === "surcharge") {
-            itemFinalPrice += impact;
-            totalSurcharge += impact;
-          }
-          appliedRules.push(rule.id);
-        }
+        addonServicesSubtotal += itemFinalPrice;
+      } else {
+        // --- HANDLE SERVICES INSIDE THE CONCEPT ---
+        console.log(`8. Item [${item.label}] is INSIDE Concept. Adding to Concept Bucket.`);
+        conceptServicesSubtotal += itemBasePrice;
       }
 
       breakdown.push({
-        key: item.key,
+        key: item.field_key,
         label: item.label,
-        count: item.count,
-        base_unit_price: rate,
+        count: count,
+        base_unit_price: base,
         price: itemFinalPrice,
-        applied_rules: appliedRules,
-        total_discount: totalDiscount,
-        total_surcharge: totalSurcharge
+        total_discount: itemDiscount,
+        total_surcharge: itemSurcharge,
+        applied_rules: appliedRules
       });
 
-      totalCalculatedPrice += itemFinalPrice;
+      totalDiscount += itemDiscount;
+      totalSurcharge += itemSurcharge;
     }
 
-    // 6️⃣ Minimum Cost Check
-    let finalPrice = totalCalculatedPrice;
-    let isMinimumCostApplied = false;
+    console.log(`9. Concept Bucket Subtotal: ${conceptServicesSubtotal}`);
+    console.log(`10. Add-on Bucket Subtotal: ${addonServicesSubtotal}`);
+
+    // --- APPLY PACKAGE RULE (ONLY TO THE CONCEPT BUCKET) ---
+    const packageRules = allRules.filter(r => r.target_type === 'package' && r.concept_id === concept.id);
+    console.log(`11. Package Rules found for [${concept.name}]:`, JSON.stringify(packageRules));
+
+    const packageResult = applyRuleMathWithDetails(conceptServicesSubtotal, packageRules, inputValues, true);
+    console.log(`12. Package Rule Application Result:`, JSON.stringify(packageResult));
+
+    const finalPackagePrice = packageResult.finalAmount;
+    totalDiscount += packageResult.discount;
+    totalSurcharge += packageResult.surcharge;
+
+    let finalPrice = finalPackagePrice + addonServicesSubtotal;
+    console.log(`13. Calculated Final Price (Package + Addons): ${finalPrice}`);
 
     if (concept.minimum_cost && finalPrice < Number(concept.minimum_cost)) {
+      console.log(`14. MINIMUM COST TRIGGERED. Raising ${finalPrice} to ${concept.minimum_cost}`);
       finalPrice = Number(concept.minimum_cost);
-      isMinimumCostApplied = true;
     }
 
-    const totals = breakdown.reduce(
-      (acc, item) => {
-        acc.totalDiscount += item.total_discount || 0;
-        acc.totalSurcharge += item.total_surcharge || 0;
-        return acc;
-      },
-      { totalDiscount: 0, totalSurcharge: 0 }
-    );
-
-    results.push({
+    const finalResponse = {
       concept_id: concept.id,
       concept_name: concept.name,
-      pricing_type: concept.pricing_type,
+      pricing_type: concept.pricing_type || 'hybrid',
       breakdown: breakdown,
-      total_base_price: totalCalculatedPrice,
+      total_base_price: currentTotalBasePrice,
       final_price: finalPrice,
-      is_minimum_cost_applied: isMinimumCostApplied,
-      total_concept_discount: totals.totalDiscount,
-      total_concept_surcharge: totals.totalSurcharge
+      total_concept_discount: totalDiscount,
+      total_concept_surcharge: totalSurcharge,
+      applied_package_rules: packageResult.appliedRules
+    };
+
+    console.log(`15. Final Concept Object:`, JSON.stringify(finalResponse));
+    results.push(finalResponse);
+  }
+  // --- FALLBACK LOGIC REMAINS SAME ---
+  // ... (Your results.length === 0 logic)
+  let totalBasePrice = 0;
+  if (results.length === 0) {
+    const breakdown = [];
+    let grandTotal = 0;
+    let totalDiscount = 0;
+    let totalSurcharge = 0;
+
+    for (const item of leadData) {
+      const count = Number(item.value_number) || 0;
+      const base = Number(item.base_price) || 0;
+      const itemBasePrice = (item.pricing_model === 'Fixed') ? base : (base * count);
+      totalBasePrice = totalBasePrice + itemBasePrice;
+      console.log(`Calculating price for standalone service item: ${item.label} with base price ${itemBasePrice} with total base price : ${totalBasePrice}`);
+
+      // In fallback mode, every service is treated as a standalone service
+      const serviceRules = allRules.filter(r => r.target_type === 'service' && r.requirement_config_id === item.field_id);
+      console.log(`Applying pricing rules for standalone service item: ${item.label}`, JSON.stringify(serviceRules));
+
+      const ruleResult = applyRuleMathWithDetails(itemBasePrice, serviceRules, inputValues);
+      console.log(`Result after applying rules for item ${item.label}: `, JSON.stringify(ruleResult));
+
+      breakdown.push({
+        key: item.field_key,
+        label: item.label,
+        count: count,
+        base_unit_price: base,
+        price: ruleResult.finalAmount,
+        total_discount: ruleResult.discount,
+        total_surcharge: ruleResult.surcharge,
+        applied_rules: ruleResult.appliedRules
+      });
+
+      console.log(`Breakdown for item ${item.label}:`, JSON.stringify(breakdown[breakdown.length - 1]));
+
+      grandTotal += ruleResult.finalAmount;
+      totalDiscount += ruleResult.discount;
+      totalSurcharge += ruleResult.surcharge;
+    }
+
+    results.push({
+      concept_id: null,
+      concept_name: "Custom Service Quote",
+      pricing_type: "service_only",
+      breakdown: breakdown,
+      total_base_price: totalBasePrice,
+      final_price: grandTotal,
+      total_concept_discount: totalDiscount,
+      total_concept_surcharge: totalSurcharge,
+      applied_package_rules: []
     });
   }
+
+
 
   return results;
 }
 
-// async function calculateFinalPrice(tenantId, locationName, leadRequirementId) {
-//   const db = dataSource;
 
-//   // 1️⃣ Fetch Dynamic Values + Config Metadata (Same as OLD)
-//   const requirementValues = await db.query(
-//     `
-//     SELECT 
-//       cv.value_number, 
-//       cfg.field_key, 
-//       cfg.label, 
-//       cfg.order_index 
+function applyRuleMathWithDetails(baseAmount, rules, inputValues, forceMatch = false) {
+  let finalAmount = baseAmount;
+  let discount = 0;
+  let surcharge = 0;
+  let appliedRules = [];
+
+  for (const rule of rules) {
+    let matched = forceMatch; // If forceMatch is true (Package), we skip condition checks
+
+    if (!matched) {
+      const val = inputValues[rule.condition_field] || 0;
+      const cond = Number(rule.condition_value);
+
+      switch (rule.condition_operator) {
+        case ">": matched = val > cond; break;
+        case "<": matched = val < cond; break;
+        case ">=": matched = val >= cond; break;
+        case "<=": matched = val <= cond; break;
+        case "=": matched = val == cond; break;
+      }
+    }
+
+    if (matched) {
+      let impact = 0;
+      const actionVal = Number(rule.action_value) || 0;
+
+      if (rule.action_mode?.toLowerCase() === 'percentage') {
+        impact = (finalAmount * actionVal / 100);
+      } else {
+        impact = actionVal;
+      }
+
+      if (rule.action_type?.toLowerCase() === 'discount') {
+        finalAmount -= impact;
+        discount += impact;
+      } else {
+        finalAmount += impact;
+        surcharge += impact;
+      }
+      appliedRules.push(rule.id);
+    }
+  }
+  return { finalAmount, discount, surcharge, appliedRules };
+}
+
+// async function calculateFinalPrice(tenantId, leadRequirementId) {
+//   const db = dataSource;
+//   let totalBasePrice = 0;
+//   // 1. Fetch Lead Values & Config
+//   const leadData = await db.query(
+//     `SELECT 
+//        cv.id AS value_record_id,
+//        cv.value_number,
+//        cfg.id AS field_id, 
+//        cfg.field_key, 
+//        cfg.label, 
+//        cfg.base_price,
+//        pm.type AS pricing_model
 //     FROM lead_requirement_values cv
 //     JOIN lead_requirement_config cfg ON cv.field_id = cfg.id
-//     WHERE cv.lead_requirement_id = $1
-//     ORDER BY cfg.order_index ASC
-//     `,
-//     [leadRequirementId]
+//     LEFT JOIN pricing_models pm ON cfg.pricing_model_id = pm.id
+//     WHERE cv.lead_requirement_id = $1 
+//       AND cfg.tenant_id = $2
+//       AND cfg.is_active = true`,
+//     [leadRequirementId, tenantId]
 //   );
 
-//   if (!requirementValues.length) {
-//     throw new Error("No requirement values found for this lead");
-//   }
+//   console.log("Fetched lead data for price calculation:", JSON.stringify(leadData));
 
-//   // 2️⃣ Store guest counts AND metadata for the breakdown
-//   const dynamicGuestData = requirementValues.map(row => ({
-//     key: row.field_key,
-//     count: Number(row.value_number) || 0,
-//     label: row.label,
-//     order_index: row.order_index
-//   }));
+//   const inputValues = {};
+//   leadData.forEach(row => { inputValues[row.field_key] = Number(row.value_number) || 0; });
 
-//   // Create a flat input object for rule checking (e.g., { people: 100 })
-//   const input = {};
-//   dynamicGuestData.forEach(item => { input[item.key] = item.count; });
-
-//   // 3️⃣ Fetch Concepts joined with Pricing Models
-//   const concepts = await db.query(
-//     `
-//     SELECT c.*, pm.type AS pricing_type
-//     FROM concept c
-//     LEFT JOIN pricing_models pm ON c.pricing_model_id = pm.id
-//     WHERE c.tenant_id = $1 AND c.is_deleted = false
-//     `,
+//   const rulesRes = await db.query(
+//     `SELECT * FROM pricing_rules WHERE tenant_id = $1 AND is_active = true AND is_deleted = false`,
 //     [tenantId]
 //   );
 
+//   const allRules = rulesRes;
+//   console.log("Fetched pricing rules for price calculation:", JSON.stringify(rulesRes));
+
+//   const concepts = await conceptRepository.findAllWithRequirements(tenantId);
 //   const results = [];
-//   const conceptList = Array.isArray(concepts) ? concepts : (concepts.rows || []);
 
-//   for (const concept of conceptList) {
+//   console.log("Fetched concepts with requirements for price calculation:", JSON.stringify(concepts));
+
+//   // --- 1️⃣ TRY TO MATCH CONCEPTS ---
+//   for (const concept of concepts) {
+//     const conceptFieldIds = concept.requirement_configs.map(rc => rc.id);
+//     const leadFieldIds = leadData.map(ld => ld.field_id);
+
+//     const isMatch = conceptFieldIds.every(id => leadFieldIds.includes(id));
+//     if (!isMatch) continue;
+
 //     const breakdown = [];
-//     let totalCalculatedPrice = 0;
+//     let conceptSubtotal = 0;
+//     let totalDiscount = 0;
+//     let totalSurcharge = 0;
 
-//     // 4️⃣ Calculate price for EACH dynamic field (The Breakdown)
-//     for (const item of dynamicGuestData) {
-//       let itemBasePrice = 0;
-//       const rate = Number(concept.base_price) || 0;
-
-//       // APPLY PRICING MODEL LOGIC
-//       switch (concept.pricing_type) {
-//         case "per_person":
-//           itemBasePrice = rate * item.count;
-//           break;
-//         case "per_hour":
-//           // If the key matches 'hours', use count, otherwise it's just base
-//           itemBasePrice = item.key.includes('hour') ? rate * item.count : rate;
-//           break;
-//         case "per_day":
-//           itemBasePrice = item.key.includes('day') ? rate * item.count : rate;
-//           break;
-//         case "fixed":
-//           itemBasePrice = rate;
-//           break;
-//         default:
-//           itemBasePrice = rate * item.count; // Default to per_person logic
-//       }
-
-//       // 5️⃣ Apply Pricing Rules to this specific item
+//     for (const item of leadData) {
+//       const count = Number(item.value_number) || 0;
+//       const base = Number(item.base_price) || 0;
+//       let itemBasePrice = (item.pricing_model === 'Fixed') ? base : (base * count);
+//       totalBasePrice = totalBasePrice + itemBasePrice;
+//       console.log(`Calculating price for item: ${item.label} with base price ${itemBasePrice} with total base price : ${totalBasePrice}`);
 //       let itemFinalPrice = itemBasePrice;
-//       const appliedRules = [];
+//       let itemDiscount = 0;
+//       let itemSurcharge = 0;
+//       let appliedRules = [];
 
-//       const rulesRes = await db.query(
-//         `SELECT * FROM pricing_rules WHERE concept_id = $1 AND tenant_id = $2 AND is_active = true AND is_deleted = false ORDER BY priority ASC`,
-//         [concept.id, tenantId]
-//       );
-
-//       const rulesList = Array.isArray(rulesRes) ? rulesRes : (rulesRes.rows || []);
-//       console.log('Input for pricing rules:', input);
-//       let totalDiscount = 0;
-//       let totalSurcharge = 0;
-//       for (const rule of rulesList) {
-//         console.log(`Evaluating rule: ${rule.name} on item: ${item.label} with input value: ${input[rule.condition_field]} JSON : ${JSON.stringify(rule)}`);
-//         const fieldValue = input[rule.condition_field];
-//         console.log(`Field value for ${rule.condition_field}: ${fieldValue} | Rule condition value: ${rule.condition_value} | Operator: ${rule.condition_operator} | Key : ${item.key} | base price for item: ${itemBasePrice}`);
-//         if (fieldValue === undefined) {
-//           console.log(`Skipping rule ${rule.name} because condition field ${rule.condition_field} is not present in input`);
-//           continue
-//         }
-//         // 2️⃣ SELECTIVE LOGIC: 
-//         // If the rule's condition_field does NOT match the current item's key,
-//         // skip it—UNLESS you want this specific rule to be a 'Global' rule.
-//         if (rule.condition_field !== item.key) {
-//           // Optional: Add a metadata check here if you want some rules to be global
-//           // if (!rule.metadata?.isGlobal) continue; 
-
-//           continue; // Skip because this rule belongs to a different line item
-//         }
-//         let matched = false;
-//         const val = Number(fieldValue);
-//         const cond = Number(rule.condition_value);
-
-//         switch (rule.condition_operator) {
-//           case ">": matched = val > cond; break;
-//           case "<": matched = val < cond; break;
-//           case "=": matched = val == cond; break;
-//           case ">=": matched = val >= cond; break;
-//           case "<=": matched = val <= cond; break;
-//         }
-//         console.log(`Rule ${rule.name} evaluated to ${matched} | rule value type: ${rule.action_mode} | rule action type: ${rule.action_type}| rule action value: ${rule.action_value} | current item final price before applying rule: ${itemFinalPrice}`);
-//         if (matched) {
-//           let impact = 0;
-//           if (rule.action_mode === "percentage") {
-//             impact = (itemFinalPrice * Number(rule.action_value)) / 100;
-//           } else {
-//             impact = Number(rule.action_value);
-//           }
-
-//           if (rule.action_type === "discount") {
-//             itemFinalPrice -= impact;
-//             totalDiscount += impact;
-//           }
-//           if (rule.action_type === "surcharge") {
-//             itemFinalPrice += impact;
-//             totalSurcharge += impact;
-//           }
-//           console.log(`Rule ${rule.id} applied with impact ${impact}, new item price: ${itemFinalPrice}`);
-//           appliedRules.push(rule.id);
-//           console.log(`Applied rules so far for item ${item.label}:`, appliedRules);
-//         }
+//       // If item is an addon (not in concept), apply service rules
+//       if (!conceptFieldIds.includes(item.field_id)) {
+//         const serviceRules = allRules.filter(r => r.target_type === 'service' && r.requirement_config_id === item.field_id);
+//         const ruleResult = applyRuleMathWithDetails(itemBasePrice, serviceRules, inputValues);
+//         itemFinalPrice = ruleResult.finalAmount;
+//         itemDiscount = ruleResult.discount;
+//         itemSurcharge = ruleResult.surcharge;
+//         appliedRules = ruleResult.appliedRules;
 //       }
 
 //       breakdown.push({
-//         key: item.key,
+//         key: item.field_key,
 //         label: item.label,
-//         count: item.count,
-//         base_unit_price: rate,
+//         count: count,
+//         base_unit_price: base,
 //         price: itemFinalPrice,
-//         applied_rules: appliedRules,
-//         total_discount: totalDiscount,
-//         total_surcharge: totalSurcharge
+//         total_discount: itemDiscount,
+//         total_surcharge: itemSurcharge,
+//         applied_rules: appliedRules
 //       });
 
-//       totalCalculatedPrice += itemFinalPrice;
+//       if (conceptFieldIds.includes(item.field_id)) {
+//         conceptSubtotal += itemBasePrice;
+//       } else {
+//         conceptSubtotal += itemFinalPrice;
+//         totalDiscount += itemDiscount;
+//         totalSurcharge += itemSurcharge;
+//       }
 //     }
 
-//     // 6️⃣ Apply Minimum Cost to the TOTAL
-//     let finalPrice = totalCalculatedPrice;
-//     let isMinimumCostApplied = false;
+//     const packageRules = allRules.filter(r => r.target_type === 'package' && r.concept_id === concept.id);
+//     const packageResult = applyRuleMathWithDetails(conceptSubtotal, packageRules, inputValues);
+
+//     let finalPrice = packageResult.finalAmount;
+//     totalDiscount += packageResult.discount;
+//     totalSurcharge += packageResult.surcharge;
 
 //     if (concept.minimum_cost && finalPrice < Number(concept.minimum_cost)) {
 //       finalPrice = Number(concept.minimum_cost);
-//       isMinimumCostApplied = true;
 //     }
-//     const totals = breakdown.reduce(
-//       (acc, item) => {
-//         acc.totalDiscount += item.total_discount || 0;
-//         acc.totalSurcharge += item.total_surcharge || 0;
-//         return acc;
-//       },
-//       { totalDiscount: 0, totalSurcharge: 0 }
-//     );
 
-//     console.log("Total Discount:", totals.totalDiscount);
-//     console.log("Total Surcharge:", totals.totalSurcharge);
 //     results.push({
 //       concept_id: concept.id,
 //       concept_name: concept.name,
-//       pricing_type: concept.pricing_type,
+//       pricing_type: concept.pricing_type || 'hybrid',
 //       breakdown: breakdown,
-//       total_base_price: totalCalculatedPrice,
+//       total_base_price: totalBasePrice,
 //       final_price: finalPrice,
-//       is_minimum_cost_applied: isMinimumCostApplied,
-//       total_concept_discount: totals.totalDiscount,
-//       total_concept_surcharge: totals.totalSurcharge
+//       total_concept_discount: totalDiscount,
+//       total_concept_surcharge: totalSurcharge,
+//       applied_package_rules: packageResult.appliedRules
+//     });
+//   }
+
+//   // --- 2️⃣ FALLBACK: IF NO CONCEPTS MATCHED (SERVICE-ONLY CALCULATION) ---
+//   if (results.length === 0) {
+//     const breakdown = [];
+//     let grandTotal = 0;
+//     let totalDiscount = 0;
+//     let totalSurcharge = 0;
+
+//     for (const item of leadData) {
+//       const count = Number(item.value_number) || 0;
+//       const base = Number(item.base_price) || 0;
+//       const itemBasePrice = (item.pricing_model === 'Fixed') ? base : (base * count);
+//       totalBasePrice = totalBasePrice + itemBasePrice;
+//       console.log(`Calculating price for standalone service item: ${item.label} with base price ${itemBasePrice} with total base price : ${totalBasePrice}`);
+
+//       // In fallback mode, every service is treated as a standalone service
+//       const serviceRules = allRules.filter(r => r.target_type === 'service' && r.requirement_config_id === item.field_id);
+//       console.log(`Applying pricing rules for standalone service item: ${item.label}`, JSON.stringify(serviceRules));
+
+//       const ruleResult = applyRuleMathWithDetails(itemBasePrice, serviceRules, inputValues);
+//       console.log(`Result after applying rules for item ${item.label}: `, JSON.stringify(ruleResult));
+
+//       breakdown.push({
+//         key: item.field_key,
+//         label: item.label,
+//         count: count,
+//         base_unit_price: base,
+//         price: ruleResult.finalAmount,
+//         total_discount: ruleResult.discount,
+//         total_surcharge: ruleResult.surcharge,
+//         applied_rules: ruleResult.appliedRules
+//       });
+
+//       console.log(`Breakdown for item ${item.label}:`, JSON.stringify(breakdown[breakdown.length - 1]));
+
+//       grandTotal += ruleResult.finalAmount;
+//       totalDiscount += ruleResult.discount;
+//       totalSurcharge += ruleResult.surcharge;
+//     }
+
+//     results.push({
+//       concept_id: null,
+//       concept_name: "Custom Service Quote",
+//       pricing_type: "service_only",
+//       breakdown: breakdown,
+//       total_base_price: totalBasePrice,
+//       final_price: grandTotal,
+//       total_concept_discount: totalDiscount,
+//       total_concept_surcharge: totalSurcharge,
+//       applied_package_rules: []
 //     });
 //   }
 
 //   return results;
 // }
+
+/**
+ * Enhanced Helper to return math details
+ */
+// function applyRuleMathWithDetails(baseAmount, rules, inputValues) {
+//   let finalAmount = baseAmount;
+//   let discount = 0;
+//   let surcharge = 0;
+//   let appliedRules = [];
+
+//   for (const rule of rules) {
+//     console.log(`Evaluating rule: ${JSON.stringify(rule)} with input values: ${JSON.stringify(inputValues)}`);
+
+//     const val = inputValues[rule.condition_field] || 0;
+//     const cond = Number(rule.condition_value);
+//     let matched = false;
+
+//     switch (rule.condition_operator) {
+//       case ">": matched = val > cond; break;
+//       case "<": matched = val < cond; break;
+//       case ">=": matched = val >= cond; break;
+//       case "<=": matched = val <= cond; break;
+//       case "=": matched = val == cond; break;
+//     }
+
+//     if (matched) {
+//       let impact = 0;
+
+//       if (rule.action_mode?.toLowerCase() === 'percentage') {
+//         console.log(`Rule ${rule.name} is a percentage-based rule. Calculating impact as percentage of current final amount: ${finalAmount}`);
+//         impact = (finalAmount * Number(rule.action_value) / 100);
+//       } else {
+//         console.log(`Rule ${rule.name} is a fixed amount rule. Using action value directly as impact: ${rule.action_value}`);
+//         impact = Number(rule.action_value);
+//       }
+
+//       if (rule.action_type?.toLowerCase() === 'discount') {
+//         finalAmount -= impact;
+//         discount += impact;
+//       } else {
+//         finalAmount += impact;
+//         surcharge += impact;
+//       }
+//       appliedRules.push(rule.id);
+//     }
+//   }
+//   console.log(`Final amount after applying rules: ${finalAmount}, total discount: ${discount}, total surcharge: ${surcharge}, applied rules: ${appliedRules} with total base amount: ${baseAmount}`);
+//   return { finalAmount, discount, surcharge, appliedRules };
+// }
+
 
 // async function calculateFinalPrice(tenantId, locationName, leadRequirementId) {
 //   const queryRunner = dataSource;

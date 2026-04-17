@@ -1,6 +1,7 @@
 const service = require('../services/pricingRule.service');
 
 exports.create = async (req, res) => {
+  console.log('Received request to create pricing rule with body:', req.body);
   const data = await service.create(req.body);
   res.json(data);
 };
