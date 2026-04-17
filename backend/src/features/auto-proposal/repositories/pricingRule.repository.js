@@ -87,7 +87,8 @@ class PricingRuleRepository {
   /**
    * Update a pricing rule
    */
-  async update(id, tenantId, data) {
+  async update(id, data) {
+    console.log("Updating pricing rule with id : " + id + " data:", data);
     const sql = `
       UPDATE pricing_rules
       SET 
@@ -106,7 +107,7 @@ class PricingRuleRepository {
         action_value_type = COALESCE($13, action_value_type),
         metadata = COALESCE($14, metadata),
         updated_at = NOW()
-      WHERE id = $15 AND tenant_id = $16
+      WHERE id = $15
       RETURNING *`;
 
     const values = [
@@ -124,14 +125,19 @@ class PricingRuleRepository {
       data.action_value,
       data.action_value_type,
       data.metadata ? JSON.stringify(data.metadata) : null,
-      id,
-      tenantId
+      id
     ];
 
     const result = await db.query(sql, values);
     return result[0] || null;
   }
 
+  async delete(id) {
+    const sql = `DELETE FROM pricing_rules WHERE id = $1 RETURNING id`;
+    const result = await db.query(sql, [id]);
+    return result[0] || null;
+  }
+  
   /**
    * Soft delete a rule
    */

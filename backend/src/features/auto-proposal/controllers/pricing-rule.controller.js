@@ -17,6 +17,7 @@ exports.getById = async (req, res) => {
 };
 
 exports.update = async (req, res) => {
+  console.log('Received request to update pricing rule with ID:', req.params.id, 'and body:', req.body);
   const data = await service.update(req.params.id, req.body);
   res.json(data);
 };

@@ -96,14 +96,14 @@ async function createProposalDraft(leadRequirementDetails, leadData) {
     item => item.concept_pricing_matrix_id
   );
   console.log("Matrix ids : " + ruleIds);
- 
+
   const final_price = calculatedPriceDetails.reduce((sum, item) => sum + item.final_price, 0);
   console.log("Total detailed price (sum of all concepts): " + final_price);
   const tenantDetails = await tenatDetailsRepo.findById(leadRequirementDetails.tenant_id);
   console.log("tenantDetails : " + JSON.stringify(tenantDetails));
   const prosalPathDetails = await aiService.generateQuotationProposal(calculatedPriceDetails, leadData, leadRequirementDetails.event_type, tenantDetails);
-   gmailSendService.sendQuotationEmail(leadData.email, prosalPathDetails.gcsUrl, final_price);
-  
+  gmailSendService.sendQuotationEmail(leadData.email, prosalPathDetails.gcsUrl, final_price);
+
   const dataToSave = {
     tenant_id: leadRequirementDetails.tenant_id,
     lead_requirement_id: leadRequirementDetails.id,
@@ -141,7 +141,7 @@ function extractGmailData(fullMessage) {
   };
 }
 
-async function processIncomingEmail(tenantId, fullMessage,lead_id) {
+async function processIncomingEmail(tenantId, fullMessage, lead_id) {
   const emailData = extractGmailData(fullMessage);
 
   console.log("Processing incoming email for tenant: {} , and emailData: {}", tenantId, emailData);
@@ -227,20 +227,21 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
           console.log("from: " + from)
           const contact = CommonUtil.parseContactInfo(from);
           console.log("contact: " + JSON.stringify(contact));
-          const leadData = await triggerNewLeadAutomation(contact.firstName, contact.lastName, contact.email);
-          console.log("Lead created from email:", leadData.id);
-          const body = getEmailBody(fullMessage.data.payload);
-          console.log("body : " + body)
-          
-          await processIncomingEmail(tenantId, fullMessage, leadData.id);
+          if (contact) {
+            const leadData = await triggerNewLeadAutomation(contact.firstName, contact.lastName, contact.email);
+            console.log("Lead created from email:", leadData.id);
+            const body = getEmailBody(fullMessage.data.payload);
+            console.log("body : " + body)
 
-          const { leadRequirementDetails, values } = await createLeadRequirementViaPrompt(body, leadData.id, tenantId);
-          console.log("Lead requirement details:", leadRequirementDetails);
-          console.log("Saved requirement values:", values);
-          
-          await createProposalDraft(leadRequirementDetails, leadData);
-          // process emails...
+            await processIncomingEmail(tenantId, fullMessage, leadData.id);
 
+            const { leadRequirementDetails, values } = await createLeadRequirementViaPrompt(body, leadData.id, tenantId);
+            console.log("Lead requirement details:", leadRequirementDetails);
+            console.log("Saved requirement values:", values);
+
+            await createProposalDraft(leadRequirementDetails, leadData);
+            // // process emails...
+          }
           await gmailWatchService.updateHistoryId(
             userIdentityId,
             history.data.historyId
@@ -382,33 +383,33 @@ async function createLeadRequirementViaPrompt(body, lead_id, tenant_id) {
 
     console.log("Testing AI prompt :", body);
     const response = await aiService.generateAIResponse(body, tenant_id);
-    
-//     {
-//   "dynamic_requirements": {
-//     "main event guest count": 100,
-//     "catering": null,
-//     "function_hall": null,
-//     "Videography": 1
-//   },
-//   "location": null,
-//   "event_category": "wedding",
-//   "event_type": "Technical",
-//   "support_level": "full_event_management",
-//   "inquiry_type": "pricing",
-//   "duration": null,
-//   "client_type": "B2C",
-//   "services_requested": [
-//     "venue coordination",
-//     "décor",
-//     "wedding photography and videography",
-//     "overall event execution",
-//     "catering services",
-//     "function hall arrangement"
-//   ]
-// }
-    
 
-    
+    //     {
+    //   "dynamic_requirements": {
+    //     "main event guest count": 100,
+    //     "catering": null,
+    //     "function_hall": null,
+    //     "Videography": 1
+    //   },
+    //   "location": null,
+    //   "event_category": "wedding",
+    //   "event_type": "Technical",
+    //   "support_level": "full_event_management",
+    //   "inquiry_type": "pricing",
+    //   "duration": null,
+    //   "client_type": "B2C",
+    //   "services_requested": [
+    //     "venue coordination",
+    //     "décor",
+    //     "wedding photography and videography",
+    //     "overall event execution",
+    //     "catering services",
+    //     "function hall arrangement"
+    //   ]
+    // }
+
+
+
     console.log("Generated AI response:", response);
     response.lead_id = lead_id;
     response.tenant_id = tenant_id;
