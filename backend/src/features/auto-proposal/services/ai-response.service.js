@@ -153,6 +153,10 @@ class AIService {
     5. NULL VALUES: If a service is mentioned but NO specific count/number is provided for it, return null. (e.g., If they want "Videography" but don't say "for X hours" or "X cameras", return "Videography": null).
     6.Fix spelling (e.g., "dubai" -> "Dubai").
     7. Return ONLY raw valid JSON. No markdown, no backticks, no explanations.
+    8. For all keys in dynamic_requirements, extract ONLY a number. If the service is requested, use 1. 
+        If it is not mentioned, use null. NEVER map text descriptions to these keys.
+    9. If a lead requests a specific service (e.g., "visa assistance") 
+        but does not specify a quantity, assign the value 1 to that field.
 
     ### REQUIRED JSON STRUCTURE:
     {
