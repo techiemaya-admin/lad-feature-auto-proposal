@@ -159,6 +159,7 @@ CREATE TABLE IF NOT EXISTS conversation_messages (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     tenant_id uuid NOT NULL,
     conversation_id uuid NOT NULL,
+    message_id varchar(255),
     sender_type varchar(20) NOT NULL,
     sender_id uuid,
     channel varchar(30) NOT NULL,
@@ -489,3 +490,9 @@ ADD CONSTRAINT unique_lead_req_field
 UNIQUE (lead_requirement_id, field_id);
 
 ALTER TABLE conversations ADD CONSTRAINT unique_external_thread_id UNIQUE (external_thread_id);
+
+
+ALTER TABLE conversation_participants
+ADD CONSTRAINT unique_conversation_participant
+UNIQUE (conversation_id, participant_id);
+

@@ -8,7 +8,8 @@ const isProd = process.env.NODE_ENV === 'production';
 // Enable synchronize in development and test environments
 // In production, use migrations instead
 const synchronize = !isProd;
-const logging = isDev || isTest;
+// const logging = isDev || isTest;
+const logging = false; // Disable logging for all environments, can be set to true for development if needed
 
 
 module.exports = new DataSource({

@@ -17,7 +17,15 @@ class ConversationRepository {
       RETURNING *;
     `;
       const result = await AppDataSource.query(updateSql, [external_thread_id]);
-      return result[0];
+      const updatedConversationArray = result[0];
+      if(updatedConversationArray) {
+        const updatedConversation = updatedConversationArray[0];
+        console.log("Updated existing conversation for thread:", external_thread_id+" result : ", updatedConversation);
+        return updatedConversation;
+      } else {
+        console.log("No conversation found to update for thread:", external_thread_id);
+        return null;
+      }
     } else {
       // 3. Insert new
       const insertSql = `

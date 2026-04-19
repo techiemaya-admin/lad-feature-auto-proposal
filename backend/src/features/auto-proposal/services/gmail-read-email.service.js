@@ -23,35 +23,6 @@ const leadRepository = require("../repositories/lead.repository");
 const conversationParticipantsRepository = require("../repositories/conversation-participants.repository");
 const gmailSendService = require("./gmail-send-email.service");
 
-//
-async function saveEmailToDB(emailData, tenantId) {
-  const threadId = emailData.threadId;
-  console.log("Saving email to DB, threadId:", threadId);
-  let conversation = await conversationRepository.findByThreadId(threadId);
-
-  if (!conversation) {
-    conversation = await conversationRepository.createConversation({
-      tenant_id: tenantId,
-      channel: "gmail",
-      external_thread_id: threadId,
-      status: "open",
-      last_message_at: new Date(),
-      metadata: {},
-    });
-  }
-  console.log("Conversation found/created:", conversation.id);
-  console.log(" snipper : " + emailData.snippet)
-  console.log("raw payload : " + emailData)
-  await messageRepository.createMessage({
-    tenant_id: tenantId,
-    conversation_id: conversation.id,
-    sender_type: "external",
-    channel: "gmail",
-    message_type: "text",
-    content: emailData.snippet,
-    raw_payload: emailData,
-  });
-}
 
 /* 1️⃣ Start Gmail Watch */
 async function startWatch() {
@@ -141,7 +112,7 @@ function extractGmailData(fullMessage) {
   };
 }
 
-async function processIncomingEmail(tenantId, fullMessage, lead_id) {
+async function processIncomingEmail(tenantId, fullMessage, lead_id, messageId) {
   const emailData = extractGmailData(fullMessage);
 
   console.log("Processing incoming email for tenant: {} , and emailData: {}", tenantId, emailData);
@@ -155,6 +126,8 @@ async function processIncomingEmail(tenantId, fullMessage, lead_id) {
     channel: 'email',
     metadata: { subject: emailData.subject }
   });
+
+  console.log("Conversation upserted with ID:", conversation);
 
   // 3. Ensure the Lead is a Participant
   // You can check if they exist first, or write the repo to handle conflicts
@@ -174,7 +147,8 @@ async function processIncomingEmail(tenantId, fullMessage, lead_id) {
     channel: 'email',
     message_type: 'text',
     content: emailData.snippet, // Or your parsed full body
-    raw_payload: emailData.raw
+    raw_payload: emailData.raw,
+    message_id: messageId // Save the Gmail message ID for reference
   });
 
   return message;
@@ -183,6 +157,7 @@ async function processIncomingEmail(tenantId, fullMessage, lead_id) {
 async function fetchNewEmails(email, historyIdFromWebhook) {
   console.log("Fetching new emails for email:", email);
   const tenantId = "e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5";
+  const tenatDetails = await tenatDetailsRepo.findById(tenantId);
   const userIdentityId = await userIdentityRepository.findByProvider(
     "gmail",
     email
@@ -200,7 +175,6 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
       });
     }
 
-    console.log("Fetching new emails with historyId:", historyId);
     const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
 
     const history = await gmail.users.history.list({
@@ -210,11 +184,17 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
     });
     console.log("History response:", history.data);
     const messages = history.data.history || [];
-    // console.log("messages : "+messages)
 
     for (const record of messages) {
       if (record.messages) {
         for (const msg of record.messages) {
+          const messageId = msg.id;
+          const existingMessage = await messageRepository.findByMessageId(messageId);
+          if (existingMessage) {
+            console.log("Message with ID", messageId, "already exists in the database. Skipping.");
+            continue;
+          }
+          
           const fullMessage = await gmail.users.messages.get({
             userId: "me",
             id: msg.id,
@@ -222,25 +202,26 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
 
           const headers = fullMessage.data.payload.headers;
           const subject = headers.find(h => h.name === "Subject")?.value || "";
-          console.log("subject:  " + subject)
           const from = headers.find(h => h.name === "From")?.value || "";
-          console.log("from: " + from)
           const contact = CommonUtil.parseContactInfo(from);
-          console.log("contact: " + JSON.stringify(contact));
+          const body = getEmailBody(fullMessage.data.payload);
+          console.log("subject: " + subject + " from : " + from + " contact: " + JSON.stringify(contact) + " body : " + body);
+
           if (contact) {
             const leadData = await triggerNewLeadAutomation(contact.firstName, contact.lastName, contact.email);
             console.log("Lead created from email:", leadData.id);
-            const body = getEmailBody(fullMessage.data.payload);
-            console.log("body : " + body)
 
-            await processIncomingEmail(tenantId, fullMessage, leadData.id);
+            await processIncomingEmail(tenantId, fullMessage, leadData.id, messageId);
+            if (tenatDetails.email != from) {
+              const { leadRequirementDetails, values } = await createLeadRequirementViaPrompt(body, leadData.id, tenantId);
+              console.log("Lead requirement details:", leadRequirementDetails);
+              console.log("Saved requirement values:", values);
 
-            const { leadRequirementDetails, values } = await createLeadRequirementViaPrompt(body, leadData.id, tenantId);
-            console.log("Lead requirement details:", leadRequirementDetails);
-            console.log("Saved requirement values:", values);
-
-            await createProposalDraft(leadRequirementDetails, leadData);
-            // // process emails...
+              await createProposalDraft(leadRequirementDetails, leadData);
+              // // process emails...
+            } else {
+              console.log("Email is from tenant's own email address, skipping lead creation and proposal drafting.");
+            }
           }
           await gmailWatchService.updateHistoryId(
             userIdentityId,
