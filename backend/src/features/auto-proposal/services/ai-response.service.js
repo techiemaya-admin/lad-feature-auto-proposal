@@ -121,8 +121,8 @@ class AIService {
       // ... (Keep your existing schema and mapping variables)
 
       const prompt = `
-    You are an expert Data Extraction AI. 
-    Extract structured event details from the provided email and map them PRECISELY to the following custom schema.
+    You are an expert Data Extraction and Service Matching AI. 
+    Your goal is to extract structured details from a lead's email and ensure every requested service has a valid numeric quantity so a quotation can be generated.
 
     ### CUSTOM SCHEMA FIELDS (MANDATORY):
     ${dynamicFieldsPrompt}
@@ -130,40 +130,28 @@ class AIService {
     ### STANDARD FIELDS:
     - location: (City or Country)
     - event_category: (wedding, corporate, birthday, etc.)
+    - event_type: (Must be one of [${conceptNames}]. Select based on which concept's services most closely align with the email content.)
     - support_level: (basic_support, partial_management, full_event_management)
     - inquiry_type: (booking > pricing > availability > general)
     - duration: (in hours, float)
     - client_type: (B2B for corporate, B2C for personal)
-    - services_requested: (array of strings extracted from the email)
+    - services_requested: (array of strings/keys extracted from the email)
 
-    ### EVENT CLASSIFICATION (CRITICAL):
-    You must determine the "event_type" by matching the services requested in the email against the Concept Service Mapping below. 
-    Pick the Concept that includes the most "services_requested" found in the email.
-
-    **CONCEPT SERVICE MAPPING:**
-    ${conceptServicesMapping}
-
-    - event_type: (Must be one of [${conceptNames}]. Select based on which concept's services most closely align with the email content.)
-
-    ### EXTRACTION RULES:
-    1. Map values ONLY to the keys provided in the CUSTOM SCHEMA.
-    2. FIXED NUMERIC RULE: For keys like "pax", "guest_count", "catering", or "function_hall", extract ONLY the specific numeric value associated with that service in the email.
-    3. NO BOOLEANS: Do not use "yes", "no", or "true/false". If a number is mentioned (e.g., "catering for 100 persons"), the value for "catering" must be 100.
-    4. MAPPING COUNTS: If the email says "Function hall for 100 members", map the number 100 to the "function_hall" key.
-    5. NULL VALUES: If a service is mentioned but NO specific count/number is provided for it, return null. (e.g., If they want "Videography" but don't say "for X hours" or "X cameras", return "Videography": null).
-    6.Fix spelling (e.g., "dubai" -> "Dubai").
-    7. Return ONLY raw valid JSON. No markdown, no backticks, no explanations.
-    8. For all keys in dynamic_requirements, extract ONLY a number. If the service is requested, use 1. 
-        If it is not mentioned, use null. NEVER map text descriptions to these keys.
-    9. If a lead requests a specific service (e.g., "visa assistance") 
-        but does not specify a quantity, assign the value 1 to that field.
+    ### EXTRACTION & CONSULTATION RULES:
+    1. **NO ZERO OR TEXT QUANTITIES**: For every key in "dynamic_requirements", you must return ONLY a Number or null. Never return text descriptions like "study permit process" inside numeric fields.
+    2. **MANDATORY MINIMUM QUANTITY**: If a lead requests a service but does not specify a quantity (e.g., "I need visa help"), you MUST assign a value of **1**. This ensures the total price is never zero.
+    3. **INTELLIGENT SERVICE MATCHING**: If the lead's demand is clear (e.g., "Canada study visa") but they don't list specific sub-services, check the CUSTOM SCHEMA and enable the service keys that are logically required to fulfill that demand (e.g., set "visa_assistance": 1).
+    4. **SPECIFIC COUNT EXTRACTION**: If the email mentions a specific number (e.g., "100 guests"), extract ONLY that number for the corresponding key.
+    5. **NULL FOR UNRELATED**: Return null ONLY for services that are completely unrelated to the lead's email content.
+    6. **NO BOOLEANS**: Do not use "yes", "no", or "true". Use numbers only.
+    7. **FORMATTING**: Return ONLY raw valid JSON. No markdown, no backticks, no explanations.
 
     ### REQUIRED JSON STRUCTURE:
     {
       "dynamic_requirements": ${JSON.stringify(dynamicJsonStructure)},
       "location": null,
       "event_category": null,
-      "event_type": "Select Concept Name based on Service Mapping",
+      "event_type": "Select Concept Name",
       "support_level": null,
       "inquiry_type": null,
       "duration": null,
