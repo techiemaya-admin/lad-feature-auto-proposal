@@ -63,7 +63,7 @@ async function testprompt(req, res) {
   const leadData = {
     id: "fe2c9488-c7a6-44f4-a8f9-ee0b00c9e0da",
     name: "Test Lead",
-    email: "abc@gmail.com",
+    email: "usha.dhamija0510@gmail.com",
     phone: "1234567890"
   }
   const tenantId = "e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5";
@@ -71,7 +71,7 @@ async function testprompt(req, res) {
   const { leadRequirementDetails, values } = await gmailService.createLeadRequirementViaPrompt(body, leadData.id, tenantId);
   console.log("Lead requirement details:", leadRequirementDetails);
   console.log("Saved requirement values:", values);
-  await gmailService.createProposalDraft(leadRequirementDetails, leadData);
+  await gmailService.createProposalDraft(leadRequirementDetails, leadData, body);
 }
 
 module.exports = { startWatch, webhook, testprompt };

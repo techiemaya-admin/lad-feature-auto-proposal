@@ -268,20 +268,17 @@ CREATE TABLE IF NOT EXISTS concept_requirement_config_mapping (
 -- ============================================
 CREATE TABLE IF NOT EXISTS quotation_template_metadata (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL,
+    name varchar(255) NOT NULL,
+    type varchar(100), 
+    storage_path varchar(1500),
+    is_default boolean DEFAULT false,
     is_deleted boolean DEFAULT false,
     created_at timestamptz DEFAULT now(),
     updated_at timestamptz DEFAULT now(),
-    tenant_id uuid NOT NULL,
-    concept_id uuid NOT NULL,
     metadata jsonb,
-    name varchar(255) NOT NULL,
-    type varchar(100),
-    storage_path varchar(255),
-    is_default boolean DEFAULT false,
     FOREIGN KEY (tenant_id)
-        REFERENCES tenants (id),
-    FOREIGN KEY (concept_id)
-        REFERENCES concept (id)
+        REFERENCES tenants (id)
 );
 
 
@@ -484,6 +481,22 @@ CREATE TABLE lead_requirement_values (
         REFERENCES lead_requirement_config (id)
 );
 
+CREATE TABLE IF NOT EXISTS quotation_placeholders (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL,
+    placeholder_key varchar(100) NOT NULL, -- e.g., 'lead_name'
+    display_name varchar(255) NOT NULL,    -- e.g., 'Lead Name'
+    description text,                      -- e.g., 'The full name of the lead'
+    category varchar(50),                  -- e.g., 'Client', 'Pricing', 'Company'
+    data_source_path varchar(255),         -- e.g., 'lead.full_name' or 'pricing.final_price'
+    is_loop boolean DEFAULT false          -- True for arrays like 'breakdown'
+    is_deleted boolean DEFAULT false,
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now(),
+    metadata jsonb,
+    FOREIGN KEY (tenant_id)
+        REFERENCES tenants (id)
+);
 
 ALTER TABLE lead_requirement_values 
 ADD CONSTRAINT unique_lead_req_field 
@@ -496,3 +509,37 @@ ALTER TABLE conversation_participants
 ADD CONSTRAINT unique_conversation_participant
 UNIQUE (conversation_id, participant_id);
 
+-- ============================================
+-- tenant_profile_details
+-- ============================================
+CREATE TABLE IF NOT EXISTS tenant_profile_details (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL UNIQUE,
+    company_logo_url text, -- URL to GCS or external logo
+    whatsapp_url text,
+    linkedin_url text,
+    instagram_url text,
+    website_url text,
+    official_email text,
+    tagline text,
+    is_deleted boolean DEFAULT false,
+    metadata jsonb,
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants (id)
+);
+
+CREATE TABLE IF NOT EXISTS email_templates (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL,
+    template_name varchar(255) NOT NULL, -- e.g., 'Proposal Delivery'
+    subject_line varchar(255),            -- e.g., 'Your Quotation from {{companyname}}'
+    storage_path text NOT NULL,           -- GCS path to the .html or .txt file
+    relative_path varchar(1500) NOT NULL,     -- Relative path for easy retrieval
+    is_default boolean DEFAULT false,
+    is_deleted boolean DEFAULT false,
+    metadata jsonb,
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants (id)
+);
