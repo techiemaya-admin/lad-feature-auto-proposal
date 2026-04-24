@@ -22,6 +22,9 @@ const tenatDetailsRepo = require("../repositories/tenant.repository");
 const leadRepository = require("../repositories/lead.repository");
 const conversationParticipantsRepository = require("../repositories/conversation-participants.repository");
 const gmailSendService = require("./gmail-send-email.service");
+const placeHolderBuilder = require('../../../utils/placeHolderBuilder');
+const PlaceHolderBuilder = require("../../../utils/placeHolderBuilder");
+const tenantProfileService = require("./tenant-profile.service");
 
 
 /* 1️⃣ Start Gmail Watch */
@@ -55,25 +58,50 @@ async function startWatch() {
   return response.data;
 }
 
-async function createProposalDraft(leadRequirementDetails, leadData) {
+async function createProposalDraft(leadRequirementDetails, leadData, email_content) {
 
-  const calculatedPriceDetails = await finalPriceCalculationService.calculateFinalPrice(leadRequirementDetails.tenant_id, leadRequirementDetails.id, leadRequirementDetails.event_type);
+  const calculatedPriceDetails = await finalPriceCalculationService.calculateFinalPrice(leadRequirementDetails.tenant_id, leadRequirementDetails.id, email_content);
   console.log("Final price calculated:", calculatedPriceDetails);
   calculatedPriceDetails.forEach(item => {
     console.log(`Concept: ${item.concept_name}, Final Price: ${item.final_price}, Breakdown: ${JSON.stringify(item.breakdown)}`);
   });
 
+  const final_price = calculatedPriceDetails.reduce((sum, item) => sum + item.final_price, 0);
+  const total_base_price = calculatedPriceDetails.reduce((sum, item) => sum + item.total_base_price, 0);
+  const total_discount = calculatedPriceDetails.reduce((sum, item) => sum + item.total_concept_surcharge, 0);
+  const total_surcharge = calculatedPriceDetails.reduce((sum, item) => sum + item.total_concept_surcharge, 0);
+  console.log("Total detailed price (sum of all concepts): " + final_price);
+  const tenantDetails = await tenatDetailsRepo.findById(leadRequirementDetails.tenant_id);
+  const tenantProfileDetails = await tenantProfileService.getProfile(leadRequirementDetails.tenant_id);
+  console.log("tenantDetails : " + JSON.stringify(tenantDetails));
+  console.log("lead data : " + JSON.stringify(leadData))
+  console.log("tenant profile details : " + JSON.stringify(tenantProfileDetails))
+  const placeholderBuilderForEmail = new PlaceHolderBuilder()
+    .setBulk({
+      lead_name: leadData.first_name + " " + leadData.last_name,
+      lead_email: leadData.email,
+      company_name: tenantDetails.name,
+      company_email: tenantProfileDetails.official_email,
+      company_phone: tenantDetails.phone,
+      company_website: tenantDetails.website,
+      company_logo: tenantProfileDetails.company_logo_url,
+      company_tagline: tenantProfileDetails.tagline,
+      instagram_url: tenantProfileDetails.instagram_url,
+      linkedin_url: tenantProfileDetails.linkedin_url,
+      whatsapp_url: tenantProfileDetails.whatsapp_url,
+      total_base_price: total_base_price,
+      total_discount: total_discount,
+      total_surcharge: total_surcharge,
+      final_price: final_price,
+      date: Date.now()
+    })
+    .build();
+  const prosalPathDetails = await aiService.generateProposalFromTemplate(placeholderBuilderForEmail, leadRequirementDetails.tenant_id);
+
+  await gmailSendService.processAndSendDefaultEmail(leadRequirementDetails.tenant_id, placeholderBuilderForEmail, prosalPathDetails.gcsUrl, final_price);
   const ruleIds = calculatedPriceDetails.map(
     item => item.concept_pricing_matrix_id
   );
-  console.log("Matrix ids : " + ruleIds);
-
-  const final_price = calculatedPriceDetails.reduce((sum, item) => sum + item.final_price, 0);
-  console.log("Total detailed price (sum of all concepts): " + final_price);
-  const tenantDetails = await tenatDetailsRepo.findById(leadRequirementDetails.tenant_id);
-  console.log("tenantDetails : " + JSON.stringify(tenantDetails));
-  const prosalPathDetails = await aiService.generateQuotationProposal(calculatedPriceDetails, leadData, leadRequirementDetails.event_type, tenantDetails);
-  gmailSendService.sendQuotationEmail(leadData.email, prosalPathDetails.gcsUrl, final_price);
 
   const dataToSave = {
     tenant_id: leadRequirementDetails.tenant_id,
@@ -194,7 +222,7 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
             console.log("Message with ID", messageId, "already exists in the database. Skipping.");
             continue;
           }
-          
+
           const fullMessage = await gmail.users.messages.get({
             userId: "me",
             id: msg.id,
@@ -217,7 +245,7 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
               console.log("Lead requirement details:", leadRequirementDetails);
               console.log("Saved requirement values:", values);
 
-              await createProposalDraft(leadRequirementDetails, leadData);
+              await createProposalDraft(leadRequirementDetails, leadData, body);
               // // process emails...
             } else {
               console.log("Email is from tenant's own email address, skipping lead creation and proposal drafting.");
@@ -363,31 +391,32 @@ async function createLeadRequirementViaPrompt(body, lead_id, tenant_id) {
   try {
 
     console.log("Testing AI prompt :", body);
-    const response = await aiService.generateAIResponse(body, tenant_id);
+    const response =
+    // await aiService.generateAIResponse(body, tenant_id);
 
-    //     {
-    //   "dynamic_requirements": {
-    //     "main event guest count": 100,
-    //     "catering": null,
-    //     "function_hall": null,
-    //     "Videography": 1
-    //   },
-    //   "location": null,
-    //   "event_category": "wedding",
-    //   "event_type": "Technical",
-    //   "support_level": "full_event_management",
-    //   "inquiry_type": "pricing",
-    //   "duration": null,
-    //   "client_type": "B2C",
-    //   "services_requested": [
-    //     "venue coordination",
-    //     "décor",
-    //     "wedding photography and videography",
-    //     "overall event execution",
-    //     "catering services",
-    //     "function hall arrangement"
-    //   ]
-    // }
+    {
+      "dynamic_requirements": {
+        "main event guest count": 100,
+        "catering": null,
+        "function_hall": null,
+        "Videography": 1
+      },
+      "location": null,
+      "event_category": "wedding",
+      "event_type": "Technical",
+      "support_level": "full_event_management",
+      "inquiry_type": "pricing",
+      "duration": null,
+      "client_type": "B2C",
+      "services_requested": [
+        "venue coordination",
+        "décor",
+        "wedding photography and videography",
+        "overall event execution",
+        "catering services",
+        "function hall arrangement"
+      ]
+    }
 
 
 
@@ -396,6 +425,7 @@ async function createLeadRequirementViaPrompt(body, lead_id, tenant_id) {
     response.tenant_id = tenant_id;
     const leadRequirementDetails = await leadRequirementRepository.create(response);
     console.log("Lead requirement created with :", leadRequirementDetails);
+
     const results = await leadRequirementValueRepo.saveRequirementValues(tenant_id, leadRequirementDetails.id, response.dynamic_requirements);
     return { leadRequirementDetails: leadRequirementDetails, values: results };
   } catch (err) {

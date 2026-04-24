@@ -1,48 +1,52 @@
-const quotationTemplateService = require('../services/quotation-template.service');
-const { createQuotationTemplateDto, toQuotationTemplateResponse } = require('../dtos/quotation-template.dto');
+const service = require('../services/quotation-template.service');
 
-async function create(req, res, next) {
-  try {
-    const dto = createQuotationTemplateDto(req.body);
-    const template = await quotationTemplateService.createTemplate(req.tenantId, dto);
-    res.status(201).json(toQuotationTemplateResponse(template));
-  } catch (err) {
-    next(err);
-  }
+class QuotationTemplateController {
+    async uploadTemplate(req, res) {
+        try {
+            const { tenantId } = req.params;
+            const result = await service.uploadAndSaveTemplate(tenantId, req.file, req.body);
+            res.status(201).json(result);
+        } catch (error) {
+            console.error("Upload failed:", error);
+            res.status(500).json({ error: error.message });
+        }
+    }
+
+    async getPreview(req, res) {
+        service.getVisualPreview(req, res);
+    }
+
+    // API 3: Set Default
+    async makeDefault(req, res) {
+        try {
+            const result = await service.setDefault(req.body.tenant_id, req.params.id);
+            res.status(200).json({ message: "Default template updated", data: result });
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    }
+
+    // API 4: Delete Template
+    async remove(req, res) {
+        try {
+            await service.deleteTemplate(req.query.tenant_id, req.params.id);
+            res.status(200).json({ message: "Template deleted successfully" });
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    }
+
+    async getTemplates(req, res) {
+        try {
+            const templates = await service.getTemplatesByTenant(req.params.tenantId);
+            res.status(200).json(templates);
+        } catch (error) {
+            console.error("Error fetching templates:", error);
+            res.status(500).json({ error: error.message });
+        }
+    }
+
+
 }
 
-async function getById(req, res, next) {
-  try {
-    const template = await quotationTemplateService.getTemplateById(req.tenantId, req.params.id);
-    res.json(toQuotationTemplateResponse(template));
-  } catch (err) {
-    next(err);
-  }
-}
-
-async function list(req, res, next) {
-  try {
-    const limit = Math.min(parseInt(req.query.limit, 10) || 100, 100);
-    const offset = parseInt(req.query.offset, 10) || 0;
-    const templates = await quotationTemplateService.listTemplates(req.tenantId, limit, offset);
-    res.json(templates.map(toQuotationTemplateResponse));
-  } catch (err) {
-    next(err);
-  }
-}
-
-async function setDefault(req, res, next) {
-  try {
-    const template = await quotationTemplateService.setDefault(req.tenantId, req.params.id);
-    res.json(toQuotationTemplateResponse(template));
-  } catch (err) {
-    next(err);
-  }
-}
-
-module.exports = {
-  create,
-  getById,
-  list,
-  setDefault,
-};
+module.exports = new QuotationTemplateController();

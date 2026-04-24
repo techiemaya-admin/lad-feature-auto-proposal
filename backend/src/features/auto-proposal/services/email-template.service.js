@@ -68,28 +68,6 @@ class EmailTemplateService {
         }
     }
 
-    async getTemplatePreview(id) {
-        try {
-            // 1. Get metadata from DB
-            const template = await repository.findById(id);
-            if (!template) throw new Error("Template not found");
-
-            // 2. Download raw .docx from GCS
-            const bucket = storage.bucket(process.env.GCS_BUCKET);
-            const [fileBuffer] = await bucket.file(template.storage_path).download();
-            console.log("Downloaded file buffer for preview, size:", template.relative_path);
-            // 3. Convert to HTML for previewing
-            // Mammoth is great because it handles images and styles perfectly
-            const { value: htmlContent } = await mammoth.convertToHtml({ buffer: fileBuffer });
-
-            // 4. Send the HTML string to the frontend
-            return { htmlContent: htmlContent, template: template };
-        } catch (error) {
-            console.error("Preview failed:", error);
-            res.status(500).json({ error: "Could not generate preview" });
-        }
-    }
-
     async setDefault(tenantId, templateId) {
         return await repository.setAsDefault(tenantId, templateId);
     }

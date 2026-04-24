@@ -1,49 +1,99 @@
-const { v4: uuidv4 } = require('uuid');
-const dataSource = require('../../../config/data-source');
+const AppDataSource = require("../../../config/data-source");
 
-function getRepository() {
-  return dataSource.getRepository('QuotationTemplateMetadata');
+class QuotationTemplateRepository {
+
+  async create(data) {
+    const sql = `
+      INSERT INTO quotation_template_metadata
+      (
+        tenant_id,
+        name,
+        type,
+        storage_path,
+        is_default,
+        metadata
+      )
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING *;
+    `;
+
+    const values = [
+      data.tenant_id,
+      data.name,
+      data.type,
+      data.storage_path,
+      data.is_default ?? false,
+      data.metadata || {}
+    ];
+
+    const result = await AppDataSource.query(sql, values);
+    return result[0];
+  }
+
+  async findDefaultByTenant(tenantId) {
+    const sql = `
+      SELECT *
+      FROM quotation_template_metadata
+      WHERE tenant_id = $1 
+        AND is_default = true 
+        AND is_deleted = false
+      LIMIT 1;
+    `;
+
+    const result = await AppDataSource.query(sql, [tenantId]);
+    console.log("Default Quotation Template found for tenant:", tenantId, ":", result[0]);
+    return result[0] || null;
+  }
+
+  async resetDefaultsByTenant(tenantId) {
+    const sql = `
+      UPDATE quotation_template_metadata
+      SET 
+        is_default = false,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE tenant_id = $1
+      RETURNING *;
+    `;
+
+    const result = await AppDataSource.query(sql, [tenantId]);
+    return result || [];
+  }
+
+  async deleteTemplate(templateId) {
+    const sql = `
+      UPDATE quotation_template_metadata
+      SET 
+        is_deleted = true,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+      RETURNING *;
+    `;
+
+    const result = await AppDataSource.query(sql, [templateId]);
+    return result[0] || null;
+  }
+
+  async findById(templateId) {
+    const sql = `
+      SELECT *
+      FROM quotation_template_metadata
+      WHERE id = $1
+      LIMIT 1;
+    `;
+
+    const result = await AppDataSource.query(sql, [templateId]);
+    return result[0] || null;
+  }
+  
+
+    async findAllByTenant(tenantId) {
+        const query = `
+            SELECT * FROM quotation_template_metadata 
+            WHERE tenant_id = $1 AND is_deleted = false
+        `;
+        const rows = await AppDataSource.query(query, [tenantId]);
+        return rows;
+    }
 }
 
-async function create(tenantId, data) {
-  const repo = getRepository();
-  const entity = repo.create({
-    id: uuidv4(),
-    tenant_id: tenantId,
-    name: data.name,
-    template_key: data.template_key || null,
-    structure: data.structure || null,
-    is_default: data.is_default === true,
-  });
-  return repo.save(entity);
-}
-
-async function findById(tenantId, id) {
-  const repo = getRepository();
-  return repo.findOne({ where: { id, tenant_id: tenantId, is_deleted: false } });
-}
-
-async function findAll(tenantId, limit = 100, offset = 0) {
-  const repo = getRepository();
-  return repo.find({ where: { tenant_id: tenantId, is_deleted: false }, take: limit, skip: offset, order: { created_at: 'DESC' } });
-}
-
-async function findDefault(tenantId) {
-  const repo = getRepository();
-  return repo.findOne({ where: { tenant_id: tenantId, is_deleted: false, is_default: true } });
-}
-
-async function setDefault(tenantId, id) {
-  const repo = getRepository();
-  await repo.update({ tenant_id: tenantId, is_deleted: false }, { is_default: false });
-  await repo.update({ id, tenant_id: tenantId, is_deleted: false }, { is_default: true });
-  return findById(tenantId, id);
-}
-
-module.exports = {
-  create,
-  findById,
-  findAll,
-  findDefault,
-  setDefault,
-};
+module.exports = new QuotationTemplateRepository();

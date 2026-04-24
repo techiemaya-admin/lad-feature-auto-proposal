@@ -1,9 +1,9 @@
 const finalPriceCalculationRepository = require('../repositories/final-price-calculation.repository');
 
 async function calculateFinalPrice(tenantId,
-  id, event_type) {
-  console.log("Calculating price with details in service :", { tenantId, id, event_type });
-  return finalPriceCalculationRepository.calculateFinalPrice(tenantId, id, event_type);
+  id, email_content) {
+  console.log("Calculating price with details in service :", { tenantId, id, email_content });
+  return finalPriceCalculationRepository.generateFinalPrice(tenantId, id, email_content);
 }
 
 module.exports = {

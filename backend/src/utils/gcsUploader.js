@@ -6,22 +6,17 @@ const storage = new Storage({
   keyFilename: process.env.GCS_KEY_FILE, // service-account.json
 });
 
-async function uploadToGCS(localPath, fileName) {
+async function uploadToGCS(localPath, destination) {
   const bucketName = process.env.GCS_BUCKET;
   const bucket = storage.bucket(bucketName);
-  const destination = `proposals/${fileName}`;
 
-   await bucket.upload(localPath, {
+
+  await bucket.upload(localPath, {
     destination: destination,
   });
 
   const file = bucket.file(destination);
-//   await storage.bucket(bucketName).upload(localPath, {
-//     destination: `proposals/${fileName}`,
-//   });
-
-//   return `https://storage.googleapis.com/${bucketName}/proposals/${fileName}`;
-    const [signedUrl] = await file.getSignedUrl({
+  const [signedUrl] = await file.getSignedUrl({
     version: "v4",
     action: "read",
     expires: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
@@ -30,4 +25,23 @@ async function uploadToGCS(localPath, fileName) {
   return signedUrl;
 }
 
-module.exports = { uploadToGCS };
+async function uploadBufferToGCS(buffer, destination, mimetype) {
+  const bucketName = process.env.GCS_BUCKET;
+  const bucket = storage.bucket(bucketName);
+    const file = bucket.file(destination);
+
+    await file.save(buffer, {
+        metadata: { contentType: mimetype },
+        resumable: false
+    });
+
+    // Option B: Generate a signed URL (valid for 1 year) if the bucket is private
+    const [url] = await file.getSignedUrl({
+        action: 'read',
+        expires: Date.now() + 365 * 24 * 60 * 60 * 1000, // 1 year
+    });
+
+    return url;
+}
+
+module.exports = { uploadToGCS,uploadBufferToGCS };
