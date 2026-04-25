@@ -53,21 +53,25 @@ class ProposalDraftRepository {
     const proposalDraftId = result[0].id;
     console.log("Proposal Draft created: {} ", proposalDraftId);
     console.log("data.calculation_snapshot: {} ", data.calculation_snapshot);
-    const itemsForBulkCreate = data.calculation_snapshot.flatMap(concept =>
-      concept.breakdown.map(item => ({
-        tenant_id:data.tenant_id || "e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5",
-        proposal_draft_id: proposalDraftId, // The ID of the parent draft you just created
-        concept_name: concept.concept_name,
-        label: item.label,
-        unit_count: item.count,
-        total_price: item.price,
-        applied_rules: item.applied_rules.map(ruleId => ({
-          rule_id: ruleId,
-          discount: item.total_discount,
-          surcharge: item.total_surcharge
-        }))
+    // If it's already the single object you showed above, use it directly.
+    const concept = data.calculation_snapshot;
+
+    // 2. Map the breakdown directly
+    const itemsForBulkCreate = concept.breakdown.map(item => ({
+      tenant_id: data.tenant_id || "e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5",
+      proposal_draft_id: proposalDraftId,
+      concept_name: concept.concept_name, // Pull from parent object
+      label: item.label,
+      unit_count: item.count,
+      total_price: item.price,
+      // Fix: applied_rules is an array of IDs in your snapshot, 
+      // we map them to your structured objects
+      applied_rules: (item.applied_rules || []).map(ruleId => ({
+        rule_id: ruleId,
+        discount: item.total_discount,
+        surcharge: item.total_surcharge
       }))
-    );
+    }));
     await proposalDraftItemRepository.bulkCreate(itemsForBulkCreate);
     return result[0];
   }

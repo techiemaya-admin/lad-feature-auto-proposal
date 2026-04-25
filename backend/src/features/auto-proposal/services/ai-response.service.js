@@ -101,15 +101,43 @@ class AIService {
     modelInfo.lastUsed = new Date();
   }
 
+
+  async callGenAI(prompt) {
+
+    const modelInfo = this.getNextApiKey();
+    console.log(
+      "Using Gemini API Key Index:",
+      modelInfo ? modelInfo.keyIndex : "None"
+    );
+    if (!modelInfo) return this.getFallbackResponse();
+
+    
+    // ✅ Correct SDK usage
+    const model = modelInfo.client.getGenerativeModel({
+      model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+    });
+
+    let retries = 5;
+    for (let i = 0; i < retries; i++) {
+      try {
+        console.log("send request to gemini")
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        console.log(`Response fetched from gen AI after attempt : ${i}`)
+        return response.text();
+      } catch (err) {
+        if (err.message.includes("503") && i < retries - 1) {
+          console.log(`Retrying... attempt ${i + 1}`);
+          await new Promise((res) => setTimeout(res, 20000)); // wait 2s
+        } else {
+          throw err;
+        }
+      }
+    }
+  }
+
   async generateAIResponse(emailContent, tenant_id) {
     try {
-      const modelInfo = this.getNextApiKey();
-      console.log(
-        "Using Gemini API Key Index:",
-        modelInfo ? modelInfo.keyIndex : "None"
-      );
-      // fetch lead_requirement_config for tenant and include in prompt for better accuracy.
-      if (!modelInfo) return this.getFallbackResponse();
 
       // 1. Fetch active concepts for this tenant
       const concepts = await conceptRepo.findAll(tenant_id);
@@ -182,16 +210,10 @@ class AIService {
     Email Content:
     "${emailContent}"
 `;
-      // ✅ Correct SDK usage
-      const model = modelInfo.client.getGenerativeModel({
-        model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
-      });
 
-      const result = await model.generateContent(prompt);
+      const text = await this.callGenAI(prompt);
+      // this.updateUsage(modelInfo);
 
-      this.updateUsage(modelInfo);
-
-      const text = result.response.text();
       let cleanedText = text.trim();
 
       // Remove ```json and ```
@@ -211,17 +233,10 @@ class AIService {
   }
 
   async fetchAIResponse(prompt) {
-    const modelInfo = this.getNextApiKey();
-    // ✅ Correct SDK usage
-    const model = modelInfo.client.getGenerativeModel({
-      model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
-    });
+  
 
-    const result = await model.generateContent(prompt);
-
-    this.updateUsage(modelInfo);
-
-    const text = result.response.text();
+    const text = await this.callGenAI(prompt);
+    // this.updateUsage(modelInfo);
     let cleanedText = text.trim();
 
     // Remove ```json and ```
@@ -431,7 +446,8 @@ class AIService {
             return null;
           }
         },
-        getSize: () => {return [100, 40]; // Fallback to a default size
+        getSize: () => {
+          return [100, 40]; // Fallback to a default size
         },
       };
       // 2. Initialize Docxtemplater with the Image Module
@@ -473,94 +489,6 @@ class AIService {
       throw error;
     }
   }
-
-  async generateQuotationProposalWithAI(data) {
-    console.log("data : " + data)
-    try {
-
-      const modelInfo = this.getNextApiKey();
-      console.log(
-        "Using Gemini API Key Index:",
-        modelInfo ? modelInfo.keyIndex : "None"
-      );
-
-      if (!modelInfo) return this.getFallbackResponse();
-
-      const model = modelInfo.client.getGenerativeModel({
-        model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
-      });
-
-
-      const prompt = `
-You are a professional document formatting system.
-
-Generate a clean, professional event quotation formatted EXACTLY as described below.
-
-STRICT FORMAT REQUIREMENTS:
-
-    1. Title at top:
-    Quotation
-
-    2. Section Header:
-   Event Details
-
-    3. Bullet point list under Event Details:
-    - Location: <value>
-      - Event Category: <value>
-        - Main Event Guests: <value>
-          - Catering Guests: <value>
-            - Function Hall Guests: <value>
-
-              4. Generate pricing table EXACTLY in this format with proper spacing and alignment. Also put it in table :
-              Category | Main Event (AED) | Catering (AED) | Function Hall (AED) | Total (AED)
-
-              5. Two rows only:
-              LITE
-              IMPACT
-
-              6. Section Header:
-              Notes
-
-              7. Bullet points under Notes:
-              - Prices are subject to 5% VAT.
-              - Venue, AV setup, staging, and permits are not included unless specified.
-              - Final pricing may vary depending on customization and venue policies.
-              - A 15% discount applies if multiple team-building concepts are booked on the same day.
-
-              IMPORTANT RULES:
-              - Do NOT change any numbers.
-              - Do NOT add extra commentary.
-              - Do NOT assume missing values.
-              - Use proper spacing and alignment.
-              - Return clean formatted plain text only.
-              - Do NOT use markdown.
-              - Do NOT use code blocks.
-
-              Use this DATA exactly:
-
-              ${JSON.stringify(data)}
-              `;
-      const result = await model.generateContent(prompt);
-      const quotationText = result.response.text().trim();
-
-      // Generate PDF
-      const fileName = `quotation-${uuidv4()}.pdf`;
-      const localPath = path.join(__dirname, "../", fileName);
-
-      await generatePDF(data, localPath);
-
-      // Upload to GCS
-      const gcsUrl = await uploadToGCS(localPath, fileName);
-      console.log("gcsUrl: " + gcsUrl)
-      // Save draft in proposal draft DB
-
-      return { "gcsUrl": gcsUrl, "fileName": fileName };
-    } catch (err) {
-      console.error("Quotation Generation Error:", err);
-      throw err;
-    }
-  }
-
 
   getApiStats() {
     return this.geminiModels.map((model, index) => ({

@@ -5,7 +5,7 @@ const aiService = require("../services/ai-response.service");
 const leadRequirementValueRepository = require("./lead_requirement_values.repository");
 
 
-async function calculateFinalPrice(tenantId, leadRequirementId) {
+async function calculateFinalPrice(tenantId, leadRequirementId, event_type) {
   const db = dataSource;
 
   const leadData = await db.query(
@@ -37,7 +37,7 @@ async function calculateFinalPrice(tenantId, leadRequirementId) {
   for (const concept of concepts) {
     const conceptFieldIds = concept.requirement_configs.map(rc => rc.id);
     const leadFieldIds = leadData.map(ld => ld.field_id);
-    console.log(`5. Checking Concept [${concept.name}]. Required IDs:`, JSON.stringify(conceptFieldIds));
+    console.log(`5. Checking Concept [${concept.name}]. Required IDs:`, JSON.stringify(conceptFieldIds), " lead requirement field ids : " + JSON.stringify(leadFieldIds));
 
     const isMatch = conceptFieldIds.every(id => leadFieldIds.includes(id));
     console.log(`6. Does Lead Match Concept [${concept.name}]?`, isMatch);
@@ -190,30 +190,72 @@ async function calculateFinalPrice(tenantId, leadRequirementId) {
   }
 
 
-
-  return results;
+  console.log("Price calculate before matching event_type/concept name of lead requiremnt :" + JSON.stringify(results))
+  if (results.length > 1) {
+    const selectedConcept = results.find(item =>
+      item.concept_name.toLowerCase() === event_type.toLowerCase()
+    );
+    return selectedConcept;
+  }
+  return results[0];
 }
 
-async function generateFinalPrice(tenantId, leadRequirementId, emailContent) {
+async function generateFinalPrice(tenantId, leadRequirementId, emailContent, event_type) {
   // First Attempt
-  let results = await calculateFinalPrice(tenantId, leadRequirementId);
-
+  let results = await calculateFinalPrice(tenantId, leadRequirementId, event_type);
+  console.log("Price before re-evaluation email : " + JSON.stringify(results))
   // // Check if the total is zero
-  // if (results.length === 0 || results[0].final_price === 0) {
-  //   console.log("⚠️ Total is 0. Re-evaluating email for basic/pre-requisite services..."+ emailContent);
+  if (!results || results.final_price === 0) {
+    console.log("⚠️ Total is 0. Re-evaluating email for basic/pre-requisite services..." + emailContent);
 
-  //   // Call AI again with the "Discovery Prompt"
-  //   const suggestedRequirements = await aiService.callConsultantAI(tenantId,emailContent);
-  //   console.log("AI-suggested requirements based on email content:", JSON.stringify(suggestedRequirements));
-  //   // Update the database with these new requirements
-  //   await leadRequirementValueRepository.saveRequirementValues(tenantId, leadRequirementId, suggestedRequirements);
+    // Call AI again with the "Discovery Prompt"
+    const suggestedRequirements = await aiService.callConsultantAI(tenantId, emailContent);
+    console.log("AI-suggested requirements based on email content:", JSON.stringify(suggestedRequirements));
+    // Update the database with these new requirements
+    await leadRequirementValueRepository.saveRequirementValues(tenantId, leadRequirementId, suggestedRequirements);
 
-  //   // Recalculate with the new services
-  //   const newResults = await calculateFinalPrice(tenantId, leadRequirementId);
-  //   if (results.length > 0 && newResults.length > 0) {
-  //     results.push(...newResults);
-  //   }
-  // }
+    // Recalculate with the new services
+    const newResults = await calculateFinalPrice(tenantId, leadRequirementId, event_type);
+    console.log("New price calculated after re-evaluation of email : " + JSON.stringify(newResults))
+    if (newResults && results) {
+      const combinedRawBreakdown = [
+        ...(results.breakdown || []),
+        ...(newResults.breakdown || [])
+      ];
+
+      // 2. Use a Map to keep distinct keys with your custom logic
+      const distinctMap = new Map();
+
+      combinedRawBreakdown.forEach(item => {
+        const existing = distinctMap.get(item.key);
+
+        if (!existing) {
+          // If key doesn't exist, add it
+          distinctMap.set(item.key, item);
+        } else {
+          // If key exists, only overwrite if current item has a price and existing doesn't
+          // (This satisfies your "keep key which has price > 0" rule)
+          if (item.price > 0 && (existing.price === 0 || existing.price === null)) {
+            distinctMap.set(item.key, item);
+          }
+        }
+      });
+
+      // 3. Convert Map back to Array
+      const finalBreakdown = Array.from(distinctMap.values());
+
+      // 4. Create the final merged object
+      const mergedResult = {
+        ...newResults, // Start with obj2 metadata
+        breakdown: finalBreakdown,
+        // Recalculate totals based on the new combined list
+        total_base_price: finalBreakdown.reduce((sum, item) => sum + (item.price || 0), 0),
+        final_price: finalBreakdown.reduce((sum, item) => sum + (item.price || 0), 0)
+      };
+      return mergedResult;
+    }
+    return newResults;
+  }
 
   return results;
 }

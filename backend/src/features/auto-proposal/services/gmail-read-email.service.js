@@ -60,22 +60,32 @@ async function startWatch() {
 
 async function createProposalDraft(leadRequirementDetails, leadData, email_content) {
 
-  const calculatedPriceDetails = await finalPriceCalculationService.calculateFinalPrice(leadRequirementDetails.tenant_id, leadRequirementDetails.id, email_content);
-  console.log("Final price calculated:", calculatedPriceDetails);
-  calculatedPriceDetails.forEach(item => {
-    console.log(`Concept: ${item.concept_name}, Final Price: ${item.final_price}, Breakdown: ${JSON.stringify(item.breakdown)}`);
-  });
+  const calculatedPriceDetails = await finalPriceCalculationService.calculateFinalPrice(leadRequirementDetails.tenant_id, leadRequirementDetails.id, email_content, leadRequirementDetails.event_type);
+  calculatedPriceDetails.breakdown.sort((a, b) => {
+    const aPrice = a.price || 0;
+    const bPrice = b.price || 0;
 
-  const final_price = calculatedPriceDetails.reduce((sum, item) => sum + item.final_price, 0);
-  const total_base_price = calculatedPriceDetails.reduce((sum, item) => sum + item.total_base_price, 0);
-  const total_discount = calculatedPriceDetails.reduce((sum, item) => sum + item.total_concept_surcharge, 0);
-  const total_surcharge = calculatedPriceDetails.reduce((sum, item) => sum + item.total_concept_surcharge, 0);
-  console.log("Total detailed price (sum of all concepts): " + final_price);
+    // Standard "Zero to Bottom" Logic:
+    // If a is 0 and b is > 0, a moves down (returns 1)
+    // If a is > 0 and b is 0, a moves up (returns -1)
+    if (aPrice === 0 && bPrice > 0) return 1;
+    if (aPrice > 0 && bPrice === 0) return -1;
+    return 0; // Keep original order for items with same price status
+  });
+  console.log("Final price calculated:", calculatedPriceDetails);
+
+
   const tenantDetails = await tenatDetailsRepo.findById(leadRequirementDetails.tenant_id);
   const tenantProfileDetails = await tenantProfileService.getProfile(leadRequirementDetails.tenant_id);
   console.log("tenantDetails : " + JSON.stringify(tenantDetails));
   console.log("lead data : " + JSON.stringify(leadData))
   console.log("tenant profile details : " + JSON.stringify(tenantProfileDetails))
+  const items = calculatedPriceDetails.breakdown.map(item => ({
+    qty: item.count,
+    description: item.label,
+    unit_price: item.base_unit_price,
+    line_total: item.price
+  }));
   const placeholderBuilderForEmail = new PlaceHolderBuilder()
     .setBulk({
       lead_name: leadData.first_name + " " + leadData.last_name,
@@ -89,30 +99,28 @@ async function createProposalDraft(leadRequirementDetails, leadData, email_conte
       instagram_url: tenantProfileDetails.instagram_url,
       linkedin_url: tenantProfileDetails.linkedin_url,
       whatsapp_url: tenantProfileDetails.whatsapp_url,
-      total_base_price: total_base_price,
-      total_discount: total_discount,
-      total_surcharge: total_surcharge,
-      final_price: final_price,
+      total_base_price: calculatedPriceDetails.total_base_price,
+      total_discount: calculatedPriceDetails.total_concept_discount,
+      total_surcharge: calculatedPriceDetails.total_concept_surcharge,
+      final_price: calculatedPriceDetails.final_price,
+      items: items,
       date: Date.now()
     })
     .build();
   const prosalPathDetails = await aiService.generateProposalFromTemplate(placeholderBuilderForEmail, leadRequirementDetails.tenant_id);
 
-  await gmailSendService.processAndSendDefaultEmail(leadRequirementDetails.tenant_id, placeholderBuilderForEmail, prosalPathDetails.gcsUrl, final_price);
-  const ruleIds = calculatedPriceDetails.map(
-    item => item.concept_pricing_matrix_id
-  );
+  await gmailSendService.processAndSendDefaultEmail(leadRequirementDetails.tenant_id, placeholderBuilderForEmail, prosalPathDetails.gcsUrl, calculatedPriceDetails.final_price);
 
   const dataToSave = {
     tenant_id: leadRequirementDetails.tenant_id,
     lead_requirement_id: leadRequirementDetails.id,
-    final_price: final_price,
+    final_price: calculatedPriceDetails.final_price,
     gcsUrl: prosalPathDetails.gcsUrl,
     file_name: prosalPathDetails.fileName,
     status: "DRAFTED",
     metadata: calculatedPriceDetails,
     calculation_snapshot: calculatedPriceDetails,
-    pricing_rule_ids: ruleIds
+    pricing_rule_ids: calculatedPriceDetails.applied_package_rules
   }
   proposalDraftRepository.create(dataToSave)
 
@@ -391,32 +399,31 @@ async function createLeadRequirementViaPrompt(body, lead_id, tenant_id) {
   try {
 
     console.log("Testing AI prompt :", body);
-    const response =
-    // await aiService.generateAIResponse(body, tenant_id);
+    const response = await aiService.generateAIResponse(body, tenant_id);
 
-    {
-      "dynamic_requirements": {
-        "main event guest count": 100,
-        "catering": null,
-        "function_hall": null,
-        "Videography": 1
-      },
-      "location": null,
-      "event_category": "wedding",
-      "event_type": "Technical",
-      "support_level": "full_event_management",
-      "inquiry_type": "pricing",
-      "duration": null,
-      "client_type": "B2C",
-      "services_requested": [
-        "venue coordination",
-        "décor",
-        "wedding photography and videography",
-        "overall event execution",
-        "catering services",
-        "function hall arrangement"
-      ]
-    }
+    // {
+    //   "dynamic_requirements": {
+    //     "main event guest count": 100,
+    //     "catering": null,
+    //     "function_hall": null,
+    //     "Videography": 1
+    //   },
+    //   "location": null,
+    //   "event_category": "wedding",
+    //   "event_type": "Technical",
+    //   "support_level": "full_event_management",
+    //   "inquiry_type": "pricing",
+    //   "duration": null,
+    //   "client_type": "B2C",
+    //   "services_requested": [
+    //     "venue coordination",
+    //     "décor",
+    //     "wedding photography and videography",
+    //     "overall event execution",
+    //     "catering services",
+    //     "function hall arrangement"
+    //   ]
+    // }
 
 
 
