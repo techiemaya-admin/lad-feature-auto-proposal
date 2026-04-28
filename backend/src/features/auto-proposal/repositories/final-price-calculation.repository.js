@@ -117,7 +117,24 @@ async function calculateFinalPrice(tenantId, leadRequirementId, event_type) {
 
     if (concept.minimum_cost && finalPrice < Number(concept.minimum_cost)) {
       console.log(`14. MINIMUM COST TRIGGERED. Raising ${finalPrice} to ${concept.minimum_cost}`);
-      finalPrice = Number(concept.minimum_cost);
+      const minCost = Number(concept.minimum_cost);
+      const adjustmentAmount = minCost - finalPrice;
+      currentTotalBasePrice = currentTotalBasePrice + adjustmentAmount
+      console.log(`14. MINIMUM COST TRIGGERED. Adding adjustment of ${adjustmentAmount}`);
+
+      // Add a row to the breakdown to justify the price jump
+      breakdown.push({
+        key: 'min_cost_adjustment',
+        label: `Minimum Package Commitment Adjustment (${concept.name})`,
+        count: 1,
+        base_unit_price: adjustmentAmount,
+        price: adjustmentAmount,
+        total_discount: 0,
+        total_surcharge: adjustmentAmount,
+        applied_rules: []
+      });
+
+      finalPrice = minCost;
     }
 
     const finalResponse = {

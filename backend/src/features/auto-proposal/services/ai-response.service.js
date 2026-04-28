@@ -225,6 +225,35 @@ class AIService {
       }
 
       const parsed = JSON.parse(cleanedText);
+      console.log("Before update event_type : " + parsed.event_type)
+      // 2. Identify the services the AI actually extracted (keys with non-null values)
+      const extractedKeys = Object.keys(parsed.dynamic_requirements || {})
+        .filter(k => parsed.dynamic_requirements[k] !== null && parsed.dynamic_requirements[k] !== 0);
+
+      // 3. Logic to find the best-fitting concept
+      let bestMatch = parsed.event_type; // Default to AI's choice
+      let maxCount = 0;
+
+      // ONLY run the check if we actually have concepts to compare against
+      if (concepts && concepts.length > 0) {
+        concepts.forEach(concept => {
+          const conceptKeys = concept.requirement_configs.map(r => r.field_key);
+
+          // Count how many of the AI's extracted keys belong to THIS concept
+          const matchCount = extractedKeys.filter(k => conceptKeys.includes(k)).length;
+
+          if (matchCount > maxCount) {
+            maxCount = matchCount;
+            bestMatch = concept.name;
+          }
+        });
+      }
+
+      // 4. Final Override
+      // If we found a mathematical match, use it. 
+      // If concepts was empty or no match found, bestMatch remains the AI's choice.
+      parsed.event_type = bestMatch;
+      console.log("After update event_type : " + parsed.event_type)
       return parsed;
     } catch (err) {
       console.error("AI Generation Error:", err);

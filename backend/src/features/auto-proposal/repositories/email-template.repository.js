@@ -4,7 +4,7 @@ class EmailTemplateRepository {
     async findDefaultByTenant(tenantId) {
         const query = `
             SELECT * FROM email_templates 
-            WHERE tenant_id = $1 AND is_default = true 
+            WHERE tenant_id = $1 AND is_default = true and is_deleted = false
             LIMIT 1
         `;
         const rows = await db.query(query, [tenantId]);
