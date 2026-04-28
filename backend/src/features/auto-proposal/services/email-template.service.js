@@ -31,7 +31,7 @@ class EmailTemplateService {
         // 1. Upload .docx to GCS
         const publicUrl = await uploadBufferToGCS(file.buffer, destination, file.mimetype);
         if (body.is_default === 'true') {
-            await repository.resetDefaultsByTenant(tenantId);
+            await repository.clearDefaults(tenantId);
         }
         // 2. Save to DB
         return await repository.create({
@@ -82,6 +82,65 @@ class EmailTemplateService {
         const template = await repository.findById(templateId);
         if (!template) throw new Error("Template not found");
         return template.relative_path;
+    }
+
+    async defaultEmailTemplateIfNoTemplateUpload() {
+        return `<!DOCTYPE html>
+            <html>
+<head>
+<style>
+  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; }
+  .email-container { max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eeeeee; }
+  .logo { max-width: 150px; margin-bottom: 20px; }
+  .summary-box { background-color: #f9f9f9; border-left: 4px solid #8B5E3C; padding: 15px; margin: 20px 0; }
+  .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #eeeeee; font-size: 13px; color: #666; }
+  .social-links a { margin-right: 10px; text-decoration: none; color: #8B5E3C; font-weight: bold; }
+  .price { font-size: 18px; font-weight: bold; color: #000; }
+</style>
+</head>
+<body>
+  <div class="email-container">
+    [company_logo]    
+    <p>Dear <strong>[lead_name]</strong>,</p>
+    
+    <p>I hope you are doing well.</p>
+    
+    <p>Thank you for sharing your requirements with us. Based on your requirements, we are pleased to provide you with the quotation for the services you asked.</p>
+    
+    <div class="summary-box">
+      <h3 style="margin-top: 0;">📌 Quotation Summary:</h3>
+      <p><strong>Total Cost:</strong> <span class="price">₹[final_price]</span></p>
+    </div>
+    
+    <p>Please find the detailed quotation attached with this email for your review.</p>
+    
+    <h3>✅ What’s Next?</h3>
+    <p>If everything looks good, you can simply reply to this email with your approval, and we will proceed with the next steps.</p>
+    
+    <p>In case you have any questions or need modifications, feel free to reach out—we’d be happy to assist you.</p>
+    
+    <p>Looking forward to your response.</p>
+    
+    <div class="footer">
+      <p>Warm regards,<br>
+      <strong>[company_name]</strong></p>
+      
+      <p class="social-links">
+        <strong>Follow us:</strong> 
+        [linkedin_url]
+        [instagram_url]
+        [whatsapp_url]
+      </p>
+      
+      <p>
+        <strong>Contact us:</strong> [company_phone]<br>
+        <strong>Email:</strong> [company_email]<br>
+        <strong>Website:</strong> [company_website]
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
     }
 }
 

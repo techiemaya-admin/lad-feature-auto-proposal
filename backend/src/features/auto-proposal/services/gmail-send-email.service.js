@@ -7,6 +7,7 @@ const _ = require('lodash');
 const axios = require('axios'); // You'll need this to fetch the file from the URL
 const mammoth = require("mammoth");
 const { Storage } = require("@google-cloud/storage");
+const emailTemplateService = require("./email-template.service");
 
 const storage = new Storage({
   keyFilename: process.env.GCS_KEY_FILE, // service-account.json
@@ -61,12 +62,8 @@ async function processAndSendDefaultEmail(tenantId, data, url, price) {
 
       // 1. Fetch Template
       const template = await repository.findDefaultByTenant(tenantId);
-      if (!template) throw new Error(`No default template for tenant ${tenantId}`);
-
-      // 2. Convert .docx to HTML
-      const bucket = storage.bucket(process.env.GCS_BUCKET);
-      const [fileBuffer] = await bucket.file(template.storage_path).download();
-      const { value: rawHtml } = await mammoth.convertToHtml({ buffer: fileBuffer });
+      let htmlValue;
+      let finalSubject;
 
       // 3. Replace Placeholders
       const templateData = { ...data, price, url };
@@ -83,7 +80,7 @@ async function processAndSendDefaultEmail(tenantId, data, url, price) {
           }
           return ""; // Hide if no logo exists
         }
-        
+
         // If it's a social media key and we have a URL for it
         if (SOCIAL_ICONS[key]) {
           if (value && value.trim() !== "") {
@@ -127,9 +124,19 @@ async function processAndSendDefaultEmail(tenantId, data, url, price) {
 
         return value !== undefined ? value : match;
       };
+      if (!template) {
+        htmlValue = await emailTemplateService.defaultEmailTemplateIfNoTemplateUpload();
+        finalSubject = "Qutotation from [company_name]".replace(placeholderRegex, replaceFn);
+      } else {
+        // 2. Convert .docx to HTML
+        const bucket = storage.bucket(process.env.GCS_BUCKET);
+        const [fileBuffer] = await bucket.file(template.storage_path).download();
+        const { value: rawHtml } = await mammoth.convertToHtml({ buffer: fileBuffer });
+        htmlValue = rawHtml;
+        finalSubject = template.subject_line.replace(placeholderRegex, replaceFn);
+      }
+      const finalHtml = htmlValue.replace(placeholderRegex, replaceFn);
 
-      const finalHtml = rawHtml.replace(placeholderRegex, replaceFn);
-      const finalSubject = template.subject_line.replace(placeholderRegex, replaceFn);
 
       // 4. Fetch Attachment
       let attachmentBase64 = "";

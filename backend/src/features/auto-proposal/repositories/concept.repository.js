@@ -97,7 +97,7 @@ class ConceptRepository {
       FROM concept c
       LEFT JOIN concept_requirement_config_mapping crcm ON c.id = crcm.concept_id
       LEFT JOIN lead_requirement_config lrc ON crcm.requirement_config_id = lrc.id
-      WHERE c.id = $1 AND c.tenant_id = $2 AND c.is_deleted = false
+      WHERE c.id = $1 AND c.tenant_id = $2 AND c.is_deleted = false and lrc.is_active=true
       GROUP BY c.id
     `;
     const result = await db.query(sql, [id, tenantId]);
@@ -153,7 +153,7 @@ class ConceptRepository {
     FROM concept c
     LEFT JOIN concept_requirement_config_mapping crcm ON c.id = crcm.concept_id
     LEFT JOIN lead_requirement_config lrc ON crcm.requirement_config_id = lrc.id
-    WHERE c.tenant_id = $1 AND c.is_deleted = false
+    WHERE c.tenant_id = $1 AND c.is_deleted = false and lrc.is_active=true
     GROUP BY c.id
     ORDER BY c.created_at DESC;
   `;
@@ -268,7 +268,7 @@ class ConceptRepository {
       FROM concept c
       LEFT JOIN concept_requirement_config_mapping crcm ON c.id = crcm.concept_id
       LEFT JOIN lead_requirement_config lrc ON crcm.requirement_config_id = lrc.id
-      WHERE c.tenant_id = $1 AND c.is_deleted = false
+      WHERE c.tenant_id = $1 AND c.is_deleted = false  and lrc.is_active=true
       GROUP BY c.id
       ORDER BY c.created_at DESC
     `;
