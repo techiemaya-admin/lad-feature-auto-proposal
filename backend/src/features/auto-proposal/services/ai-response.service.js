@@ -347,94 +347,25 @@ class AIService {
     }
   }
 
-  async generateQuotationProposal(data, leadDetails, event_type, tenantDetails) {
-    try {
-      let fileName = `quotation - ${uuidv4()}.pdf`;
-      fileName = `proposals/${fileName}`; // Add proposals/ prefix here
-      const localPath = path.join(__dirname, "../", fileName);
-
-      // 1. Launch Puppeteer
-      const browser = await puppeteer.launch({
-        headless: "new",
-        args: ['--no-sandbox']
-      });
-      let result = null;
-      // await this.generateDirectPdfFromDocx(tenantDetails.id, leadDetails, data, fileName, localPath);
-      if (result === null) {
-        const page = await browser.newPage();
-
-        // 2. Generate the HTML from the modal-copy template
-        const html = await proposalDraftService.generateProposalForLeadHtml(data,
-          leadDetails,
-          event_type,
-          tenantDetails);
-
-        await page.setContent(html, { waitUntil: 'networkidle0' });
-
-        // 3. Print to PDF in Landscape to match the modal width
-        await page.pdf({
-          path: localPath,
-          format: 'A4',
-          landscape: true,
-          printBackground: true, // MUST be true for the indigo background
-          margin: { top: '0', right: '0', bottom: '0', left: '0' }
-        });
-        await browser.close();
-      }
-
-      // 4. Upload to GCS (Existing logic)
-      const gcsUrl = await uploadToGCS(localPath, fileName);
-      console.log("Generated PDF GCS URL:", gcsUrl);
-      return { gcsUrl, fileName };
-    } catch (err) {
-      console.error("PDF Generation Failed:", err);
-      throw err;
-    }
-  }
-
-
   async generateProposalFromTemplate(data, tenantId) {
     // 1. Fetch the default template path from your metadata table
     const templateMetadata = await templateRepository.findDefaultByTenant(tenantId);
     console.log("templateMetadata:: " + templateMetadata)
-    if (!templateMetadata) return null; // Handle case where no template is found for the tenant
     let fileName = `quotation - ${uuidv4()}.pdf`;
     fileName = `proposals/${fileName}`; // Add proposals/ prefix here
     const localPath = path.join(__dirname, "../", fileName);
 
+    if (!templateMetadata) {
+    // Handle case where no template is found for the tenant
+      console.warn("No quotation template found , creating with static template");
+      return await this.generateProposalWithoutQuotationTemplate(data, localPath, fileName);
+    }
 
     try {
 
       let result = await this.generateDirectPdfFromDocx(tenantId, localPath, fileName, data);
       if (result === null) {
-        const browser = await puppeteer.launch({
-          headless: "new",
-          args: ['--no-sandbox']
-        });
-        const page = await browser.newPage();
-
-        // 2. Generate the HTML from the modal-copy template
-        const html = await proposalDraftService.generateProposalForLeadHtml(data,
-          leadDetails,
-          event_type,
-          tenantDetails);
-
-        await page.setContent(html, { waitUntil: 'networkidle0' });
-
-        // 3. Print to PDF in Landscape to match the modal width
-        await page.pdf({
-          path: localPath,
-          format: 'A4',
-          landscape: true,
-          printBackground: true, // MUST be true for the indigo background
-          margin: { top: '0', right: '0', bottom: '0', left: '0' }
-        });
-        await browser.close();
-
-        // 4. Upload to GCS (Existing logic)
-        const gcsUrl = await uploadToGCS(localPath, fileName);
-        console.log("Generated PDF GCS URL:", gcsUrl);
-        return { gcsUrl, fileName };
+        return await this.generateProposalWithoutQuotationTemplate(data, localPath, fileName);
       } else {
         return result;
       }
@@ -445,6 +376,35 @@ class AIService {
     }
   }
 
+
+  async generateProposalWithoutQuotationTemplate(data, localPath, fileName) {
+    const browser = await puppeteer.launch({
+      headless: "new",
+      args: ['--no-sandbox']
+    });
+    const page = await browser.newPage();
+
+    // 2. Generate the HTML from the modal-copy template
+    const html = await proposalDraftService.generateProposalForLeadHtml(data);
+
+    await page.setContent(html, { waitUntil: 'networkidle0' });
+
+    // 3. Print to PDF in Landscape to match the modal width
+    await page.pdf({
+      path: localPath,
+      format: 'A4',
+      landscape: true,
+      printBackground: true, // MUST be true for the indigo background
+      margin: { top: '0', right: '0', bottom: '0', left: '0' }
+    });
+    await browser.close();
+
+    // 4. Upload to GCS (Existing logic)
+    const gcsUrl = await uploadToGCS(localPath, fileName);
+    console.log("Generated PDF GCS URL:", gcsUrl);
+    return { gcsUrl, fileName };
+
+  }
 
   async generateDirectPdfFromDocx(tenantId, localPath, fileName, data) {
     try {

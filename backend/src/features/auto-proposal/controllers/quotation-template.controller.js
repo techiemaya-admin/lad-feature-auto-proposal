@@ -33,7 +33,7 @@ class QuotationTemplateController {
     // API 4: Delete Template
     async remove(req, res) {
         try {
-            await service.deleteTemplate(req.query.tenant_id, req.params.id);
+            await service.deleteTemplate(req.params.id);
             res.status(200).json({ message: "Template deleted successfully" });
         } catch (error) {
             res.status(500).json({ error: error.message });

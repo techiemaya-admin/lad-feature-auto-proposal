@@ -25,8 +25,8 @@ class QuotationTemplateService {
     return await repository.setAsDefault(tenantId, templateId);
   }
 
-  async deleteTemplate(tenantId, templateId) {
-    return await repository.softDelete(templateId, tenantId);
+  async deleteTemplate(templateId) {
+    return await repository.deleteTemplate(templateId);
   }
 
   async uploadAndSaveTemplate(tenantId, file, body) {
