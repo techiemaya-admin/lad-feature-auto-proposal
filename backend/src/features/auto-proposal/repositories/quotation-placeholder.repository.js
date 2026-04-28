@@ -5,7 +5,7 @@ class QuotationPlaceholderRepository {
     // In your quotation-placeholder.repository.js
     async findByTenant(tenantId) {
         const query = `
-        SELECT placeholder_key, data_source_path 
+        SELECT placeholder_key, data_source_path ,description,id,is_loop
         FROM quotation_placeholders 
         WHERE tenant_id = $1 AND is_deleted = false
     `;

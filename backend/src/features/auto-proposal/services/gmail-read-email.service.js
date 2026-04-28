@@ -74,55 +74,57 @@ async function createProposalDraft(leadRequirementDetails, leadData, email_conte
   });
   console.log("Final price calculated:", calculatedPriceDetails);
 
+  if (calculatedPriceDetails.final_price != 0) {
 
-  const tenantDetails = await tenatDetailsRepo.findById(leadRequirementDetails.tenant_id);
-  const tenantProfileDetails = await tenantProfileService.getProfile(leadRequirementDetails.tenant_id);
-  console.log("tenantDetails : " + JSON.stringify(tenantDetails));
-  console.log("lead data : " + JSON.stringify(leadData))
-  console.log("tenant profile details : " + JSON.stringify(tenantProfileDetails))
-  const items = calculatedPriceDetails.breakdown.map(item => ({
-    qty: item.count,
-    description: item.label,
-    unit_price: item.base_unit_price,
-    line_total: item.price
-  }));
-  const placeholderBuilderForEmail = new PlaceHolderBuilder()
-    .setBulk({
-      lead_name: leadData.first_name + " " + leadData.last_name,
-      lead_email: leadData.email,
-      company_name: tenantDetails.name,
-      company_email: tenantProfileDetails.official_email,
-      company_phone: tenantDetails.phone,
-      company_website: tenantDetails.website,
-      company_logo: tenantProfileDetails.company_logo_url,
-      company_tagline: tenantProfileDetails.tagline,
-      instagram_url: tenantProfileDetails.instagram_url,
-      linkedin_url: tenantProfileDetails.linkedin_url,
-      whatsapp_url: tenantProfileDetails.whatsapp_url,
-      total_base_price: calculatedPriceDetails.total_base_price,
-      total_discount: calculatedPriceDetails.total_concept_discount,
-      total_surcharge: calculatedPriceDetails.total_concept_surcharge,
+    const tenantDetails = await tenatDetailsRepo.findById(leadRequirementDetails.tenant_id);
+    const tenantProfileDetails = await tenantProfileService.getProfile(leadRequirementDetails.tenant_id);
+    console.log("tenantDetails : " + JSON.stringify(tenantDetails));
+    console.log("lead data : " + JSON.stringify(leadData))
+    console.log("tenant profile details : " + JSON.stringify(tenantProfileDetails))
+    const items = calculatedPriceDetails.breakdown.map(item => ({
+      qty: item.count,
+      description: item.label,
+      unit_price: item.base_unit_price,
+      line_total: item.price
+    }));
+    const placeholderBuilderForEmail = new PlaceHolderBuilder()
+      .setBulk({
+        lead_name: leadData.first_name + " " + leadData.last_name,
+        lead_email: leadData.email || '',
+        company_name: tenantDetails.name || '',
+        company_email: tenantProfileDetails.official_email || '',
+        company_phone: tenantDetails.phone,
+        company_website: tenantDetails.website || '',
+        company_logo: tenantProfileDetails.company_logo_url || '',
+        company_tagline: tenantProfileDetails.tagline || '',
+        instagram_url: tenantProfileDetails.instagram_url || '',
+        linkedin_url: tenantProfileDetails.linkedin_url || '',
+        whatsapp_url: tenantProfileDetails.whatsapp_url || '',
+        total_base_price: calculatedPriceDetails.total_base_price,
+        total_discount: calculatedPriceDetails.total_concept_discount,
+        total_surcharge: calculatedPriceDetails.total_concept_surcharge,
+        final_price: calculatedPriceDetails.final_price,
+        items: items,
+        date: Date.now()
+      })
+      .build();
+    const prosalPathDetails = await aiService.generateProposalFromTemplate(placeholderBuilderForEmail, leadRequirementDetails.tenant_id);
+
+    await gmailSendService.processAndSendDefaultEmail(leadRequirementDetails.tenant_id, placeholderBuilderForEmail, prosalPathDetails.gcsUrl, calculatedPriceDetails.final_price);
+
+    const dataToSave = {
+      tenant_id: leadRequirementDetails.tenant_id,
+      lead_requirement_id: leadRequirementDetails.id,
       final_price: calculatedPriceDetails.final_price,
-      items: items,
-      date: Date.now()
-    })
-    .build();
-  const prosalPathDetails = await aiService.generateProposalFromTemplate(placeholderBuilderForEmail, leadRequirementDetails.tenant_id);
-
-  await gmailSendService.processAndSendDefaultEmail(leadRequirementDetails.tenant_id, placeholderBuilderForEmail, prosalPathDetails.gcsUrl, calculatedPriceDetails.final_price);
-
-  const dataToSave = {
-    tenant_id: leadRequirementDetails.tenant_id,
-    lead_requirement_id: leadRequirementDetails.id,
-    final_price: calculatedPriceDetails.final_price,
-    gcsUrl: prosalPathDetails.gcsUrl,
-    file_name: prosalPathDetails.fileName,
-    status: "DRAFTED",
-    metadata: calculatedPriceDetails,
-    calculation_snapshot: calculatedPriceDetails,
-    pricing_rule_ids: calculatedPriceDetails.applied_package_rules
-  }
-  proposalDraftRepository.create(dataToSave)
+      gcsUrl: prosalPathDetails.gcsUrl,
+      file_name: prosalPathDetails.fileName,
+      status: "DRAFTED",
+      metadata: calculatedPriceDetails,
+      calculation_snapshot: calculatedPriceDetails,
+      pricing_rule_ids: calculatedPriceDetails.applied_package_rules
+    }
+    proposalDraftRepository.create(dataToSave)
+  }else{console.log("quotation should not be made due to price valued is ZERO")}
 
 }
 

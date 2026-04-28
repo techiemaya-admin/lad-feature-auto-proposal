@@ -45,6 +45,21 @@ class QuotationTemplateRepository {
     return result[0] || null;
   }
 
+
+  async setAsDefault(tenant_id, templateId) {
+    await this.resetDefaultsByTenant(tenant_id);
+    const query = `UPDATE quotation_template_metadata
+     SET is_default = true WHERE id = $1 AND tenant_id = $2 RETURNING *`;
+    const rows = await AppDataSource.query(query, [templateId, tenant_id]);
+    if (rows.length > 0) {
+      return rows[0];
+    } else {
+      // If no profile exists, return a default structure with null values
+      return null;
+    }
+
+  }
+
   async resetDefaultsByTenant(tenantId) {
     const sql = `
       UPDATE quotation_template_metadata
@@ -84,16 +99,16 @@ class QuotationTemplateRepository {
     const result = await AppDataSource.query(sql, [templateId]);
     return result[0] || null;
   }
-  
 
-    async findAllByTenant(tenantId) {
-        const query = `
+
+  async findAllByTenant(tenantId) {
+    const query = `
             SELECT * FROM quotation_template_metadata 
             WHERE tenant_id = $1 AND is_deleted = false
         `;
-        const rows = await AppDataSource.query(query, [tenantId]);
-        return rows;
-    }
+    const rows = await AppDataSource.query(query, [tenantId]);
+    return rows;
+  }
 }
 
 module.exports = new QuotationTemplateRepository();

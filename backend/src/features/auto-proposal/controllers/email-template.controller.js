@@ -27,7 +27,7 @@ class EmailTemplateController {
     // API 3: Set Default
     async makeDefault(req, res) {
         try {
-            const result = await service.setDefault(req.body.tenant_id, req.params.id);
+            const result = await service.setDefault(req.params.tenantId, req.params.id);
             res.status(200).json({ message: "Default template updated", data: result });
         } catch (error) {
             res.status(500).json({ error: error.message });

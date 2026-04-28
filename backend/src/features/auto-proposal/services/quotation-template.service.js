@@ -37,7 +37,9 @@ class QuotationTemplateService {
     const publicUrl = await uploadBufferToGCS(file.buffer, destination, file.mimetype);
 
     // 3. Reset defaults and save metadata to DB
-    await repository.resetDefaultsByTenant(tenantId);
+    if (body.is_default === 'true') {
+      await repository.resetDefaultsByTenant(tenantId);
+    }
     // 2. Save to DB
     return await repository.create({
       tenant_id: tenantId,

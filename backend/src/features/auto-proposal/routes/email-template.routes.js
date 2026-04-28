@@ -11,7 +11,7 @@ router.post('/upload/:tenantId', upload.single('file'), controller.upload);
 router.get('/:id/preview', controller.getPreview);
 
 // 3. Set Default
-router.patch('/:id/set-default', controller.makeDefault);
+router.patch('/:tenantId/set-default/:id', controller.makeDefault);
 
 // 4. Delete
 router.delete('/:id', controller.remove);

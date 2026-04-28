@@ -48,6 +48,7 @@ app.use('/api/pricing-rules', pricingRuleRoute);
 app.use('/api/test', require('./features/auto-proposal/routes/test.route')); // Add this line to include the test route
 app.use('/api/tenant-profile', require('./features/auto-proposal/routes/tenant-profile.routes')); // Add this line to include tenant profile routes
 app.use('/api/email-templates', require('./features/auto-proposal/routes/email-template.routes')); // Add this line to include email template routes
+app.use('/api/template-placeholder',require('./features/auto-proposal/routes/quotation-placeholder-routes'))
 
 // Use the exact prefix your frontend Axios client expects
 app.use('/api/conversations', conversationRoutes);

@@ -30,7 +30,9 @@ class EmailTemplateService {
 
         // 1. Upload .docx to GCS
         const publicUrl = await uploadBufferToGCS(file.buffer, destination, file.mimetype);
-
+        if (body.is_default === 'true') {
+            await repository.resetDefaultsByTenant(tenantId);
+        }
         // 2. Save to DB
         return await repository.create({
             tenant_id: tenantId,

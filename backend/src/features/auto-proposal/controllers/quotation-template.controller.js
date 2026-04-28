@@ -19,9 +19,13 @@ class QuotationTemplateController {
     // API 3: Set Default
     async makeDefault(req, res) {
         try {
-            const result = await service.setDefault(req.body.tenant_id, req.params.id);
+            const tenantId = req.params.tenantId
+            const id = req.params.id
+            console.log("make quotations default : " + tenantId + " id : " + id)
+            const result = await service.setDefault(tenantId, id);
             res.status(200).json({ message: "Default template updated", data: result });
         } catch (error) {
+            console.error("Error in setting default quotation : ",error)
             res.status(500).json({ error: error.message });
         }
     }

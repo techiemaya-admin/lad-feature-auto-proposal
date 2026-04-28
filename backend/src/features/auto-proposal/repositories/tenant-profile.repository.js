@@ -8,7 +8,7 @@ class TenantProfileRepository {
             return rows[0];
         } else {
             // If no profile exists, return a default structure with null values
-            return null;
+            return {};
         }
     }
 

@@ -111,7 +111,7 @@ class AIService {
     );
     if (!modelInfo) return this.getFallbackResponse();
 
-    
+
     // ✅ Correct SDK usage
     const model = modelInfo.client.getGenerativeModel({
       model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
@@ -233,7 +233,7 @@ class AIService {
   }
 
   async fetchAIResponse(prompt) {
-  
+
 
     const text = await this.callGenAI(prompt);
     // this.updateUsage(modelInfo);
@@ -367,6 +367,7 @@ class AIService {
   async generateProposalFromTemplate(data, tenantId) {
     // 1. Fetch the default template path from your metadata table
     const templateMetadata = await templateRepository.findDefaultByTenant(tenantId);
+    console.log("templateMetadata:: " + templateMetadata)
     if (!templateMetadata) return null; // Handle case where no template is found for the tenant
     let fileName = `quotation - ${uuidv4()}.pdf`;
     fileName = `proposals/${fileName}`; // Add proposals/ prefix here
@@ -434,6 +435,7 @@ class AIService {
 
       // 3. Replace Placeholders
       const templateData = { ...data, date: new Date().toLocaleDateString() };
+      console.log(templateData)
       const zip = new PizZip(fileBuffer);
       // 1. Helper to fetch the image from your Signed URL
       const imageOptions = {
@@ -450,22 +452,25 @@ class AIService {
           return [100, 40]; // Fallback to a default size
         },
       };
-      // 2. Initialize Docxtemplater with the Image Module
-      const imageModule = new ImageModule(imageOptions);
-      const doc = new Docxtemplater(zip, {
-        paragraphLoop: true,
-        linebreaks: true,
-        modules: [imageModule],
-        delimiters: { start: "[", end: "]" }
-      });
-      // const doc = new Docxtemplater(zip, {
-
-      //   // Add this if the client uses [placeholder] instead of {placeholder}
-      //   delimiters: {
-      //     start: "[",
-      //     end: "]",
-      //   }
-      // });
+      let doc;
+      if (templateData.company_logo != '') {
+        console.log(" image")
+        // 2. Initialize Docxtemplater with the Image Module
+        const imageModule = new ImageModule(imageOptions);
+        doc = new Docxtemplater(zip, {
+          paragraphLoop: true,
+          linebreaks: true,
+          modules: [imageModule],
+          delimiters: { start: "[", end: "]" }
+        });
+      } else {
+        console.log("image not ")
+        doc = new Docxtemplater(zip, {
+          paragraphLoop: true,
+          linebreaks: true,
+          delimiters: { start: "[", end: "]" }
+        });
+      }
 
       // 5. Replace placeholders in the Docx
       await doc.renderAsync(templateData);

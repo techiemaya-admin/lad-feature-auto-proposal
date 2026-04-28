@@ -7,7 +7,7 @@ class EmailTemplateRepository {
             WHERE tenant_id = $1 AND is_default = true 
             LIMIT 1
         `;
-        const rows  = await db.query(query, [tenantId]);
+        const rows = await db.query(query, [tenantId]);
         return rows[0];
     }
 
@@ -85,6 +85,21 @@ class EmailTemplateRepository {
         }
 
     }
+
+    async resetDefaultsByTenant(tenantId) {
+        const sql = `
+          UPDATE email_templates
+          SET 
+            is_default = false,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE tenant_id = $1
+          RETURNING *;
+        `;
+
+        const result = await AppDataSource.query(sql, [tenantId]);
+        return result || [];
+    }
+
 }
 
 
