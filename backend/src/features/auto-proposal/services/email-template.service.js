@@ -74,8 +74,8 @@ class EmailTemplateService {
         return await repository.setAsDefault(tenantId, templateId);
     }
 
-    async deleteTemplate(tenantId, templateId) {
-        return await repository.softDelete(templateId, tenantId);
+    async deleteTemplate(templateId) {
+        return await repository.softDelete(templateId);
     }
 
     async getPreviewUrl(templateId) {

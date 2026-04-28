@@ -63,9 +63,9 @@ class EmailTemplateRepository {
 
     }
 
-    async softDelete(templateId, tenant_id) {
-        const query = `UPDATE email_templates SET is_deleted = true, is_default = false WHERE id = $1 AND tenant_id = $2 RETURNING *`;
-        const rows = await db.query(query, [templateId, tenant_id]);
+    async softDelete(templateId) {
+        const query = `UPDATE email_templates SET is_deleted = true, is_default = false WHERE id = $1 RETURNING *`;
+        const rows = await db.query(query, [templateId]);
         if (rows.length > 0) {
             return rows[0];
         } else {
