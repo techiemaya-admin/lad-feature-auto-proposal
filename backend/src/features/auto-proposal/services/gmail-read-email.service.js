@@ -110,7 +110,10 @@ async function createProposalDraft(leadRequirementDetails, leadData, email_conte
       .build();
     const prosalPathDetails = await aiService.generateProposalFromTemplate(placeholderBuilderForEmail, leadRequirementDetails.tenant_id);
 
-    await gmailSendService.processAndSendDefaultEmail(leadRequirementDetails.tenant_id, placeholderBuilderForEmail, prosalPathDetails.gcsUrl, calculatedPriceDetails.final_price);
+    await gmailSendService.processAndSendDefaultEmailFromDragDrop(leadRequirementDetails.tenant_id, placeholderBuilderForEmail, prosalPathDetails.gcsUrl, calculatedPriceDetails.final_price);
+
+  
+    // await gmailSendService.processAndSendDefaultEmail(leadRequirementDetails.tenant_id, placeholderBuilderForEmail, prosalPathDetails.gcsUrl, calculatedPriceDetails.final_price);
 
     const dataToSave = {
       tenant_id: leadRequirementDetails.tenant_id,
@@ -397,35 +400,37 @@ async function triggerNewLeadAutomation(first_name, last_name, email) {
 }
 
 async function createLeadRequirementViaPrompt(body, lead_id, tenant_id) {
-
+console.log(lead_id)
   try {
 
     console.log("Testing AI prompt :", body);
-    const response = await aiService.generateAIResponse(body, tenant_id);
+    const response =
+    //  await aiService.generateAIResponse(body, tenant_id);
 
-    // {
-    //   "dynamic_requirements": {
-    //     "main event guest count": 100,
-    //     "catering": null,
-    //     "function_hall": null,
-    //     "Videography": 1
-    //   },
-    //   "location": null,
-    //   "event_category": "wedding",
-    //   "event_type": "Technical",
-    //   "support_level": "full_event_management",
-    //   "inquiry_type": "pricing",
-    //   "duration": null,
-    //   "client_type": "B2C",
-    //   "services_requested": [
-    //     "venue coordination",
-    //     "décor",
-    //     "wedding photography and videography",
-    //     "overall event execution",
-    //     "catering services",
-    //     "function hall arrangement"
-    //   ]
-    // }
+    {
+      "dynamic_requirements": {
+        "main event guest count": 100,
+        "catering": null,
+        "function_hall": null,
+        "Videography": 1,
+        "AV Equipment" : 1
+      },
+      "location": null,
+      "event_category": "wedding",
+      "event_type": "Technical",
+      "support_level": "full_event_management",
+      "inquiry_type": "pricing",
+      "duration": null,
+      "client_type": "B2C",
+      "services_requested": [
+        "venue coordination",
+        "décor",
+        "wedding photography and videography",
+        "overall event execution",
+        "catering services",
+        "function hall arrangement"
+      ]
+    }
 
 
 

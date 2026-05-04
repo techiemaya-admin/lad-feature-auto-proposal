@@ -543,3 +543,28 @@ CREATE TABLE IF NOT EXISTS email_templates (
     updated_at timestamptz DEFAULT now(),
     FOREIGN KEY (tenant_id) REFERENCES tenants (id)
 );
+
+
+
+CREATE TABLE quotation_email_template (
+    -- Primary Identifiers
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL, -- e.g., "Follow-up Quotation"
+    tenant_id uuid NOT NULL,
+	is_default boolean DEFAULT FALSE,
+    -- Content
+    subject TEXT NOT NULL, -- Email subject line[cite: 1]
+    body_text TEXT, -- The actual plain text message[cite: 1]
+    content_format VARCHAR(20) DEFAULT 'plain_text', -- 'plain_text' or 'html'[cite: 1]
+    body_html TEXT,
+    -- Metadata for AI & Filtering
+    description TEXT, -- Internal notes[cite: 1]
+    media_url TEXT,
+    media_alt_text TEXT,
+	
+    is_deleted boolean DEFAULT false,
+    metadata jsonb,
+    created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now(),
+    FOREIGN KEY (tenant_id) REFERENCES tenants (id)
+);
