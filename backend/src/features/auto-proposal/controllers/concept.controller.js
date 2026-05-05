@@ -9,6 +9,7 @@ async function create(req, res, next) {
     const concept = await conceptService.createConcept(req.body.tenant_id, dto);
     res.status(201).json(toConceptResponse(concept));
   } catch (err) {
+    console.error('Error in create:', err);
     next(err);
   }
 }
@@ -18,6 +19,7 @@ async function getById(req, res, next) {
     const concept = await conceptService.getConceptById(req.tenantId, req.params.id);
     res.json(toConceptResponse(concept));
   } catch (err) {
+    console.error('Error in getById:', err);
     next(err);
   }
 }
@@ -39,6 +41,7 @@ async function linkLocation(req, res, next) {
       is_available: link.is_available,
     });
   } catch (err) {
+    console.error('Error in linkLocation:', err);
     next(err);
   }
 }
@@ -56,6 +59,7 @@ async function addPricing(req, res, next) {
       location_multiplier: pricing.location_multiplier,
     });
   } catch (err) {
+    console.error('Error in addPricing:', err);
     next(err);
   }
 }
@@ -65,7 +69,10 @@ async function update(req, res, next) {
     console.log('Updating concept with ID:', req.params.id, 'and data:', req.body);
     const concept = await conceptService.updateConcept(req.body.tenant_id, req.params.id, req.body);
     res.json(toConceptResponse(concept));
-  } catch (err) { next(err); }
+  } catch (err) { 
+    console.error('Error in update:', err);
+    next(err); 
+  }
 }
 
 async function remove(req, res, next) {
@@ -73,7 +80,10 @@ async function remove(req, res, next) {
     console.log('Deleting concept with ID:', req.params.id);
     await conceptService.deleteConcept(req.params.id);
     res.status(204).send();
-  } catch (err) { next(err); }
+  } catch (err) { 
+    console.error('Error in remove:', err);
+    next(err); 
+  }
 }
 
 module.exports = {

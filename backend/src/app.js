@@ -50,6 +50,7 @@ app.use('/api/tenant-profile', require('./features/auto-proposal/routes/tenant-p
 app.use('/api/email-templates', require('./features/auto-proposal/routes/email-template.routes')); // Add this line to include email template routes
 app.use('/api/template-placeholder',require('./features/auto-proposal/routes/quotation-placeholder-routes'))
 app.use('/api/quotation-email-template',require('./features/auto-proposal/routes/quotation-email-template.routes'))
+app.use('/api/ai-response',require('./features/auto-proposal/routes/ai.response.routes'))
 
 // Use the exact prefix your frontend Axios client expects
 app.use('/api/conversations', conversationRoutes);

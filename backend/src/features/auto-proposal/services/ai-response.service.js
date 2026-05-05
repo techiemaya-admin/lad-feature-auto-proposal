@@ -136,6 +136,45 @@ class AIService {
     }
   }
 
+
+  async callGenAIWithConfig(prompt, generationConfig) {
+
+    const modelInfo = this.getNextApiKey();
+    console.log(
+      "Using Gemini API Key Index:",
+      modelInfo ? modelInfo.keyIndex : "None"
+    );
+    if (!modelInfo) return this.getFallbackResponse();
+
+
+    // ✅ Correct SDK usage
+
+    const model = modelInfo.client.getGenerativeModel({
+      model: "gemini-2.5-flash",
+      generationConfig,
+    });
+
+    let retries = 5;
+    for (let i = 0; i < retries; i++) {
+      try {
+        console.log("send request to gemini")
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        console.log(`Response fetched from gen AI after attempt : ${i}`)
+        const resp = JSON.parse(response.text())
+        console.log("REsponse:: " + JSON.stringify(resp));
+        return resp;
+      } catch (err) {
+        if (err.message.includes("503") && i < retries - 1) {
+          console.log(`Retrying... attempt ${i + 1}`);
+          await new Promise((res) => setTimeout(res, 20000)); // wait 2s
+        } else {
+          throw err;
+        }
+      }
+    }
+  }
+
   async generateAIResponse(emailContent, tenant_id) {
     try {
 
@@ -356,7 +395,7 @@ class AIService {
     const localPath = path.join(__dirname, "../", fileName);
 
     if (!templateMetadata) {
-    // Handle case where no template is found for the tenant
+      // Handle case where no template is found for the tenant
       console.warn("No quotation template found , creating with static template");
       return await this.generateProposalWithoutQuotationTemplate(data, localPath, fileName);
     }
@@ -493,6 +532,151 @@ class AIService {
         : "Never",
     }));
   }
+
+  /* source: 29 - AIService.js */
+
+  async suggestConcepts(tenantId) {
+    console.log("tenantId:: " + tenantId)
+    // 1. Fetch the configs and await the result
+    const configs = await leadRequirementConfigRepo.findByTenantAndActive(tenantId);
+
+    // 2. Validate data: If configs are empty, the AI cannot suggest anything meaningful
+    if (!configs || configs.length === 0) {
+      console.warn("No requirement configurations found for tenant:", tenantId);
+      return { suggestions: [] };
+    }
+
+    // 3. Create a simplified list for the AI so it definitely sees the field_keys
+    const configSummary = configs.map(c => ({
+      field_key: c.field_key,
+      label: c.label,
+      category: c.category
+    }));
+
+
+    const generationConfig = {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: 'object',
+        properties: {
+          suggestions: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                // CHANGED: requirement_config_ids is now an array of objects
+                requirement_config_ids: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      name: { type: 'string' },
+                      id: { type: 'string' } // This will hold the UUID
+                    },
+                    required: ["name", "id"]
+                  }
+                },
+                minimum_cost: { type: 'number' },
+                description: { type: 'string' }
+              },
+              required: ["name", "requirement_config_ids", "minimum_cost", "description"]
+            }
+          }
+        },
+        required: ["suggestions"]
+      }
+    };
+    // 4. Strengthen the Prompt Instructions
+    const prompt = `
+  Analyze these available Service Configurations:
+  ${configs.map(c => `Service: ${c.label}, ID: ${c.id}`).join('\n')}
+
+  TASK: Suggest 3-5 event concepts based on these services.
+  
+  RULES for 'requirement_config_ids':
+  - This MUST be an array of objects.
+  - Each object must have:
+    1. "id": The UUID provided in the list above.
+    2. "name": The "Service" (label) corresponding to that ID.
+  
+  Example format for requirement_config_ids:
+  [{"name": "Catering", "id": "uuid-123"}, {"name": "Venue", "id": "uuid-456"}]
+
+  Description Rule: Mention the service names used in the description for readability.
+`;
+    // Fix 4: Call generateContent with only the prompt (or an object with contents)
+
+    return this.callGenAIWithConfig(prompt, generationConfig);
+
+  }
+
+  async suggestPricingRules(tenantId) {
+    const requirementConfigs = await leadRequirementConfigRepo.findByTenantAndActive(tenantId);
+    console.log(requirementConfigs)
+    const concepts = await conceptRepo.findAll(tenantId);
+    console.log(concepts)
+    // 2. Validate data: If configs are empty, the AI cannot suggest anything meaningful
+    if (!requirementConfigs || requirementConfigs.length === 0) {
+      console.warn("No requirement configurations found for tenant:", tenantId);
+      return { suggestions: [] };
+    }
+
+    const generationConfig = {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: 'object',
+        properties: {
+          suggestions: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string' },
+                priority: { type: 'number' },
+                // Matches your DB target_type
+                target_type: { type: 'string', enum: ["service", "package"] },
+                // These will hold the actual UUID strings from the context provided
+                concept_id: { type: 'string', nullable: true },
+                requirement_config_id: { type: 'string', nullable: true },
+
+                // Condition Logic
+                condition_field: { type: 'string', description: "The field_key if service, or Concept Name if package" },
+                condition_operator: { type: 'string', enum: [">", "<", ">=", "<=", "=="] },
+                condition_value: { type: 'number' },
+
+                // Action Logic (Matches your DB columns)
+                action_type: { type: 'string', enum: ["discount", "surcharge"] },
+                action_mode: { type: 'string', enum: ["subtract", "add", "set"] },
+                action_value: { type: 'number' },
+                action_value_type: { type: 'string', enum: ["fixed", "percentage"] }
+              },
+              required: ["name", "target_type", "action_type", "action_mode", "action_value", "action_value_type", "priority"]
+            }
+          }
+        },
+        required: ["suggestions"]
+      }
+    };
+
+    const prompt = `
+        TASK: Suggest 6-10 pricing rules based on the services and concepts provided.
+        Current Date Context: ${new Date().toLocaleDateString()}
+
+        DATA CONTEXT:
+        1. Services (requirement_configs): ${JSON.stringify(requirementConfigs.map(r => ({ id: r.id, label: r.label, field_key: r.field_key })))}
+        2. Concepts (packages): ${JSON.stringify(concepts.map(c => ({ id: c.id, name: c.name })))}
+
+        CRITICAL MAPPING RULES:
+        - If target_type is 'package', you MUST provide the 'concept_id' from the Concepts list.
+        - If target_type is 'service', you MUST provide the 'requirement_config_id' and 'condition_field' (field_key) from the Services list.
+        - action_mode: Use 'subtract' for discounts and 'add' for surcharges.
+        - action_value_type: Use 'percentage' or 'fixed'.
+    `;
+
+    return this.callGenAIWithConfig(prompt, generationConfig);
+  }
+
 }
 
 module.exports = new AIService();

@@ -405,32 +405,32 @@ console.log(lead_id)
 
     console.log("Testing AI prompt :", body);
     const response =
-    //  await aiService.generateAIResponse(body, tenant_id);
+     await aiService.generateAIResponse(body, tenant_id);
 
-    {
-      "dynamic_requirements": {
-        "main event guest count": 100,
-        "catering": null,
-        "function_hall": null,
-        "Videography": 1,
-        "AV Equipment" : 1
-      },
-      "location": null,
-      "event_category": "wedding",
-      "event_type": "Technical",
-      "support_level": "full_event_management",
-      "inquiry_type": "pricing",
-      "duration": null,
-      "client_type": "B2C",
-      "services_requested": [
-        "venue coordination",
-        "décor",
-        "wedding photography and videography",
-        "overall event execution",
-        "catering services",
-        "function hall arrangement"
-      ]
-    }
+    // {
+    //   "dynamic_requirements": {
+    //     "main event guest count": 100,
+    //     "catering": null,
+    //     "function_hall": null,
+    //     "Videography": 1,
+    //     "AV Equipment" : 1
+    //   },
+    //   "location": null,
+    //   "event_category": "wedding",
+    //   "event_type": "Technical",
+    //   "support_level": "full_event_management",
+    //   "inquiry_type": "pricing",
+    //   "duration": null,
+    //   "client_type": "B2C",
+    //   "services_requested": [
+    //     "venue coordination",
+    //     "décor",
+    //     "wedding photography and videography",
+    //     "overall event execution",
+    //     "catering services",
+    //     "function hall arrangement"
+    //   ]
+    // }
 
 
 

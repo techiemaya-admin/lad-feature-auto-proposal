@@ -135,7 +135,7 @@ class LeadRequirementConfigRepository {
         SELECT id 
         FROM lead_requirement_config 
         WHERE tenant_id = $1 
-        AND field_key = $2 
+        AND id = $2 
         AND is_active = true
         LIMIT 1
       `;

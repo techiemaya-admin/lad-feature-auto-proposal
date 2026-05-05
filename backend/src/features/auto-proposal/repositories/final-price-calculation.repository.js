@@ -19,7 +19,7 @@ async function calculateFinalPrice(tenantId, leadRequirementId, event_type) {
   console.log("1. Raw Lead Data Fetched:", JSON.stringify(leadData));
 
   const inputValues = {};
-  leadData.forEach(row => { inputValues[row.field_key] = Number(row.value_number) || 0; });
+  leadData.forEach(row => { inputValues[row.field_id] = Number(row.value_number) || 0; });
   console.log("2. Transformed Input Values (Conditions):", JSON.stringify(inputValues));
 
   const rulesRes = await db.query(
