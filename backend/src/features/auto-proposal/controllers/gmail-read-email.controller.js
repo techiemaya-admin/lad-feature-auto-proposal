@@ -61,8 +61,9 @@ async function testprompt(req, res) {
 
   const body = req.body.prompt;
   const leadData = {
-    id: "fe2c9488-c7a6-44f4-a8f9-ee0b00c9e0da",
-    name: "Test Lead",
+    id: "7cb0954d-ba2c-4224-969c-a3fa353a68fd",
+    first_name: "Test",
+    last_name: "Lead",
     email: "usha.dhamija0510@gmail.com",
     phone: "1234567890"
   }
