@@ -22,6 +22,16 @@ class AiResponseController {
         }
     }
 
+    async suggestEmailTemplates(req, res) {
+        try {
+            const emailTemplates = await service.suggestEmailTemplete(req.params.tenantId);
+            res.status(200).json(emailTemplates);
+        } catch (error) {
+            console.error("Error fetching suggestEmailTemplates :", error);
+            res.status(500).json({ error: error.message });
+        }
+    }
+
 }
 
 module.exports = new AiResponseController();

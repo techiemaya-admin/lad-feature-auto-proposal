@@ -9,6 +9,7 @@ const axios = require('axios'); // You'll need this to fetch the file from the U
 const mammoth = require("mammoth");
 const { Storage } = require("@google-cloud/storage");
 const emailTemplateService = require("./email-template.service");
+const conversationMessageRepository = require("../repositories/conversation-message.repository");
 
 const storage = new Storage({
   keyFilename: process.env.GCS_KEY_FILE, // service-account.json
@@ -212,8 +213,8 @@ async function processAndSendDefaultEmail(tenantId, data, url, price) {
 
 }
 
-async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price) {
-  console.log(`Sending email for tenant: ${tenantId}`);
+async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price, conversation_id) {
+  console.log(`Sending email for tenant: ${tenantId} conversation_id: ${conversation_id} lead_email: ${data.lead_email} url: ${url} price: ${price}`);
 
   if (!data.lead_email) {
     console.warn("Email not sent because lead_email is undefined");
@@ -265,7 +266,7 @@ async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price
     };
 
     // 2. Determine Content Source
-    if (!template) {
+    if (!template && template === undefined) {
       // Fallback if no default template exists in DB
       htmlContent = await emailTemplateService.defaultEmailTemplateIfNoTemplateUpload();
       subjectLine = "Quotation from [company_name]";
@@ -349,6 +350,40 @@ async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price
     });
 
     console.log("Email successfully sent:", response.data.id);
+    // 7. Save to Database
+    // 7. Save to Database using your createMessage method
+    try {
+      const leadId = data.lead_id || data.id; // Fallback for contact identifier
+
+      const messageData = {
+        tenant_id: tenantId,
+        conversation_id: conversation_id, // Ensure this is in the 'data' object
+        sender_type: 'agent',
+        sender_id: null, // Or the ID of the logged-in user
+        channel: 'email',
+        message_type: 'email',
+        content: finalHtml,
+        message_id: response.data.id, // Gmail's message ID
+        raw_payload: {
+          subject: finalSubject,
+          to: data.lead_email,
+          // Saving attachment info so the UI can render the download link
+          attachments: attachmentBase64 ? [{
+            filename: filename,
+            url: url, // The link to the PDF
+            type: "application/pdf"
+          }] : []
+        }
+      };
+
+      // Call your specific method
+      const savedMsg = await conversationMessageRepository.createMessage(messageData);
+      console.log("Message archived in DB:", savedMsg.id);
+
+    } catch (dbError) {
+      // Log the error but don't stop the process since the email was already sent
+      console.error("Archive Error: Failed to save sent email to DB.", dbError);
+    }
     return { success: true };
 
   } catch (error) {
@@ -357,4 +392,87 @@ async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price
   }
 }
 
-module.exports = { processAndSendDefaultEmail, sendQuotationEmail, processAndSendDefaultEmailFromDragDrop };
+// services/email.service.js
+
+async function sendGmailWithAttachments({ to, subject, html, attachments }) {
+  const boundary = "bulk_mail_boundary_" + Date.now();
+  const CRLF = "\r\n";
+
+  let messageParts = [
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    "MIME-Version: 1.0",
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+    "",
+    `--${boundary}`,
+    "Content-Type: text/html; charset=utf-8",
+    "Content-Transfer-Encoding: 7bit",
+    "",
+    html,
+    ""
+  ];
+
+  // Add each attachment to the message
+  attachments.forEach((file) => {
+    // Note: 'content' should be the Base64 string from frontend
+    // If the frontend sends 'url', you'd need to fetch it first.
+    messageParts.push(
+      `--${boundary}`,
+      `Content-Type: ${file.contentType}; name="${file.filename}"`,
+      `Content-Disposition: attachment; filename="${file.filename}"`,
+      "Content-Transfer-Encoding: base64",
+      "",
+      file.content, // The Base64 data
+      ""
+    );
+  });
+
+  messageParts.push(`--${boundary}--`);
+
+  const rawMessage = messageParts.join(CRLF);
+  const encodedMessage = Buffer.from(rawMessage)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+
+  const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
+  const res = await gmail.users.messages.send({
+    userId: "me",
+    requestBody: { raw: encodedMessage },
+  });
+
+  return res.data;
+}
+async function sendGmailRaw({ to, subject, html }) {
+  const boundary = "__bulk_boundary__";
+  const CRLF = "\r\n";
+
+  const messageParts = [
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    "MIME-Version: 1.0",
+    `Content-Type: text/html; charset=utf-8`,
+    "Content-Transfer-Encoding: 7bit",
+    "",
+    html
+  ];
+
+  const rawMessage = messageParts.join(CRLF);
+  const encodedMessage = Buffer.from(rawMessage)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+
+  const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
+  const res = await gmail.users.messages.send({
+    userId: "me",
+    requestBody: { raw: encodedMessage },
+  });
+
+  return res.data;
+}
+
+
+module.exports = { processAndSendDefaultEmail, sendQuotationEmail, processAndSendDefaultEmailFromDragDrop, sendGmailRaw, sendGmailWithAttachments };

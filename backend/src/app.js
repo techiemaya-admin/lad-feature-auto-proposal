@@ -1,7 +1,7 @@
 const express = require('express');
 const tenantRoute = require('./features/auto-proposal/routes/tenant-route');
-const locationRoute =  require('./features/auto-proposal/routes/location-routes');
-const conceptRoute =  require('./features/auto-proposal/routes/concept-routes');
+const locationRoute = require('./features/auto-proposal/routes/location-routes');
+const conceptRoute = require('./features/auto-proposal/routes/concept-routes');
 const leadRoute = require('./features/auto-proposal/routes/lead-routes');
 const pricingRoute = require('./features/auto-proposal/routes/pricing-routes');
 const quotationRoute = require('./features/auto-proposal/routes/quotation-routes');
@@ -19,7 +19,7 @@ const cors = require('cors'); // 1. Import cors
 // 2. Enable CORS
 app.use(cors({
   origin: 'http://localhost:3000', // Allow only your frontend
-  methods: ['GET', 'POST', 'PUT', 'DELETE','PATCH'], // Allowed actions
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'], // Allowed actions
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true // Allow cookies/auth headers
 }));
@@ -48,13 +48,14 @@ app.use('/api/pricing-rules', pricingRuleRoute);
 app.use('/api/test', require('./features/auto-proposal/routes/test.route')); // Add this line to include the test route
 app.use('/api/tenant-profile', require('./features/auto-proposal/routes/tenant-profile.routes')); // Add this line to include tenant profile routes
 app.use('/api/email-templates', require('./features/auto-proposal/routes/email-template.routes')); // Add this line to include email template routes
-app.use('/api/template-placeholder',require('./features/auto-proposal/routes/quotation-placeholder-routes'))
-app.use('/api/quotation-email-template',require('./features/auto-proposal/routes/quotation-email-template.routes'))
-app.use('/api/ai-response',require('./features/auto-proposal/routes/ai.response.routes'))
+app.use('/api/template-placeholder', require('./features/auto-proposal/routes/quotation-placeholder-routes'))
+app.use('/api/quotation-email-template', require('./features/auto-proposal/routes/quotation-email-template.routes'))
+app.use('/api/ai-response', require('./features/auto-proposal/routes/ai.response.routes'))
 
 // Use the exact prefix your frontend Axios client expects
-app.use('/api/conversations', conversationRoutes);
-
+app.use('/api/email-conversations', conversationRoutes);
+app.use(express.json({ limit: '60mb' }));
+app.use(express.urlencoded({ limit: '60mb', extended: true }));
 app.use((err, req, res, next) => {
   const status = err.statusCode || 500;
   const message = err.message || 'Internal Server Error';

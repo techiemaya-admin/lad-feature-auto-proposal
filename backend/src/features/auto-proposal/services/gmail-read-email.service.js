@@ -58,8 +58,8 @@ async function startWatch() {
   return response.data;
 }
 
-async function createProposalDraft(leadRequirementDetails, leadData, email_content) {
-
+async function createProposalDraft(leadRequirementDetails, leadData, email_content, conversation_id) {
+  console.log("Calculating final price for conversationid :", conversation_id, " lead requirement details :", leadRequirementDetails, " lead data : ", leadData, " email content : ", email_content);
   const calculatedPriceDetails = await finalPriceCalculationService.calculateFinalPrice(leadRequirementDetails.tenant_id, leadRequirementDetails.id, email_content, leadRequirementDetails.event_type);
   calculatedPriceDetails.breakdown.sort((a, b) => {
     const aPrice = a.price || 0;
@@ -110,9 +110,9 @@ async function createProposalDraft(leadRequirementDetails, leadData, email_conte
       .build();
     const prosalPathDetails = await aiService.generateProposalFromTemplate(placeholderBuilderForEmail, leadRequirementDetails.tenant_id);
 
-    await gmailSendService.processAndSendDefaultEmailFromDragDrop(leadRequirementDetails.tenant_id, placeholderBuilderForEmail, prosalPathDetails.gcsUrl, calculatedPriceDetails.final_price);
+    await gmailSendService.processAndSendDefaultEmailFromDragDrop(leadRequirementDetails.tenant_id, placeholderBuilderForEmail, prosalPathDetails.gcsUrl, calculatedPriceDetails.final_price, conversation_id);
 
-  
+
     // await gmailSendService.processAndSendDefaultEmail(leadRequirementDetails.tenant_id, placeholderBuilderForEmail, prosalPathDetails.gcsUrl, calculatedPriceDetails.final_price);
 
     const dataToSave = {
@@ -127,33 +127,89 @@ async function createProposalDraft(leadRequirementDetails, leadData, email_conte
       pricing_rule_ids: calculatedPriceDetails.applied_package_rules
     }
     proposalDraftRepository.create(dataToSave)
-  }else{console.log("quotation should not be made due to price valued is ZERO")}
+  } else { console.log("quotation should not be made due to price valued is ZERO") }
 
 }
 
+function isSystemGenerated(headers) {
+  const headerMap = {};
+  headers.forEach(h => { headerMap[h.name.toLowerCase()] = h.value.toLowerCase(); });
+
+  // A. List-Unsubscribe: Real leads don't have "Unsubscribe" buttons in their headers.
+  if (headerMap['list-unsubscribe']) return true;
+
+  // B. List-ID: Real people don't have List-IDs (YouTube, LinkedIn, Newsletters do).
+  if (headerMap['list-id']) return true;
+
+  // C. Auto-Submitted: Catch-all for "auto-generated" notifications.
+  if (headerMap['auto-submitted'] && headerMap['auto-submitted'] !== 'no') return true;
+
+  // D. Precedence: Values like 'bulk', 'list', or 'junk'.
+  if (headerMap['precedence'] && ['bulk', 'list', 'junk'].includes(headerMap['precedence'])) return true;
+
+  // E. No-Reply From Address:
+  const from = headerMap['from'] || "";
+  if (/no-reply|noreply|notification|donotreply/i.test(from)) return true;
+
+  return false;
+}
 function extractGmailData(fullMessage) {
   const headers = fullMessage.data.payload.headers;
+  const payload = fullMessage.data.payload;
 
-  // Extract "From" (e.g., "John Doe <john@example.com>")
+  // 1. Extract "From"
   const fromHeader = headers.find(h => h.name === 'From')?.value || "";
   const emailMatch = fromHeader.match(/<(.+)>|(\S+@\S+)/);
   const senderEmail = emailMatch ? (emailMatch[1] || emailMatch[2]) : null;
 
-  // Extract Subject
+  // 2. Extract Subject
   const subject = headers.find(h => h.name === 'Subject')?.value || "No Subject";
+
+  // 3. Extract Full Body Content
+  let body = "";
+
+  const getBody = (part) => {
+    if (part.body && part.body.data) {
+      // Decode Base64URL to UTF-8 string
+      const decoded = Buffer.from(part.body.data, 'base64').toString('utf-8');
+      body += decoded;
+    }
+    if (part.parts) {
+      part.parts.forEach(getBody);
+    }
+  };
+
+  // Gmail emails can be complex (multipart/alternative, etc.)
+  // We prioritize HTML if available, otherwise Plain Text
+  if (payload.parts) {
+    // Look for the HTML part specifically first
+    const htmlPart = payload.parts.find(p => p.mimeType === 'text/html');
+    const textPart = payload.parts.find(p => p.mimeType === 'text/plain');
+
+    if (htmlPart) getBody(htmlPart);
+    else if (textPart) getBody(textPart);
+    else payload.parts.forEach(getBody);
+  } else {
+    getBody(payload);
+  }
 
   return {
     threadId: fullMessage.data.threadId,
     messageId: fullMessage.data.id,
     senderEmail: senderEmail,
     subject: subject,
-    snippet: fullMessage.data.snippet,
-    // Store the full data for the raw_payload column
+    // This is the full decoded content for your 'content' column
+    content: body || fullMessage.data.snippet,
     raw: fullMessage.data
   };
 }
 
 async function processIncomingEmail(tenantId, fullMessage, lead_id, messageId) {
+  const headers = fullMessage.data.payload.headers;
+  if (isSystemGenerated(headers)) {
+    console.log("Dropping system notification/marketing email.");
+    return;
+  }
   const emailData = extractGmailData(fullMessage);
 
   console.log("Processing incoming email for tenant: {} , and emailData: {}", tenantId, emailData);
@@ -187,12 +243,13 @@ async function processIncomingEmail(tenantId, fullMessage, lead_id, messageId) {
     sender_id: lead_id,
     channel: 'email',
     message_type: 'text',
-    content: emailData.snippet, // Or your parsed full body
+    content: emailData.content, // Or your parsed full body
     raw_payload: emailData.raw,
     message_id: messageId // Save the Gmail message ID for reference
   });
+  console.log("Message saved with conversation ID:", conversation.id);
 
-  return message;
+  return conversation.id;
 }
 
 async function fetchNewEmails(email, historyIdFromWebhook) {
@@ -252,13 +309,14 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
             const leadData = await triggerNewLeadAutomation(contact.firstName, contact.lastName, contact.email);
             console.log("Lead created from email:", leadData.id);
 
-            await processIncomingEmail(tenantId, fullMessage, leadData.id, messageId);
-            if (tenatDetails.email != from) {
+            const conversation_id = await processIncomingEmail(tenantId, fullMessage, leadData.id, messageId);
+            console.log("Email saved to conversation with ID:", conversation_id);
+            if (tenatDetails.email != from && conversation_id != null && conversation_id != undefined) {
               const { leadRequirementDetails, values } = await createLeadRequirementViaPrompt(body, leadData.id, tenantId);
               console.log("Lead requirement details:", leadRequirementDetails);
               console.log("Saved requirement values:", values);
 
-              await createProposalDraft(leadRequirementDetails, leadData, body);
+              await createProposalDraft(leadRequirementDetails, leadData, body, conversation_id);
               // // process emails...
             } else {
               console.log("Email is from tenant's own email address, skipping lead creation and proposal drafting.");
@@ -400,12 +458,12 @@ async function triggerNewLeadAutomation(first_name, last_name, email) {
 }
 
 async function createLeadRequirementViaPrompt(body, lead_id, tenant_id) {
-console.log(lead_id)
+  console.log(lead_id)
   try {
 
     console.log("Testing AI prompt :", body);
     const response =
-     await aiService.generateAIResponse(body, tenant_id);
+      await aiService.generateAIResponse(body, tenant_id);
 
     // {
     //   "dynamic_requirements": {
