@@ -568,3 +568,6 @@ CREATE TABLE quotation_email_template (
     updated_at timestamptz DEFAULT now(),
     FOREIGN KEY (tenant_id) REFERENCES tenants (id)
 );
+
+ALTER TABLE conversation_messages
+ADD COLUMN global_message_id varchar(1000);

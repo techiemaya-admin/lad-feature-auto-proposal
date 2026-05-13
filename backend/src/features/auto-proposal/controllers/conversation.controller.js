@@ -1,6 +1,6 @@
 // src/features/conversations/conversation.controller.js
 const conversationService = require('../services/conversation.service');
-const {uploadBufferToGCSFromBase64} = require('../../../utils/gcsUploader');
+const { uploadToGCSFromBase64 } = require('../../../utils/gcsUploader');
 
 class ConversationController {
   async getConversations(req, res) {
@@ -63,12 +63,14 @@ class ConversationController {
 
   async uploadAttachment(req, res) {
     try {
+      console.log('File Object:', req.file); // Check your terminal!
+      console.log('Body Object:', req.body);
       if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
       }
 
       // Call service to upload to GCS
-      const result = await uploadBufferToGCSFromBase64(
+      const result = await uploadToGCSFromBase64(
         req.file.originalname,
         req.file.buffer,
         req.file.mimetype

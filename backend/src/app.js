@@ -23,9 +23,17 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true // Allow cookies/auth headers
 }));
-app.use(express.json());
 
-
+// In your main server.js
+app.use((req, res, next) => {
+  if (req.originalUrl === '/api/email-conversations/upload') {
+    console.log("Skipping JSON parsing for upload route");
+    next(); // Skip JSON parsing for the upload route
+  } else {
+    express.json()(req, res, next);
+  }
+});
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use("/api/gmail", gmailRoutes);
 
 
@@ -54,8 +62,7 @@ app.use('/api/ai-response', require('./features/auto-proposal/routes/ai.response
 
 // Use the exact prefix your frontend Axios client expects
 app.use('/api/email-conversations', conversationRoutes);
-app.use(express.json({ limit: '60mb' }));
-app.use(express.urlencoded({ limit: '60mb', extended: true }));
+
 app.use((err, req, res, next) => {
   const status = err.statusCode || 500;
   const message = err.message || 'Internal Server Error';

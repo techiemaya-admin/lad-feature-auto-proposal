@@ -28,27 +28,30 @@ async function uploadToGCS(localPath, destination) {
 async function uploadBufferToGCS(buffer, destination, mimetype) {
   const bucketName = process.env.GCS_BUCKET;
   const bucket = storage.bucket(bucketName);
-    const file = bucket.file(destination);
+  const file = bucket.file(destination);
 
-    await file.save(buffer, {
-        metadata: { contentType: mimetype },
-        resumable: false
-    });
+  await file.save(buffer, {
+    metadata: { contentType: mimetype },
+    resumable: false
+  });
 
-    // Option B: Generate a signed URL (valid for 1 year) if the bucket is private
-    const [url] = await file.getSignedUrl({
-        action: 'read',
-        expires: Date.now() + 365 * 24 * 60 * 60 * 1000, // 1 year
-    });
+  // Option B: Generate a signed URL (valid for 1 year) if the bucket is private
+  const [url] = await file.getSignedUrl({
+    action: 'read',
+    expires: Date.now() + 365 * 24 * 60 * 60 * 1000, // 1 year
+  });
 
-    return url;
+  return url;
 }
 /**
  * Uploads a buffer to GCS and returns a signed URL
  */
-const uploadBufferToGCSFromBase64 = async (originalname, buffer, mimetype) => {
+async function uploadToGCSFromBase64(originalname, buffer, mimetype) {
   // Create a unique filename to prevent overwriting
   const gcsFileName = `attachments/${Date.now()}-${originalname}`;
+  const bucketName = process.env.GCS_BUCKET;
+  const bucket = storage.bucket(bucketName);
+
   const file = bucket.file(gcsFileName);
 
   // Upload the buffer
@@ -60,7 +63,7 @@ const uploadBufferToGCSFromBase64 = async (originalname, buffer, mimetype) => {
   // Generate a Signed URL valid for 7 days
   const [url] = await file.getSignedUrl({
     action: 'read',
-    expires: Date.now() + 7 * 24 * 60 * 60 * 1000, 
+    expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
   });
 
   return {
@@ -71,4 +74,4 @@ const uploadBufferToGCSFromBase64 = async (originalname, buffer, mimetype) => {
   };
 };
 
-module.exports = { uploadToGCS,uploadBufferToGCS, uploadBufferToGCSFromBase64};
+module.exports = { uploadToGCS, uploadBufferToGCS, uploadToGCSFromBase64 };

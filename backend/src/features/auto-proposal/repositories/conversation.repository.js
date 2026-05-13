@@ -168,7 +168,7 @@ class ConversationRepository {
             ELSE 'inbound' 
         END AS direction,
         cm.channel AS provider,
-        COALESCE(c.metadata->>'subject', 'No Subject') AS subject,
+        COALESCE(cm.raw_payload->>'subject', 'No Subject') AS subject,
         cm.content AS body_html,
         LEFT(cm.content, 100) AS preview_text,
         c.status,

@@ -25,7 +25,7 @@ const gmailSendService = require("./gmail-send-email.service");
 const placeHolderBuilder = require('../../../utils/placeHolderBuilder');
 const PlaceHolderBuilder = require("../../../utils/placeHolderBuilder");
 const tenantProfileService = require("./tenant-profile.service");
-
+const conversationService = require("./conversation.service");
 
 /* 1️⃣ Start Gmail Watch */
 async function startWatch() {
@@ -58,7 +58,7 @@ async function startWatch() {
   return response.data;
 }
 
-async function createProposalDraft(leadRequirementDetails, leadData, email_content, conversation_id) {
+async function createProposalDraft(leadRequirementDetails, leadData, email_content, conversation_id, global_message_id, threadId, subject) {
   console.log("Calculating final price for conversationid :", conversation_id, " lead requirement details :", leadRequirementDetails, " lead data : ", leadData, " email content : ", email_content);
   const calculatedPriceDetails = await finalPriceCalculationService.calculateFinalPrice(leadRequirementDetails.tenant_id, leadRequirementDetails.id, email_content, leadRequirementDetails.event_type);
   calculatedPriceDetails.breakdown.sort((a, b) => {
@@ -110,10 +110,7 @@ async function createProposalDraft(leadRequirementDetails, leadData, email_conte
       .build();
     const prosalPathDetails = await aiService.generateProposalFromTemplate(placeholderBuilderForEmail, leadRequirementDetails.tenant_id);
 
-    await gmailSendService.processAndSendDefaultEmailFromDragDrop(leadRequirementDetails.tenant_id, placeholderBuilderForEmail, prosalPathDetails.gcsUrl, calculatedPriceDetails.final_price, conversation_id);
-
-
-    // await gmailSendService.processAndSendDefaultEmail(leadRequirementDetails.tenant_id, placeholderBuilderForEmail, prosalPathDetails.gcsUrl, calculatedPriceDetails.final_price);
+    await gmailSendService.processAndSendDefaultEmailFromDragDrop(leadRequirementDetails.tenant_id, placeholderBuilderForEmail, prosalPathDetails.gcsUrl, calculatedPriceDetails.final_price, conversation_id, global_message_id, threadId, subject);
 
     const dataToSave = {
       tenant_id: leadRequirementDetails.tenant_id,
@@ -156,6 +153,8 @@ function isSystemGenerated(headers) {
 function extractGmailData(fullMessage) {
   const headers = fullMessage.data.payload.headers;
   const payload = fullMessage.data.payload;
+  const globalMsgId = headers.find(h => h.name.toLowerCase() === 'message-id')?.value;
+  console.log("Global Message ID from headers:", globalMsgId);
 
   // 1. Extract "From"
   const fromHeader = headers.find(h => h.name === 'From')?.value || "";
@@ -196,6 +195,7 @@ function extractGmailData(fullMessage) {
   return {
     threadId: fullMessage.data.threadId,
     messageId: fullMessage.data.id,
+    globalMessageId: globalMsgId,
     senderEmail: senderEmail,
     subject: subject,
     // This is the full decoded content for your 'content' column
@@ -245,11 +245,17 @@ async function processIncomingEmail(tenantId, fullMessage, lead_id, messageId) {
     message_type: 'text',
     content: emailData.content, // Or your parsed full body
     raw_payload: emailData.raw,
-    message_id: messageId // Save the Gmail message ID for reference
+    message_id: messageId, // Save the Gmail message ID for reference
+    global_message_id: emailData.globalMessageId // Save the Gmail global message ID for reference
   });
   console.log("Message saved with conversation ID:", conversation.id);
-
-  return conversation.id;
+  const result = {
+    conversation_id: conversation.id,
+    threadId: emailData.threadId,
+    messageId: emailData.messageId,
+    global_message_id: emailData.globalMessageId
+  }
+  return result;
 }
 
 async function fetchNewEmails(email, historyIdFromWebhook) {
@@ -309,15 +315,36 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
             const leadData = await triggerNewLeadAutomation(contact.firstName, contact.lastName, contact.email);
             console.log("Lead created from email:", leadData.id);
 
-            const conversation_id = await processIncomingEmail(tenantId, fullMessage, leadData.id, messageId);
+            const result = await processIncomingEmail(tenantId, fullMessage, leadData.id, messageId);
+            const conversation_id = result.conversation_id;
+            const threadId = result.threadId;
+            const global_message_id = result.global_message_id;
             console.log("Email saved to conversation with ID:", conversation_id);
             if (tenatDetails.email != from && conversation_id != null && conversation_id != undefined) {
-              const { leadRequirementDetails, values } = await createLeadRequirementViaPrompt(body, leadData.id, tenantId);
-              console.log("Lead requirement details:", leadRequirementDetails);
-              console.log("Saved requirement values:", values);
+              const resultToReturn = await createLeadRequirementViaPrompt(body, leadData.id, tenantId, conversation_id);
+              const type = resultToReturn.type;
+              const leadRequirementDetails = resultToReturn.leadRequirementDetails;
+              const values = resultToReturn.values;
+              const content = resultToReturn.content;
+              if (type === "DISCOVERY_EMAIL") {
+                console.log("The email was classified as a DISCOVERY_EMAIL. No lead requirement was created. AI's suggested email reply content:", content);
+                const reSendSubject = subject.startsWith("Re:") ? subject : `Re: ${subject}`;
+                const gmailResponse = gmailSendService.sendGmailRaw({
+                  to: contact.email,
+                  subject: reSendSubject,
+                  html: content,
+                  messageId: global_message_id,
+                  threadId: threadId
+                });
+                await conversationService.createConversationAndConversationMessages(tenantId, contact.email, reSendSubject, content, [], gmailResponse.id);
+              }
+              else {
+                console.log("Lead requirement details:", leadRequirementDetails);
+                console.log("Saved requirement values:", values);
 
-              await createProposalDraft(leadRequirementDetails, leadData, body, conversation_id);
-              // // process emails...
+                await createProposalDraft(leadRequirementDetails, leadData, body, conversation_id,global_message_id, threadId,subject);
+                // // process emails...
+              }
             } else {
               console.log("Email is from tenant's own email address, skipping lead creation and proposal drafting.");
             }
@@ -457,13 +484,13 @@ async function triggerNewLeadAutomation(first_name, last_name, email) {
   }
 }
 
-async function createLeadRequirementViaPrompt(body, lead_id, tenant_id) {
+async function createLeadRequirementViaPrompt(body, lead_id, tenant_id, conversation_id) {
   console.log(lead_id)
   try {
 
     console.log("Testing AI prompt :", body);
     const response =
-      await aiService.generateAIResponse(body, tenant_id);
+      await aiService.generateAIResponse(body, tenant_id, conversation_id);
 
     // {
     //   "dynamic_requirements": {
@@ -493,13 +520,19 @@ async function createLeadRequirementViaPrompt(body, lead_id, tenant_id) {
 
 
     console.log("Generated AI response:", response);
-    response.lead_id = lead_id;
-    response.tenant_id = tenant_id;
-    const leadRequirementDetails = await leadRequirementRepository.create(response);
+    if (response.type === "DISCOVERY_EMAIL") {
+      console.log("Received a general inquiry. No lead requirement will be created. AI's suggested email reply:", response.content);
+      return response;
+    }
+    const data = response.data;
+    data.lead_id = lead_id;
+    data.tenant_id = tenant_id;
+    const leadRequirementDetails = await leadRequirementRepository.create(data);
     console.log("Lead requirement created with :", leadRequirementDetails);
 
-    const results = await leadRequirementValueRepo.saveRequirementValues(tenant_id, leadRequirementDetails.id, response.dynamic_requirements);
-    return { leadRequirementDetails: leadRequirementDetails, values: results };
+    const results = await leadRequirementValueRepo.saveRequirementValues(tenant_id, leadRequirementDetails.id, data.dynamic_requirements);
+    const resultToReturn = { type: "PROPOSAL_DATA", leadRequirementDetails: leadRequirementDetails, values: results }
+    return resultToReturn;
   } catch (err) {
     console.error("Error in createLeadRequirementViaPrompt:", err);
   }

@@ -35,20 +35,10 @@ class ConversationService {
 
   async handleBulkEmailSend(tenantId, payload) {
     const { body_html, subject, recipients, provider, attachments } = payload;
+    console.log("Handling bulk email send for tenant:", tenantId, " with payload:", payload);
     const results = [];
-    processedAttachments = [];
+    const processedAttachments = attachments;
 
-    // 1. Upload attachments to GCS and get URLs
-    if (attachments && attachments.length > 0) {
-      for (const attach of attachments) {
-        const gcsUrl = await uploadToGCSFromBase64(attach.filename, attach.content, attach.contentType);
-        processedAttachments.push({
-          url: gcsUrl,
-          filename: attach.filename,
-          type: attach.contentType
-        });
-      }
-    }
     for (const recipient of recipients) {
       try {
 
@@ -71,31 +61,8 @@ class ConversationService {
           html: personalizedHtml,
           attachments: attachments || [] // Optional: handle if passed
         });
-
-        const result = await ConversationRepository.getLeadAndThreadByEmail(tenantId, recipient.email);
-        const conversation = await ConversationRepository.upsertByThread({
-          tenant_id: tenantId,
-          lead_id: result?.lead_id || null,
-          external_thread_id: result?.external_thread_id,
-          channel: 'email',
-          metadata: { subject: personalizedSubject }
-        });
-        // 5. Save to conversation_messages using your createMessage method
-        await MessageRepository.createMessage({
-          tenant_id: tenantId,
-          conversation_id: conversation.id,
-          sender_type: 'agent',
-          channel: 'email',
-          content: personalizedHtml,
-          message_id: gmailResponse.id,
-          raw_payload: {
-            to: recipient.email,
-            subject: personalizedSubject,
-            attachments: processedAttachments, // This matches your requested format
-            sent_via: 'bulk_action'
-          }
-        });
-
+        console.log(`Email sent to ${recipient.email} with Gmail response:`, gmailResponse.data);
+        await this.createConversationAndConversationMessages(tenantId, recipient.email, personalizedSubject, personalizedHtml, processedAttachments, gmailResponse.id, gmailResponse.globalMessageId);
         results.push({ email: recipient.email, status: 'sent' });
       } catch (err) {
         console.error(`Failed to send bulk email to ${recipient.email}:`, err);
@@ -114,6 +81,33 @@ class ConversationService {
       const key = (p1 || p2).trim();
       // Use _.get or direct access. Example: data['name']
       return data[key] !== undefined ? data[key] : match;
+    });
+  }
+
+  async createConversationAndConversationMessages(tenantId, email, personalizedSubject, personalizedHtml, processedAttachments, message_id = null, global_message_id = null) {
+    console.log("Creating conversation and message for email:", email, " tenantId:", tenantId, " message_id:", message_id, " global_message_id:", global_message_id," personalizedSubject:", personalizedSubject);
+    const result = await ConversationRepository.getLeadAndThreadByEmail(tenantId, email);
+    const conversation = await ConversationRepository.upsertByThread({
+      tenant_id: tenantId,
+      lead_id: result?.lead_id || null,
+      external_thread_id: result?.external_thread_id,
+      channel: 'email',
+      metadata: { subject: personalizedSubject }
+    });
+    // 5. Save to conversation_messages using your createMessage method
+    await MessageRepository.createMessage({
+      tenant_id: tenantId,
+      conversation_id: conversation.id,
+      sender_type: 'agent',
+      channel: 'email',
+      content: personalizedHtml,
+      message_id: message_id,
+      raw_payload: {
+        to: email,
+        subject: personalizedSubject,
+        attachments: processedAttachments
+      },
+      global_message_id: global_message_id
     });
   }
 }

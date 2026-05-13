@@ -213,8 +213,8 @@ async function processAndSendDefaultEmail(tenantId, data, url, price) {
 
 }
 
-async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price, conversation_id) {
-  console.log(`Sending email for tenant: ${tenantId} conversation_id: ${conversation_id} lead_email: ${data.lead_email} url: ${url} price: ${price}`);
+async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price, conversation_id, global_message_id, threadId, subject) {
+  console.log(`Sending email for tenant: ${tenantId} conversation_id: ${conversation_id} lead_email: ${data.lead_email} url: ${url} price: ${price} global_message_id: ${global_message_id} threadId: ${threadId}`);
 
   if (!data.lead_email) {
     console.warn("Email not sent because lead_email is undefined");
@@ -269,9 +269,13 @@ async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price
     if (!template && template === undefined) {
       // Fallback if no default template exists in DB
       htmlContent = await emailTemplateService.defaultEmailTemplateIfNoTemplateUpload();
-      subjectLine = "Quotation from [company_name]";
+      subjectLine = "Re: Quotation from [company_name]";
     } else {
-      subjectLine = template.subject;
+      if (subject !== undefined && subject.trim() !== "") {
+        subjectLine = subject.startsWith("Re:") ? subject : `Re: ${subject}`;
+      } else {
+        subjectLine = template.subject.startsWith("Re:") ? template.subject : `Re: ${template.subject}`;
+      }
 
       // Logic for HTML vs Plain Text
       if (template.content_format === 'html') {
@@ -307,21 +311,29 @@ async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price
     const boundary = "__boundary_string_generated_123__";
     const CRLF = "\r\n";
 
+
+    const cleanMessageId = global_message_id.startsWith('<')
+      ? global_message_id
+      : `<${global_message_id}>`;
+
+    // Headers end with exactly ONE blank line
     const emailHeaders = [
       `To: ${data.lead_email}`,
-      `Subject: ${finalSubject}`,
+      `Subject: ${finalSubject.startsWith('Re:') ? finalSubject : 'Re: ' + finalSubject}`,
+      `In-Reply-To: ${cleanMessageId}`,
+      `References: ${cleanMessageId}`,
       "MIME-Version: 1.0",
       `Content-Type: multipart/mixed; boundary="${boundary}"`,
-      ""
+      "", // Mandatory blank line
     ].join(CRLF);
 
     const bodyPart = [
       `--${boundary}`,
       "Content-Type: text/html; charset=utf-8",
       "Content-Transfer-Encoding: 7bit",
-      "",
+      "", // Blank line before the actual HTML content
       finalHtml,
-      ""
+      "" // CRLF after the HTML content
     ].join(CRLF);
 
     const attachmentPart = attachmentBase64 ? [
@@ -329,12 +341,19 @@ async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price
       `Content-Type: application/pdf; name="${filename}"`,
       `Content-Disposition: attachment; filename="${filename}"`,
       "Content-Transfer-Encoding: base64",
-      "",
+      "", // Blank line before base64 data
       attachmentBase64,
       ""
     ].join(CRLF) : "";
 
-    const fullMessage = emailHeaders + CRLF + bodyPart + CRLF + attachmentPart + CRLF + `--${boundary}--`;
+    // Join them together. Note: No extra CRLF between emailHeaders and bodyPart 
+    // because emailHeaders already includes the blank line via the empty string.
+    const fullMessage = 
+      emailHeaders + 
+      CRLF + CRLF + // This is the mandatory gap that separates headers from body
+      bodyPart + 
+      attachmentPart + 
+      `--${boundary}--`;
 
     // 6. Encode and Send via Gmail API
     const encodedMessage = Buffer.from(fullMessage)
@@ -346,7 +365,10 @@ async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price
     const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
     const response = await gmail.users.messages.send({
       userId: "me",
-      requestBody: { raw: encodedMessage },
+      requestBody: {
+        raw: encodedMessage,
+        threadId: threadId // Ensure the reply is in the same thread
+      },
     });
 
     console.log("Email successfully sent:", response.data.id);
@@ -373,7 +395,8 @@ async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price
             url: url, // The link to the PDF
             type: "application/pdf"
           }] : []
-        }
+        },
+        global_message_id: global_message_id // Pass the global_message_id for tracking
       };
 
       // Call your specific method
@@ -412,20 +435,29 @@ async function sendGmailWithAttachments({ to, subject, html, attachments }) {
     ""
   ];
 
-  // Add each attachment to the message
-  attachments.forEach((file) => {
-    // Note: 'content' should be the Base64 string from frontend
-    // If the frontend sends 'url', you'd need to fetch it first.
-    messageParts.push(
-      `--${boundary}`,
-      `Content-Type: ${file.contentType}; name="${file.filename}"`,
-      `Content-Disposition: attachment; filename="${file.filename}"`,
-      "Content-Transfer-Encoding: base64",
-      "",
-      file.content, // The Base64 data
-      ""
-    );
-  });
+  // 1. Process each attachment by fetching the URL data
+  if (attachments && attachments.length > 0) {
+    for (const file of attachments) {
+      try {
+        // Download the file from GCS URL
+        const response = await axios.get(file.url, { responseType: 'arraybuffer' });
+        const base64Content = Buffer.from(response.data).toString('base64');
+
+        messageParts.push(
+          `--${boundary}`,
+          `Content-Type: ${file.type || 'application/octet-stream'}; name="${file.filename}"`,
+          `Content-Disposition: attachment; filename="${file.filename}"`,
+          "Content-Transfer-Encoding: base64",
+          "",
+          base64Content,
+          ""
+        );
+      } catch (error) {
+        console.error(`Failed to fetch attachment from ${file.url}:`, error.message);
+        // Continue with other attachments even if one fails
+      }
+    }
+  }
 
   messageParts.push(`--${boundary}--`);
 
@@ -437,20 +469,44 @@ async function sendGmailWithAttachments({ to, subject, html, attachments }) {
     .replace(/=+$/, "");
 
   const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
+  
+  // 2. Send the message
   const res = await gmail.users.messages.send({
     userId: "me",
     requestBody: { raw: encodedMessage },
   });
 
-  return res.data;
+  // 3. Get the Global Message ID (Post-Send)
+  const internalId = res.data.id;
+  const messageDetails = await gmail.users.messages.get({
+    userId: "me",
+    id: internalId,
+    format: "metadata",
+    metadataHeaders: ["Message-ID"],
+  });
+
+  const globalMessageId = messageDetails.data.payload.headers.find(
+    (h) => h.name.toLowerCase() === "message-id"
+  )?.value;
+
+  return {
+    ...res.data,
+    globalMessageId: globalMessageId
+  };
 }
-async function sendGmailRaw({ to, subject, html }) {
-  const boundary = "__bulk_boundary__";
+
+async function sendGmailRaw({ to, subject, html, messageId, threadId }) {
+  console.log("Preparing to send email with subject:", subject, "to:", to, "in thread:", threadId, "replying to message ID:", messageId);
   const CRLF = "\r\n";
+
+  // Ensure subject starts with Re: (Standard for threading)
+  const replySubject = subject.startsWith("Re:") ? subject : `Re: ${subject}`;
 
   const messageParts = [
     `To: ${to}`,
-    `Subject: ${subject}`,
+    `Subject: ${replySubject}`,
+    `In-Reply-To: ${messageId}`,
+    `References: ${messageId}`,
     "MIME-Version: 1.0",
     `Content-Type: text/html; charset=utf-8`,
     "Content-Transfer-Encoding: 7bit",
@@ -466,13 +522,17 @@ async function sendGmailRaw({ to, subject, html }) {
     .replace(/=+$/, "");
 
   const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
+
   const res = await gmail.users.messages.send({
     userId: "me",
-    requestBody: { raw: encodedMessage },
+    requestBody: {
+      raw: encodedMessage,
+      // CRITICAL: This is what groups it in the same conversation thread
+      threadId: threadId
+    },
   });
 
   return res.data;
 }
-
 
 module.exports = { processAndSendDefaultEmail, sendQuotationEmail, processAndSendDefaultEmailFromDragDrop, sendGmailRaw, sendGmailWithAttachments };
