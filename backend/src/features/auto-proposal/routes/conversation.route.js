@@ -26,4 +26,5 @@ const upload = multer({
 router.post('/upload', upload.single('file'), conversationController.uploadAttachment);
 
 router.get('/email-ai-followup/:contactId', authenticateJWT, conversationController.generateFollowUp);
+router.get('/email-ai-crux/:contactId', authenticateJWT, conversationController.generateFollowUpCrux);
 module.exports = router;

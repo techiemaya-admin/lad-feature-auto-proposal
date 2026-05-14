@@ -114,6 +114,26 @@ class ConversationController {
       res.status(500).json({ success: false, error: error.message });
     }
   };
+
+  
+  async generateFollowUpCrux(req, res) {
+    try {
+      const { contactId } = req.params;
+      console.log("Generating follow-up for contact_id:", contactId, "tenant:", req.tenantId);
+      // 1. Fetch the last message from this contact (Inbound)
+      const messages = await conversationService.getContactMessages(req.tenantId, contactId);
+      console.log("Messages fetched for follow-up crux generation: ", messages);
+      const tenantDetails=await tenantService.getTenantById(req.tenantId);
+      const leadDetails = await leadService.getLeadById(contactId, req.tenantId);
+     const crux = await aiResponseService.generateEmailMessagesCrux(messages, tenantDetails, leadDetails);
+     console.log("Generated Crux: ", crux);
+      res.status(200).json({ success: true, crux });
+
+    } catch (error) {
+      console.error("Error generating AI follow-up:", error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  };
 }
 
 module.exports = new ConversationController();

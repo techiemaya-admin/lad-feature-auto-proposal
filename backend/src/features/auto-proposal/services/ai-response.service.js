@@ -821,7 +821,7 @@ class AIService {
     const finalPrompt = `
       You are an expert sales and customer relations assistant for ${tenantDetails.name}. 
       RECIPIENT (The Client):
-      - Name: ${leadDetails.first_name +" "+ leadDetails.last_name || 'Valued Client'}
+      - Name: ${leadDetails.first_name + " " + leadDetails.last_name || 'Valued Client'}
       - Company: ${leadDetails.company || 'Not Specified'}
 
       SENDER (Your Identity):
@@ -831,10 +831,10 @@ class AIService {
       - Your Phone: ${tenantDetails.phone}
 
       CORE RULE: 
-              The email is FROM ${tenantDetails.name} TO ${leadDetails.first_name +" "+ leadDetails.last_name || 'Valued Client'}. 
+              The email is FROM ${tenantDetails.name} TO ${leadDetails.first_name + " " + leadDetails.last_name || 'Valued Client'}. 
               DO NOT address the email to "${tenantDetails.name}".
-              START the email with "Dear ${leadDetails.first_name +" "+ leadDetails.last_name || 'Valued Client'}," or "Hi ${leadDetails.first_name +" "+ leadDetails.last_name || 'Valued Client'},".
-                  The client (${leadDetails.first_name +" "+ leadDetails.last_name || 'Valued Client'}) recently sent this message:
+              START the email with "Dear ${leadDetails.first_name + " " + leadDetails.last_name || 'Valued Client'}," or "Hi ${leadDetails.first_name + " " + leadDetails.last_name || 'Valued Client'},".
+                  The client (${leadDetails.first_name + " " + leadDetails.last_name || 'Valued Client'}) recently sent this message:
               "${lastMessage}"
 
               Based on their message, draft a warm, professional follow-up. 
@@ -844,7 +844,7 @@ class AIService {
       Draft a professional, warm, and proactive follow-up email. 
 
       CRITICAL RULES:
-1. START the email with: "Dear ${leadDetails.first_name +" "+ leadDetails.last_name || 'Valued Client'}," or "Hi ${leadDetails.first_name +" "+ leadDetails.last_name || 'Valued Client'},".
+1. START the email with: "Dear ${leadDetails.first_name + " " + leadDetails.last_name || 'Valued Client'}," or "Hi ${leadDetails.first_name + " " + leadDetails.last_name || 'Valued Client'},".
 3. End the email by signing off as "${tenantDetails.name}".
 4. Mention that they can visit your website ${tenantDetails.website} or email ${tenantDetails.email} for more info.
 
@@ -881,6 +881,34 @@ class AIService {
     }
   }
 
+  async generateEmailMessagesCrux(messages, tenantDetails, leadDetails) {
+    const prompt = `You are an expert executive assistant for ${tenantDetails.name}.
+Below is a conversation history with a client named ${leadDetails.first_name + " " + leadDetails.last_name || 'Valued Client'}.
+
+CONVERSATION:
+${messages.map(msg => `- ${msg.sender_type === 'lead' ? 'Client' : 'You'}: ${msg.body_html}`).join('\n')}
+
+TASK:
+Provide a "Crux" (executive summary) of this conversation using the following strict structure:
+1. Core Objective: Summarize what the lead is seeking.
+2. Key Requirements: List logistical details established or missing (date, guest count, budget).
+3. Current Status: Define the current stage of the inquiry and the immediate next step needed.
+
+Use a professional and helpful tone.
+
+FORMAT:
+Return ONLY a JSON object where the value is a single string formatted with markdown bullets and bold headers exactly like this:
+{ 
+  "crux": "Here is the crux of the conversation:\n\n* **Core Objective:** [Details here]\n* **Key Requirements:** [Details here]\n* **Current Status:** [Details here]" 
+}`;
+    console.log(prompt)
+    const aiResponse = await this.callGenAI(prompt);
+    const cleanJson = aiResponse.replace(/```json|```/g, "").trim();
+    const result = JSON.parse(cleanJson);
+
+    // Format newlines for display
+    return result.crux.replace(/\n/g, '<br />');
+  }
 }
 
 
