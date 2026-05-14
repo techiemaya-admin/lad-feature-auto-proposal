@@ -33,6 +33,12 @@ class ConversationService {
     return await ConversationRepository.findMessagesByContactId(tenantId, contactId);
   }
 
+  
+  async findLastMessagesByContactId(tenantId, contactId) {
+    // Business logic: e.g. marking messages as read or processing HTML
+    return await ConversationRepository.findLastMessagesByContactId(tenantId, contactId);
+  }
+
   async handleBulkEmailSend(tenantId, payload) {
     const { body_html, subject, recipients, provider, attachments } = payload;
     console.log("Handling bulk email send for tenant:", tenantId, " with payload:", payload);

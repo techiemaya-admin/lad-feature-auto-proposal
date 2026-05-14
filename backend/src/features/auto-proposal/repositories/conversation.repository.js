@@ -184,6 +184,34 @@ class ConversationRepository {
 
     return await AppDataSource.query(sql, [tenantId, contactId]);
   }
+
+  
+  async findLastMessagesByContactId(tenantId, contactId) {
+    const sql = `
+    SELECT 
+        cm.id,
+        c.lead_id AS contact_id,
+        CASE 
+            WHEN cm.sender_type = 'agent' THEN 'outbound' 
+            ELSE 'inbound' 
+        END AS direction,
+        cm.channel AS provider,
+        COALESCE(cm.raw_payload->>'subject', 'No Subject') AS subject,
+        cm.content AS body_html,
+        LEFT(cm.content, 100) AS preview_text,
+        c.status,
+        cm.created_at AS sent_at,
+        -- THIS IS THE CHANGE:
+        -- Extract the 'attachments' array from raw_payload
+        cm.raw_payload->'attachments' AS attachments
+    FROM conversation_messages cm
+    JOIN conversations c ON cm.conversation_id = c.id
+    WHERE c.tenant_id = $1 AND c.lead_id = $2 AND cm.sender_type = 'lead'
+    ORDER BY cm.created_at DESC limit 1;
+  `;
+
+    return await AppDataSource.query(sql, [tenantId, contactId]);
+  }
 }
 
 module.exports = new ConversationRepository();

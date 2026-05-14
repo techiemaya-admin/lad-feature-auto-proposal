@@ -180,16 +180,16 @@ class AIService {
   async generateAIResponse(emailContent, tenant_id, conversation_id) {
     try {
       const rawHistory = await conversationMessageRepository.findTop10EmailByTenantIdAndConversationId(tenant_id, conversation_id);
-    
-    // Clean HTML from history content and format for AI
-    const formattedHistory = rawHistory
-      .reverse() // Oldest to newest
-      .map(m => {
-        const role = m.sender_type === 'lead' ? 'Customer' : 'Assistant';
-        const cleanContent = this.stripHtml(m.content);
-        return `${role}: ${cleanContent}`;
-      })
-      .join('\n');
+
+      // Clean HTML from history content and format for AI
+      const formattedHistory = rawHistory
+        .reverse() // Oldest to newest
+        .map(m => {
+          const role = m.sender_type === 'lead' ? 'Customer' : 'Assistant';
+          const cleanContent = this.stripHtml(m.content);
+          return `${role}: ${cleanContent}`;
+        })
+        .join('\n');
 
       // 1. Fetch active concepts for this tenant
       const concepts = await conceptRepo.findAll(tenant_id);
@@ -815,6 +815,72 @@ class AIService {
 
     return { "suggestions": [{ "name": "Event Proposal - [lead_company] - Luxury Tier", "subject": "An Exclusive Vision for Your Product Launch Event - Proposal Enclosed", "body_text": "Subject: An Exclusive Vision for Your Product Launch Event - Proposal Enclosed\n\nDear [lead_name],\n\nWe trust this message finds you well. Following our insightful discussions, [company_name] is honored to present a bespoke proposal tailored to transcend your aspirations for a truly exceptional Product Launch Event.\n\nOur team has meticulously crafted an experience that integrates unparalleled Venue elegance, cutting-edge Production, and sophisticated Branding to create an Immersive Brand Activation. This proposal, [quotation_id], reflects our commitment to delivering an event that is not merely executed, but exquisitely curated to leave a lasting legacy.\n\nDiscover the detailed orchestration of your vision by reviewing the comprehensive proposal. We have included an outline of premium services from our Venue selection to the bespoke Stage Setup, ensuring every element resonates with your brand's prestige.\n\nTotal Investment: [currency][final_price]\n\nView Your Exclusive Proposal: [company_website]/quotations/[quotation_id]\n\nThis proposal is valid until [valid_till]. We are eager to discuss this further at your convenience and refine every detail to perfection.\n\nWarmest regards,\n\n[prepared_by]\nBusiness Strategist\n[company_name]\n[company_phone] | [company_email]\n[company_website]\n\nConfidentiality Notice: This document contains proprietary and confidential information. It is intended solely for the use of the individual or entity to whom it is addressed.", "description": "Initial proposal delivery for a high-end luxury event, emphasizing bespoke solutions, elegance, and unparalleled experience. Focuses on Product Launch Event, Venue, Production, Branding, and Immersive Brand Activation.", "content_format": "plain_text" }, { "name": "Executive Quote - [lead_company] - Strategic Corporate Gala", "subject": "Strategic Investment: Your Corporate Gala Dinner - Quotation [quotation_id]", "body_text": "Subject: Strategic Investment: Your Corporate Gala Dinner - Quotation [quotation_id]\n\nDear [lead_name],\n\nAt [company_name], we understand that a Corporate Gala Dinner is a strategic imperative. We are pleased to present our official quotation, [quotation_id], for orchestrating an Elegant Corporate Gala that promises a significant return on investment through impeccable execution and brand enhancement.\n\nThis quotation outlines our comprehensive approach, encompassing meticulous Catering, sophisticated Stage Setup, and seamless Production to ensure a flawless experience.\n\nKey Details:\nQuotation ID: [quotation_id]\nQuotation Date: [quotation_date]\nValid Till: [valid_till]\nTotal Base Investment: [currency][total_base_price]\nFinal Strategic Investment: [currency][final_price]\n\nAccess Your Executive Quotation: [company_website]/quotations/[quotation_id]\n\nWe are confident that this meticulously planned event will significantly elevate your corporate standing. Please do not hesitate to reach out to [prepared_by] directly to discuss any aspect of this proposal.\n\nSincerely,\n\n[prepared_by]\nSenior Strategist\n[company_name]\n[company_address]\n[company_phone] | [company_email]\n[linkedin_url]\n\nConfidentiality Notice: The contents of this quotation are proprietary and confidential.", "description": "Concise, ROI-focused quote for a corporate client, highlighting strategic benefits, efficiency, and value for an Elegant Corporate Gala.", "content_format": "plain_text" }, { "name": "Special Offer - [lead_company] - IMPACT Pricing", "subject": "Enhancing Your Dynamic Product Launch: Exclusive 'IMPACT' Pricing for [lead_company]", "body_text": "Subject: Enhancing Your Dynamic Product Launch: Exclusive 'IMPACT' Pricing for [lead_company]\n\nDear [lead_name],\n\nFollowing our previous correspondence regarding your Dynamic Product Launch, [company_name] is excited to present a special enhancement to your proposed investment.\n\nTo ensure your event achieves maximum reach and unforgettable impact, we are pleased to offer our exclusive 'IMPACT' pricing structure. This special incentive reflects a [currency][total_discount] saving, designed to provide unparalleled value without compromising on the bespoke quality you expect.\n\nOriginal Investment: [currency][total_base_price]\nSpecial 'IMPACT' Investment: [currency][final_price]\n\nThis revised quotation, [quotation_id], dated [quotation_date], includes our comprehensive Venue, Production, and Branding services, now with the added benefit of our 'IMPACT' pricing.\n\nReview Your Updated Quotation: [company_website]/quotations/[quotation_id]\n\nThis exceptional offer is valid for a limited period, until [valid_till]. We encourage you to seize this opportunity to elevate your Dynamic Product Launch.\n\nBest regards,\n\n[prepared_by]\nClient Relations\n[company_name]\n[company_phone]\n[company_website]\n\nConfidentiality Notice: This information is confidential and intended for the recipient only.", "description": "Follow-up email introducing a special discount using the 'IMPACT' pricing logic, aimed at re-engaging the client with a value proposition for a Dynamic Product Launch.", "content_format": "plain_text" }, { "name": "Re-engagement - [lead_company] - Revitalize Your Product Launch Event", "subject": "Revisiting Your Vision for a Product Launch Event at [lead_company] - A Fresh Perspective", "body_text": "Subject: Revisiting Your Vision for a Product Launch Event at [lead_company] - A Fresh Perspective\n\nDear [lead_name],\n\nWe hope this email finds you well. It has been some time since our last communication regarding your envisioned Product Launch Event.\n\nAt [company_name], we remain enthusiastic about the potential to create a truly spectacular and impactful event for [lead_company]. We understand that priorities can shift, and we wanted to check in to see if your plans for a Product Launch Event are moving forward.\n\nPerhaps there are new insights or evolving objectives we could incorporate into our original proposal, [quotation_id], dated [quotation_date]? We are adept at offering flexible solutions and fresh perspectives, ensuring your event truly stands out.\n\nWe would be delighted to schedule a brief call at your convenience to discuss how we can revitalize your plans or address any new requirements you might have. Our expertise in Venue, Production, and Branding for Product Launch Events remains at your disposal.\n\nKindly respond to this email or reach out to [prepared_by] at [company_phone] to reconnect.\n\nSincerely,\n\n[prepared_by]\nStrategic Partnerships\n[company_name]\n[company_email]\n[company_website]\n\nConfidentiality Notice: Your previous discussions and any shared information remain confidential.", "description": "Re-engagement email for a cold lead, reiterating interest, offering new insights, and flexible options for their Product Launch Event, inviting further discussion.", "content_format": "plain_text" }, { "name": "Event Proposal - [lead_company] - Visionary Immersive Brand Activation", "subject": "Crafting an Unforgettable Immersive Brand Activation Experience for [lead_company]", "body_text": "Subject: Crafting an Unforgettable Immersive Brand Activation Experience for [lead_company]\n\nDear [lead_name],\n\nGreetings from [company_name]. We are thrilled to present our visionary proposal for your Immersive Brand Activation, a concept designed to captivate your audience and elevate your brand presence.\n\nOur expertise in bespoke Production, innovative Branding strategies, and seamless Stage Setup allows us to transform your vision into an extraordinary reality. This comprehensive proposal, [quotation_id], outlines a meticulously planned event that promises an unparalleled interactive experience.\n\nWe have carefully considered every detail, from the conceptual design to the logistical execution, ensuring a flawless and impactful activation that resonates with your target demographic.\n\nTotal Investment for this Visionary Activation: [currency][final_price]\n\nExplore Your Detailed Proposal: [company_website]/quotations/[quotation_id]\n\nThis proposal is valid until [valid_till]. We look forward to partnering with you to bring this ambitious project to life and achieve remarkable success.\n\nBest regards,\n\n[prepared_by]\nChief Event Architect\n[company_name]\n[company_phone] | [company_email]\n[instagram_url]\n\nConfidentiality Notice: This proposal contains proprietary information. Redistribution is prohibited without express written consent from [company_name].", "description": "Second initial proposal, tailored for an Immersive Brand Activation, emphasizing comprehensive event execution, visionary approach, Production, Branding, and Stage Setup.", "content_format": "plain_text" }, { "name": "Executive Quote - [lead_company] - Optimized Corporate Gala", "subject": "Your Investment in Excellence: Corporate Gala Dinner Quotation for [lead_company]", "body_text": "Subject: Your Investment in Excellence: Corporate Gala Dinner Quotation for [lead_company]\n\nDear [lead_name],\n\nIn pursuit of optimizing your next Corporate Gala Dinner, [company_name] is pleased to forward our official quotation, [quotation_id], dated [quotation_date]. Our aim is to ensure a seamless, high-impact event that reinforces your corporate prestige with measurable outcomes.\n\nThis quotation encompasses our refined services including bespoke Catering, sophisticated Venue selection, and expert Production oversight, guaranteeing an event of unparalleled distinction and efficiency.\n\nQuotation Reference: [quotation_id]\nValid Through: [valid_till]\nOptimized Investment: [currency][final_price]\n\nView Your Optimized Quotation: [company_website]/quotations/[quotation_id]\n\nWe are committed to delivering an exceptional experience that aligns perfectly with your objectives and budget. [prepared_by] is available to address any inquiries you may have.\n\nWith distinction,\n\n[prepared_by]\nHead of Corporate Events\n[company_name]\n[company_address]\n[company_phone] | [company_email]\n[linkedin_url]\n\nConfidentiality Notice: This document and its contents are confidential and proprietary to [company_name].", "description": "Alternative executive corporate quote, highlighting optimization and seamless execution for a Corporate Gala Dinner, focusing on Catering, Venue, and Production.", "content_format": "plain_text" }, { "name": "Exclusive Offer - [lead_company] - Growth Incentive", "subject": "Unlocking Greater Value: Our 'Growth' Incentive for Your Product Launch Event", "body_text": "Subject: Unlocking Greater Value: Our 'Growth' Incentive for Your Product Launch Event\n\nDear [lead_name],\n\nAs a testament to our commitment to fostering lasting partnerships, [company_name] is delighted to extend a special 'Growth' incentive for your upcoming Product Launch Event.\n\nWe believe in empowering your growth, and this revised quotation, [quotation_id], includes a significant [currency][total_discount] reduction, bringing your total investment to [currency][final_price]. This exclusive 'Growth' pricing is designed to maximize the impact of your event while optimizing your budget.\n\nOriginal Proposal Value: [currency][total_base_price]\nNew 'Growth' Incentive Price: [currency][final_price]\n\nThis offer is an ideal opportunity to leverage our comprehensive services, including Venue, Production, and Branding, ensuring your Product Launch Event sets a new benchmark for success.\n\nAccess Your Updated Quotation with 'Growth' Incentive: [company_website]/quotations/[quotation_id]\n\nThis special 'Growth' offer is valid until [valid_till]. Please contact [prepared_by] at [company_phone] to move forward.\n\nSincerely,\n\n[prepared_by]\nPartnership Director\n[company_name]\n[company_email]\n[company_website]\n\nConfidentiality Notice: This pricing incentive is confidential and exclusively offered to [lead_company].", "description": "Follow-up email introducing a 'Growth' pricing incentive, designed to build long-term partnerships and unlock greater value for a Product Launch Event.", "content_format": "plain_text" }, { "name": "Checking In - [lead_company] - Your Event Aspirations", "subject": "Following Up on Your Vision: Corporate Gala Dinner Opportunities for [lead_company]", "body_text": "Subject: Following Up on Your Vision: Corporate Gala Dinner Opportunities for [lead_company]\n\nDear [lead_name],\n\nHope you are having a productive week. We are reaching out from [company_name] to follow up on our previous discussions regarding your aspirations for a Corporate Gala Dinner.\n\nWe understand that planning such a pivotal event requires careful consideration, and we wanted to gently check in and see if your plans for a Corporate Gala Dinner are progressing. Our team remains prepared and eager to support your vision with our expertise in Venue selection, exquisite Catering, and flawless Stage Setup.\n\nWe'd be pleased to review our initial thoughts or quotation, [quotation_id], if there are any new elements or requirements you'd like to explore. Your success remains our priority.\n\nPlease feel free to reply to this email or contact [prepared_by] directly at [company_phone] at your convenience. We are here to assist you in making your next corporate event truly exceptional.\n\nWarmly,\n\n[prepared_by]\nEvent Consultant\n[company_name]\n[company_address]\n[facebook_url] | [linkedin_url]\n\nConfidentiality Notice: All previous communications and shared details are treated with the utmost confidentiality.", "description": "Softer re-engagement approach, offering assistance and reminding the client of their Corporate Gala Dinner aspirations without pressure, for a lead that went cold.", "content_format": "plain_text" }] };
   }
+
+  async generateFollowUpEmailContent(lastMessage, tenantDetails, leadDetails) {
+    // 2. Call AI Model
+    const finalPrompt = `
+      You are an expert sales and customer relations assistant for ${tenantDetails.name}. 
+      RECIPIENT (The Client):
+      - Name: ${leadDetails.first_name +" "+ leadDetails.last_name || 'Valued Client'}
+      - Company: ${leadDetails.company || 'Not Specified'}
+
+      SENDER (Your Identity):
+      - Company Name: ${tenantDetails.name}
+      - Your Email: ${tenantDetails.email}
+      - Your Website: ${tenantDetails.website}
+      - Your Phone: ${tenantDetails.phone}
+
+      CORE RULE: 
+              The email is FROM ${tenantDetails.name} TO ${leadDetails.first_name +" "+ leadDetails.last_name || 'Valued Client'}. 
+              DO NOT address the email to "${tenantDetails.name}".
+              START the email with "Dear ${leadDetails.first_name +" "+ leadDetails.last_name || 'Valued Client'}," or "Hi ${leadDetails.first_name +" "+ leadDetails.last_name || 'Valued Client'},".
+                  The client (${leadDetails.first_name +" "+ leadDetails.last_name || 'Valued Client'}) recently sent this message:
+              "${lastMessage}"
+
+              Based on their message, draft a warm, professional follow-up. 
+              Include our contact details (${tenantDetails.email} / ${tenantDetails.phone}) 
+                          and invite them to check our website: ${tenantDetails.website}.
+      TASK:
+      Draft a professional, warm, and proactive follow-up email. 
+
+      CRITICAL RULES:
+1. START the email with: "Dear ${leadDetails.first_name +" "+ leadDetails.last_name || 'Valued Client'}," or "Hi ${leadDetails.first_name +" "+ leadDetails.last_name || 'Valued Client'},".
+3. End the email by signing off as "${tenantDetails.name}".
+4. Mention that they can visit your website ${tenantDetails.website} or email ${tenantDetails.email} for more info.
+
+      OUTPUT FORMAT:
+      Return ONLY a JSON object with exactly two keys:
+      {
+        "subject": "...",
+        "body": "..."
+      }
+    `;
+
+    const aiResponse = await this.callGenAI(finalPrompt);
+
+    // --- FIX STARTS HERE ---
+    // Remove markdown code blocks (```json or ```) and any leading/trailing whitespace
+    const cleanJsonString = aiResponse
+      .replace(/```json/g, '') // Remove ```json
+      .replace(/```/g, '')     // Remove ```
+      .trim();                 // Remove extra spaces
+
+    try {
+      const result = JSON.parse(cleanJsonString);
+
+      // Format line breaks for ReactQuill
+      const formattedBody = result.body.replace(/\n/g, '<br />');
+
+      return {
+        subject: result.subject,
+        body: formattedBody
+      };
+    } catch (parseError) {
+      console.error("Failed to parse AI JSON. Raw response was:", aiResponse);
+      throw new Error("AI returned invalid JSON format");
+    }
+  }
+
 }
 
 

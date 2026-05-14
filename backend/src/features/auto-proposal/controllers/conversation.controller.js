@@ -1,6 +1,9 @@
 // src/features/conversations/conversation.controller.js
 const conversationService = require('../services/conversation.service');
 const { uploadToGCSFromBase64 } = require('../../../utils/gcsUploader');
+const tenantService = require('../services/tenant.service');
+const aiResponseService = require('../services/ai-response.service');
+const leadService = require('../services/lead.service');
 
 class ConversationController {
   async getConversations(req, res) {
@@ -84,6 +87,31 @@ class ConversationController {
     } catch (error) {
       console.error('GCS Upload Error:', error);
       return res.status(500).json({ error: 'Failed to upload to storage' });
+    }
+  };
+
+
+  async generateFollowUp(req, res) {
+    try {
+      const { contactId } = req.params;
+      console.log("Generating follow-up for contact_id:", contactId, "tenant:", req.tenantId);
+      // 1. Fetch the last message from this contact (Inbound)
+      const lastMessage = await conversationService.findLastMessagesByContactId(req.tenantId, contactId);
+      console.log("Last message fetched for follow-up generation: ", lastMessage);
+      const clientText = lastMessage[0]?.body_text || lastMessage[0]?.body_html || "No previous message found.";
+      console.log("Last client message fetched for follow-up generation: ", clientText);
+      const tenantDetails=await tenantService.getTenantById(req.tenantId);
+      const leadDetails = await leadService.getLeadById(contactId, req.tenantId);
+     const result = await aiResponseService.generateFollowUpEmailContent(clientText, tenantDetails,leadDetails);
+      res.json({
+        success: true,
+        subject: result.subject,
+        body_html: result.body
+      });
+
+    } catch (error) {
+      console.error("Error generating AI follow-up:", error);
+      res.status(500).json({ success: false, error: error.message });
     }
   };
 }

@@ -24,4 +24,6 @@ const upload = multer({
 // POST /api/upload
 // The 'file' string must match formData.append('file', ...) in React
 router.post('/upload', upload.single('file'), conversationController.uploadAttachment);
+
+router.get('/email-ai-followup/:contactId', authenticateJWT, conversationController.generateFollowUp);
 module.exports = router;
