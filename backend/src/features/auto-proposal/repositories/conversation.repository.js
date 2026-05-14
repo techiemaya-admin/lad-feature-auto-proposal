@@ -179,7 +179,7 @@ class ConversationRepository {
     FROM conversation_messages cm
     JOIN conversations c ON cm.conversation_id = c.id
     WHERE c.tenant_id = $1 AND c.lead_id = $2
-    ORDER BY cm.created_at DESC limit 3;
+    ORDER BY cm.created_at DESC;
   `;
 
     return await AppDataSource.query(sql, [tenantId, contactId]);

@@ -25,7 +25,7 @@ class QuotationTemplateController {
             const result = await service.setDefault(tenantId, id);
             res.status(200).json({ message: "Default template updated", data: result });
         } catch (error) {
-            console.error("Error in setting default quotation : ",error)
+            console.error("Error in setting default quotation : ", error)
             res.status(500).json({ error: error.message });
         }
     }
@@ -51,6 +51,29 @@ class QuotationTemplateController {
     }
 
 
+    async getTemplatesViaAuth(req, res) {
+        try {
+            console.log("Fetching templates for tenant via auth : " + req.tenantId)
+            const templates = await service.getTemplatesByTenant(req.tenantId);
+            const contactId = req.params.contactId;
+            const templatesMap = templates.map(t => ({
+                id: t.id,
+                name: t.name,
+                subject: t.subject,
+                body: t.body || '',
+                body_html: t.body_html,
+                category: t.category || 'General',
+                is_active: t.is_active,
+                created_at: t.created_at.toISOString(),
+                attachments: t.attachments || []
+            }));
+            console.log("Templates fetched: ", templatesMap);
+            res.status(200).json({ data: templatesMap });
+        } catch (error) {
+            console.error("Error fetching templates:", error);
+            res.status(500).json({ error: error.message });
+        }
+    }
 }
 
 module.exports = new QuotationTemplateController();

@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const controller = require('../controllers/quotation-template.controller');
-
 const upload = multer({ storage: multer.memoryStorage() });
 
 // 1. Upload .docx
@@ -19,6 +18,5 @@ router.delete('/:id', controller.remove);
 
 // Route to get all templates for a tenant
 router.get('/:tenantId', controller.getTemplates);
-
 
 module.exports = router;
