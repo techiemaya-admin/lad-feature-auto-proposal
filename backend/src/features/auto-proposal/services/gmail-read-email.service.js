@@ -310,8 +310,8 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
           const contact = CommonUtil.parseContactInfo(from);
           const body = getEmailBody(fullMessage.data.payload);
           console.log("subject: " + subject + " from : " + from + " contact: " + JSON.stringify(contact) + " body : " + body);
-
-          if (contact) {
+console.log("Checking if email is system generated...");
+          if (contact && contact.email != email) {
             const leadData = await triggerNewLeadAutomation(contact.firstName, contact.lastName, contact.email);
             console.log("Lead created from email:", leadData.id);
 
