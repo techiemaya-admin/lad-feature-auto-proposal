@@ -489,7 +489,7 @@ CREATE TABLE IF NOT EXISTS quotation_placeholders (
     description text,                      -- e.g., 'The full name of the lead'
     category varchar(50),                  -- e.g., 'Client', 'Pricing', 'Company'
     data_source_path varchar(255),         -- e.g., 'lead.full_name' or 'pricing.final_price'
-    is_loop boolean DEFAULT false          -- True for arrays like 'breakdown'
+    is_loop boolean DEFAULT false,          -- True for arrays like 'breakdown'
     is_deleted boolean DEFAULT false,
     created_at timestamptz DEFAULT now(),
     updated_at timestamptz DEFAULT now(),
@@ -571,3 +571,173 @@ CREATE TABLE quotation_email_template (
 
 ALTER TABLE conversation_messages
 ADD COLUMN global_message_id varchar(1000);
+
+
+
+INSERT INTO users (
+    id,
+    email,
+    password_hash,
+    first_name,
+    last_name,
+    avatar_url,
+    phone,
+    primary_tenant_id,
+    is_active,
+    email_verified,
+    phone_verified,
+    last_login_at,
+    password_changed_at,
+    metadata,
+    created_at,
+    updated_at,
+    deleted_at
+) VALUES
+(
+    '11111111-1111-1111-1111-111111111111',
+    'abc@gmail.com',
+    '$2b$10$dummyhashedpassword123456789',
+    'Shweta',
+    'Goel',
+    'https://randomuser.me/api/portraits/women/1.jpg',
+    '+91-9876543210',
+    NULL,
+    true,
+    true,
+    false,
+    NOW() - INTERVAL '1 day',
+    NOW() - INTERVAL '10 days',
+    '{"role": "admin"}'::jsonb,
+    NOW(),
+    NOW(),
+    NULL
+),
+(
+    gen_random_uuid(),
+    'rahul.sharma@example.com',
+    '$2b$10$dummyhashedpassword987654321',
+    'Rahul',
+    'Sharma',
+    'https://randomuser.me/api/portraits/men/2.jpg',
+    '+91-9123456780',
+    NULL,
+    true,
+    true,
+    true,
+    NOW() - INTERVAL '2 hours',
+    NOW() - INTERVAL '5 days',
+    '{"role": "user"}'::jsonb,
+    NOW(),
+    NOW(),
+    NULL
+),
+(
+    gen_random_uuid(),
+    'priya.verma@example.com',
+    '$2b$10$dummyhashedpassword456789123',
+    'Priya',
+    'Verma',
+    'https://randomuser.me/api/portraits/women/3.jpg',
+    '+91-9988776655',
+    NULL,
+    true,
+    false,
+    false,
+    NULL,
+    NOW() - INTERVAL '20 days',
+    '{"role": "manager"}'::jsonb,
+    NOW(),
+    NOW(),
+    NULL
+);
+
+
+
+
+
+INSERT INTO public.tenants (id, name, slug, status, plan_tier, email, phone, website, metadata)
+VALUES
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'Alpha Corp', 'alpha-corp', 'trial', 'free', 'contact@alphacorp.com', '+1-555-0101', 'https://alphacorp.com', '{}'),
+('550e8400-e29b-41d4-a716-446655440002', 'Beta Solutions', 'beta-solutions', 'active', 'pro', 'hello@betasolutions.com', '+1-555-0202', 'https://betasolutions.com', '{}'),
+('550e8400-e29b-41d4-a716-446655440003', 'Gamma Industries', 'gamma-industries', 'active', 'enterprise', 'info@gammaindustries.com', '+1-555-0303', 'https://gammaindustries.com', '{}');
+
+
+INSERT INTO pricing_models (id, type, tenant_id, label, metadata)
+VALUES
+(gen_random_uuid(), 'per_person', 'e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'Per Person Pricing', '{"label":"Per Person Pricing"}'),
+
+(gen_random_uuid(), 'per_hour', 'e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'Hourly Pricing', '{"label":"Hourly Pricing"}'),
+
+(gen_random_uuid(), 'fixed', 'e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'Fixed Pricing', '{"label":"Fixed Pricing"}'),
+
+(gen_random_uuid(), 'per_kg', 'e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'Weight Based Pricing', '{"label":"Weight Based Pricing"}'),
+
+(gen_random_uuid(), 'per_month', 'e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'Monthly Based Pricing', '{"label":"Monthly Based Pricing"}');
+
+
+
+
+
+
+
+INSERT INTO quotation_placeholders (
+    tenant_id,
+    placeholder_key,
+    display_name,
+    description,
+    category,
+    data_source_path,
+    is_loop,
+    metadata
+)
+VALUES
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'date', 'Date', 'Date when quotation/email is generated', 'Date', 'date', false, '{"type": "date", "format": "YYYY-MM-DD"}'::jsonb),
+-- ================= CLIENT =================
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'lead_name', 'Lead Name', 'Full name of the client', 'Client', 'lead_name', false, '{}'::jsonb),
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'lead_email', 'Lead Email', 'Email of the client', 'Client', 'lead_email', false, '{}'::jsonb),
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'lead_phone', 'Lead Phone', 'Phone number of the client', 'Client', 'lead_phone', false, '{}'::jsonb),
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'lead_company', 'Client Company', 'Company name of the client', 'Client', 'lead_company', false, '{}'::jsonb),
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'lead_address', 'Client Address', 'Address of the client', 'Client', 'lead_address', false, '{}'::jsonb),
+
+-- ================= COMPANY =================
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'company_name', 'Company Name', 'Your company name', 'Company', 'company_name', false, '{}'::jsonb),
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'company_email', 'Company Email', 'Company email address', 'Company', 'company_email', false, '{}'::jsonb),
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'company_phone', 'Company Phone', 'Company phone number', 'Company', 'company_phone', false, '{}'::jsonb),
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'company_address', 'Company Address', 'Company address', 'Company', 'company_address', false, '{}'::jsonb),
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'company_website', 'Company Website', 'Company website', 'Company', 'company_website', false, '{}'::jsonb),
+
+-- ================= BRANDING =================
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'company_logo', 'Company Logo', 'Company logo image URL or base64', 'Branding', 'company_logo', false, '{"type": "image"}'::jsonb),
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'company_tagline', 'Company Tagline', 'Short tagline of company', 'Branding', 'company_tagline', false, '{}'::jsonb),
+
+-- ================= SOCIAL =================
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'instagram_url', 'Instagram', 'Instagram profile link', 'Social', 'instagram_url', false, '{}'::jsonb),
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'linkedin_url', 'LinkedIn', 'LinkedIn profile link', 'Social', 'linkedin_url', false, '{}'::jsonb),
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'facebook_url', 'Facebook', 'Facebook page link', 'Social', 'facebook_url', false, '{}'::jsonb),
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'whatsapp_url', 'Whatsapp', 'Whatsapp link', 'Social', 'whatsapp_url', false, '{}'::jsonb),
+
+-- ================= QUOTATION =================
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'quotation_id', 'Quotation ID', 'Unique quotation ID', 'Quotation', 'quotation_id', false, '{}'::jsonb),
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'quotation_date', 'Quotation Date', 'Date of quotation', 'Quotation', 'quotation_date', false, '{}'::jsonb),
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'valid_till', 'Valid Till', 'Quotation expiry date', 'Quotation', 'valid_till', false, '{}'::jsonb),
+
+-- ================= PRICING =================
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'total_base_price', 'Total Base Price', 'Base price before adjustments', 'Pricing', 'total_base_price', false, '{}'::jsonb),
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'total_discount', 'Total Discount', 'Total discount applied', 'Pricing', 'total_discount', false, '{}'::jsonb),
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'total_surcharge', 'Total Surcharge', 'Additional charges like tax/fees', 'Pricing', 'total_surcharge', false, '{}'::jsonb),
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'final_price', 'Final Price', 'Final payable amount', 'Pricing', 'final_price', false, '{}'::jsonb),
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'currency', 'Currency', 'Currency used', 'Pricing', 'currency', false, '{"symbol": "₹"}'::jsonb),
+
+-- ================= LINE ITEMS =================
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'items', 'Items List', 'List of items/services', 'LineItems', 'items', true, '{}'::jsonb),
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'item_name', 'Item Name', 'Name of item', 'LineItems', 'item_name', false, '{}'::jsonb),
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'item_description', 'Item Description', 'Description of item', 'LineItems', 'item_description', false, '{}'::jsonb),
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'item_quantity', 'Quantity', 'Quantity of item', 'LineItems', 'item_quantity', false, '{}'::jsonb),
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'item_price', 'Item Price', 'Price per item', 'LineItems', 'item_price', false, '{}'::jsonb),
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'item_total', 'Item Total', 'Total for item', 'LineItems', 'item_total', false, '{}'::jsonb),
+
+-- ================= EXTRA =================
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'notes', 'Notes', 'Additional notes', 'Extra', 'notes', false, '{}'::jsonb),
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'terms_conditions', 'Terms & Conditions', 'Terms and conditions', 'Extra', 'terms_conditions', false, '{}'::jsonb),
+('e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5', 'prepared_by', 'Prepared By', 'Prepared by user name', 'Extra', 'prepared_by', false, '{}'::jsonb);
+
