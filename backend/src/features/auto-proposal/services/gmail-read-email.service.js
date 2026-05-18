@@ -2,7 +2,7 @@
 //Lines 1–11: import googleapis client and various repositories/services used to save messages, call AI, calculate price, and manage watch history.
 
 const { google } = require("googleapis");
-const { oAuth2Client } = require("../../../config/google.config");
+const googleConfig = require("../../../config/google.config");
 
 const conversationRepository = require("../repositories/conversation.repository");
 const messageRepository = require("../repositories/conversation-message.repository");
@@ -28,7 +28,8 @@ const tenantProfileService = require("./tenant-profile.service");
 const conversationService = require("./conversation.service");
 
 /* 1️⃣ Start Gmail Watch */
-async function startWatch() {
+async function startWatch(email, tenantId) {
+  const oAuth2Client = await googleConfig.getGoogleClientForUser(email);
   const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
   // the gmail.users.watch() API is used to start Gmail Push Notifications so that Gmail automatically notifies your system when something changes in the mailbox.
 
@@ -45,9 +46,9 @@ async function startWatch() {
   // After setting up the watch, we should save the historyId and expiration time in our database so that we can use it later to fetch new emails and also to know when to renew the watch. Here we are using a hardcoded user identity for demonstration, but in a real application, you would associate this with the actual user who authenticated their Gmail account.
   const userIdentityId = await userIdentityRepository.findByProvider(
     "gmail",
-    "shweta.goel1711@gmail.com"
+    email
   );
-  let tenantId = "e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5";
+
   // Save the watch details in the database (create or update)
   await gmailWatchService.initializeWatch({
     tenant_id: tenantId,
@@ -58,7 +59,7 @@ async function startWatch() {
   return response.data;
 }
 
-async function createProposalDraft(leadRequirementDetails, leadData, email_content, conversation_id, global_message_id, threadId, subject) {
+async function createProposalDraft(leadRequirementDetails, leadData, email_content, conversation_id, global_message_id, threadId, subject,oAuth2Client) {
   console.log("Calculating final price for conversationid :", conversation_id, " lead requirement details :", leadRequirementDetails, " lead data : ", leadData, " email content : ", email_content);
   const calculatedPriceDetails = await finalPriceCalculationService.calculateFinalPrice(leadRequirementDetails.tenant_id, leadRequirementDetails.id, email_content, leadRequirementDetails.event_type);
   calculatedPriceDetails.breakdown.sort((a, b) => {
@@ -110,7 +111,7 @@ async function createProposalDraft(leadRequirementDetails, leadData, email_conte
       .build();
     const prosalPathDetails = await aiService.generateProposalFromTemplate(placeholderBuilderForEmail, leadRequirementDetails.tenant_id);
 
-    await gmailSendService.processAndSendDefaultEmailFromDragDrop(leadRequirementDetails.tenant_id, placeholderBuilderForEmail, prosalPathDetails.gcsUrl, calculatedPriceDetails.final_price, conversation_id, global_message_id, threadId, subject);
+    await gmailSendService.processAndSendDefaultEmailFromDragDrop(leadRequirementDetails.tenant_id, placeholderBuilderForEmail, prosalPathDetails.gcsUrl, calculatedPriceDetails.final_price, conversation_id, global_message_id, threadId, subject, oAuth2Client);
 
     const dataToSave = {
       tenant_id: leadRequirementDetails.tenant_id,
@@ -278,7 +279,7 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
         history_id: historyIdFromWebhook
       });
     }
-
+    const oAuth2Client = await googleConfig.getGoogleClientForUser(email);
     const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
 
     const history = await gmail.users.history.list({
@@ -310,7 +311,7 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
           const contact = CommonUtil.parseContactInfo(from);
           const body = getEmailBody(fullMessage.data.payload);
           console.log("subject: " + subject + " from : " + from + " contact: " + JSON.stringify(contact) + " body : " + body);
-console.log("Checking if email is system generated...");
+          console.log("Checking if email is system generated...");
           if (contact && contact.email != email) {
             const leadData = await triggerNewLeadAutomation(contact.firstName, contact.lastName, contact.email);
             console.log("Lead created from email:", leadData.id);
@@ -334,7 +335,8 @@ console.log("Checking if email is system generated...");
                   subject: reSendSubject,
                   html: content,
                   messageId: global_message_id,
-                  threadId: threadId
+                  threadId: threadId,
+                  oAuth2Client : oAuth2Client
                 });
                 await conversationService.createConversationAndConversationMessages(tenantId, contact.email, reSendSubject, content, [], gmailResponse.id);
               }
@@ -342,7 +344,7 @@ console.log("Checking if email is system generated...");
                 console.log("Lead requirement details:", leadRequirementDetails);
                 console.log("Saved requirement values:", values);
 
-                await createProposalDraft(leadRequirementDetails, leadData, body, conversation_id,global_message_id, threadId,subject);
+                await createProposalDraft(leadRequirementDetails, leadData, body, conversation_id, global_message_id, threadId, subject,oAuth2Client);
                 // // process emails...
               }
             } else {
@@ -440,34 +442,7 @@ async function triggerNewLeadAutomation(first_name, last_name, email) {
     // Identity & Contact
     first_name: first_name,
     last_name: last_name,
-    email: email,
-    phone: "+15550102030",
-
-    // Company Info
-    company_name: "Wonderland Adventures",
-    company_domain: "wonderland.com",
-    title: "Chief Explorer",
-
-    // Lead Metadata
-    source: "Website Form",
-    source_id: "form_12345",
-    status: "active",
-    stage: "discovery",
-    priority: 2, // Medium-High
-
-    // JSON / Complex Fields
-    tags: ["High Value", "Q2-Target", "Inbound"],
-    custom_fields: {
-      discovery_call_booked: false,
-      product_line: "Enterprise Software",
-      estimated_users: 150
-    },
-
-    // Optional / Extra Data
-    notes: null,
-    estimated_value: null,
-    currency: null,
-    country_code: null
+    email: email
   };
 
   try {

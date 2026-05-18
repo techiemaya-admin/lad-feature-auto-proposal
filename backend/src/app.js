@@ -1,4 +1,14 @@
 const express = require('express');
+const cors = require('cors');
+const app = express();
+const corsOptions = {
+  origin: 'http://localhost:3000', // Matches your frontend exactly
+  credentials: true,               // Allows cookies/sessions when requested
+  optionsSuccessStatus: 200        // Some legacy browsers choke on 204
+};
+
+app.use(cors(corsOptions));
+
 const tenantRoute = require('./features/auto-proposal/routes/tenant-route');
 const locationRoute = require('./features/auto-proposal/routes/location-routes');
 const conceptRoute = require('./features/auto-proposal/routes/concept-routes');
@@ -13,16 +23,7 @@ const conceptPricingRoute = require("./features/auto-proposal/routes/concept-pri
 const pricingModelRoute = require("./features/auto-proposal/routes/pricingModel.routes");
 const pricingRuleRoute = require("./features/auto-proposal/routes/pricingRule.routes");
 const conversationRoutes = require('./features/auto-proposal/routes/conversation.route');
-
-const app = express();
-const cors = require('cors'); // 1. Import cors
-// 2. Enable CORS
-app.use(cors({
-  origin: 'http://localhost:3000', // Allow only your frontend
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'], // Allowed actions
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true // Allow cookies/auth headers
-}));
+const socialIntegrationRoutes = require('./features/auto-proposal/routes/social-integration.route');
 
 // In your main server.js
 app.use((req, res, next) => {
@@ -62,6 +63,7 @@ app.use('/api/ai-response', require('./features/auto-proposal/routes/ai.response
 
 // Use the exact prefix your frontend Axios client expects
 app.use('/api/email-conversations', conversationRoutes);
+app.use('/api/social-integration', socialIntegrationRoutes);
 
 app.use((err, req, res, next) => {
   const status = err.statusCode || 500;

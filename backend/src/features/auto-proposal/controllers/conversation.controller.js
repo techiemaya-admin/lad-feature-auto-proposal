@@ -39,6 +39,8 @@ class ConversationController {
     try {
       const { body_html, subject, recipients, attachments, provider } = req.body;
       const tenantId = req.tenantId; // Taken from auth middleware
+      const userId = req.userId; // Taken from auth middleware
+      console.log("Received bulk email send request for tenant:", tenantId, "userid : ", userId, " with payload:", req.body);
 
       // Basic Validation
       if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
@@ -46,7 +48,7 @@ class ConversationController {
       }
 
       // Call the service to handle the heavy lifting
-      const summary = await conversationService.handleBulkEmailSend(tenantId, {
+      const summary = await conversationService.handleBulkEmailSend(tenantId,userId, {
         body_html,
         subject,
         recipients,

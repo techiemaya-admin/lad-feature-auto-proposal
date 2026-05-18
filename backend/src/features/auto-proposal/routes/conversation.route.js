@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const conversationController = require('../controllers/conversation.controller');
+const socialIntegrationController = require('../controllers/social-integration.controller');
 const authenticateJWT = require('../../../middleware/auth.middleware');
 const multer = require('multer');
 
@@ -27,4 +28,5 @@ router.post('/upload', upload.single('file'), conversationController.uploadAttac
 
 router.get('/email-ai-followup/:contactId', authenticateJWT, conversationController.generateFollowUp);
 router.get('/email-ai-crux/:contactId', authenticateJWT, conversationController.generateFollowUpCrux);
+router.get('/status',socialIntegrationController.getGoogleEmailStatusWithOtherDetails);
 module.exports = router;

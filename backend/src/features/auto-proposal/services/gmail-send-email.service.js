@@ -1,5 +1,5 @@
 const { google } = require("googleapis");
-const { oAuth2Client } = require("../../../config/google.config");
+const googleConfig = require("../../../config/google.config");
 const repository = require('../repositories/email-template.repository');
 const quotationEmailTemplateRepo = require('../repositories/quotation-email-template.repository');
 const templateRepo = require('../repositories/email-template.repository');
@@ -15,7 +15,7 @@ const storage = new Storage({
   keyFilename: process.env.GCS_KEY_FILE, // service-account.json
 });
 
-async function sendQuotationEmail(senderEmail, url, price) {
+async function sendQuotationEmail(senderEmail, url, price, oAuth2Client) {
   const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
 
   const message = [
@@ -52,9 +52,10 @@ async function sendQuotationEmail(senderEmail, url, price) {
   return response.data;
 }
 
-async function processAndSendDefaultEmail(tenantId, data, url, price) {
+async function processAndSendDefaultEmail(tenantId, data, url, price, oAuth2Client) {
   console.log(" tenantid : " + tenantId + " date : " + JSON.stringify(data) + " price: " + price);
   if (data.lead_email) {
+    
     try {
       const SOCIAL_ICONS = {
         instagram_url: "https://cdn-icons-png.flaticon.com/32/174/174855.png",
@@ -213,7 +214,7 @@ async function processAndSendDefaultEmail(tenantId, data, url, price) {
 
 }
 
-async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price, conversation_id, global_message_id, threadId, subject) {
+async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price, conversation_id, global_message_id, threadId, subject, oAuth2Client) {
   console.log(`Sending email for tenant: ${tenantId} conversation_id: ${conversation_id} lead_email: ${data.lead_email} url: ${url} price: ${price} global_message_id: ${global_message_id} threadId: ${threadId}`);
 
   if (!data.lead_email) {
@@ -417,7 +418,7 @@ async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price
 
 // services/email.service.js
 
-async function sendGmailWithAttachments({ to, subject, html, attachments }) {
+async function sendGmailWithAttachments({ to, subject, html, attachments,oAuth2Client }) {
   const boundary = "bulk_mail_boundary_" + Date.now();
   const CRLF = "\r\n";
 
@@ -495,7 +496,7 @@ async function sendGmailWithAttachments({ to, subject, html, attachments }) {
   };
 }
 
-async function sendGmailRaw({ to, subject, html, messageId, threadId }) {
+async function sendGmailRaw({ to, subject, html, messageId, threadId, oAuth2Client }) {
   console.log("Preparing to send email with subject:", subject, "to:", to, "in thread:", threadId, "replying to message ID:", messageId);
   const CRLF = "\r\n";
 

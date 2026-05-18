@@ -3,6 +3,7 @@ const ConversationRepository = require('../repositories/conversation.repository'
 const MessageRepository = require('../repositories/conversation-message.repository');
 const gmailSendEmailService = require('../services/gmail-send-email.service');
 const { uploadToGCSFromBase64 } = require('../../../utils/gcsUploader');
+const googleConfig = require('../../../config/google.config');
 
 class ConversationService {
   async listConversations(tenantId, filters) {
@@ -33,13 +34,13 @@ class ConversationService {
     return await ConversationRepository.findMessagesByContactId(tenantId, contactId);
   }
 
-  
+
   async findLastMessagesByContactId(tenantId, contactId) {
     // Business logic: e.g. marking messages as read or processing HTML
     return await ConversationRepository.findLastMessagesByContactId(tenantId, contactId);
   }
 
-  async handleBulkEmailSend(tenantId, payload) {
+  async handleBulkEmailSend(tenantId, userId, payload) {
     const { body_html, subject, recipients, provider, attachments } = payload;
     console.log("Handling bulk email send for tenant:", tenantId, " with payload:", payload);
     const results = [];
@@ -59,13 +60,14 @@ class ConversationService {
         // 3. Perform Replacement
         const personalizedSubject = await this.replacePlaceholders(subject, placeholderData);
         const personalizedHtml = await this.replacePlaceholders(body_html, placeholderData);
-
+        const oAuth2Client = await googleConfig.getGoogleClientForUser("", userId);
         // 4. Send via Gmail (Reusing your existing RFC 2822 logic)
         const gmailResponse = await gmailSendEmailService.sendGmailWithAttachments({
           to: recipient.email,
           subject: personalizedSubject,
           html: personalizedHtml,
-          attachments: attachments || [] // Optional: handle if passed
+          attachments: attachments || [], // Optional: handle if passed
+          oAuth2Client
         });
         console.log(`Email sent to ${recipient.email} with Gmail response:`, gmailResponse.data);
         await this.createConversationAndConversationMessages(tenantId, recipient.email, personalizedSubject, personalizedHtml, processedAttachments, gmailResponse.id, gmailResponse.globalMessageId);
@@ -91,7 +93,7 @@ class ConversationService {
   }
 
   async createConversationAndConversationMessages(tenantId, email, personalizedSubject, personalizedHtml, processedAttachments, message_id = null, global_message_id = null) {
-    console.log("Creating conversation and message for email:", email, " tenantId:", tenantId, " message_id:", message_id, " global_message_id:", global_message_id," personalizedSubject:", personalizedSubject);
+    console.log("Creating conversation and message for email:", email, " tenantId:", tenantId, " message_id:", message_id, " global_message_id:", global_message_id, " personalizedSubject:", personalizedSubject);
     const result = await ConversationRepository.getLeadAndThreadByEmail(tenantId, email);
     const conversation = await ConversationRepository.upsertByThread({
       tenant_id: tenantId,

@@ -270,7 +270,7 @@ class ProposalDraftService {
     </html>
   `;
   }
-  async approveProposal(proposalId) {
+  async approveProposal(proposalId,oAuth2Client) {
 
     // 1️⃣ Get Draft
     const proposal = await proposalRepo.findDraftById(proposalId);
@@ -307,7 +307,7 @@ class ProposalDraftService {
     });
 
     // // 5️⃣ Send Email
-    gmailService.sendQuotationEmail(lead.email, proposal.gcs_storage_path, proposal.final_price);
+    gmailService.sendQuotationEmail(lead.email, proposal.gcs_storage_path, proposal.final_price,oAuth2Client);
 
 
     return {

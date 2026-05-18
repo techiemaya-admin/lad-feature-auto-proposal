@@ -594,7 +594,7 @@ INSERT INTO users (
     deleted_at
 ) VALUES
 (
-    '11111111-1111-1111-1111-111111111111',
+    'b8c1ffa5-3000-4e85-bf56-237ba478aea2',
     'abc@gmail.com',
     '$2b$10$dummyhashedpassword123456789',
     'Shweta',

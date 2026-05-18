@@ -9,7 +9,9 @@ const { file } = require("pdfkit");
 
 async function startWatch(req, res) {
   logger.info("Testing start watch>>")
-  const result = await gmailService.startWatch();
+  let tenantId = "e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5";
+  const email = "shweta.goel1711@gmail.com";
+  const result = await gmailService.startWatch(email, tenantId);
   console.log(result)
   res.json(result.data);
 }

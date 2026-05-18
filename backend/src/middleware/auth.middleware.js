@@ -11,6 +11,7 @@ const authenticateJWT = (req, res, next) => {
         
         if (decoded && decoded.tenantId) {
             req.tenantId = decoded.tenantId;
+            req.userId = decoded.userId; // Assuming userId is also in the token
             return next();
         }
     }
