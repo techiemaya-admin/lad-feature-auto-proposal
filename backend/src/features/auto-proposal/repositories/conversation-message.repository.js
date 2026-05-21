@@ -7,21 +7,21 @@ class ConversationMessageRepository {
     const id = uuidv4();
     const {
       tenant_id, conversation_id, sender_type, sender_id,
-      channel, message_type, content, raw_payload, message_id, global_message_id
+      channel, message_type, content, raw_payload, message_id, global_message_id, proposal_draft_id
     } = data;
 
     const sql = `
       INSERT INTO conversation_messages (
         id, tenant_id, conversation_id, sender_type, sender_id, 
-        channel, message_type, content, raw_payload, message_id, global_message_id
+        channel, message_type, content, raw_payload, message_id, global_message_id, proposal_draft_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING *;
     `;
 
     const result = await AppDataSource.query(sql, [
       id, tenant_id, conversation_id, sender_type, sender_id,
-      channel, message_type || 'email', content, JSON.stringify(raw_payload || {}), (data.message_id || null), (data.global_message_id || null)
+      channel, message_type || 'email', content, JSON.stringify(raw_payload || {}), (data.message_id || null), (data.global_message_id || null), (data.proposal_draft_id || null)
     ]);
     return result[0];
   }
@@ -68,21 +68,23 @@ class ConversationMessageRepository {
     return result[0];
   }
   
-  async findTop10EmailByTenantIdAndConversationId(tenant_id, conversation_id) {
+  async findTop10EmailByTenantIdAndConversationId(tenant_id, conversation_id, global_message_id) {
     const sql = `
     SELECT 
       sender_type, 
       content, 
       message_id,
-      created_at 
+      created_at ,
+      proposal_draft_id
     FROM conversation_messages 
     WHERE tenant_id = $1 
       AND conversation_id = $2 
       AND channel = 'email'
+      and global_message_id = $3
     ORDER BY created_at DESC 
     LIMIT 10;
   `;
-    const result = await AppDataSource.query(sql, [tenant_id, conversation_id]);
+    const result = await AppDataSource.query(sql, [tenant_id, conversation_id, global_message_id]);
     return result; // We reverse this in the AI service logic
   }
 }

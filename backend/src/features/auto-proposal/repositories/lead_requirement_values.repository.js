@@ -93,8 +93,7 @@ class LeadRequirementValuesRepository {
       SELECT v.*, c.field_key, c.label 
       FROM lead_requirement_values v
       JOIN lead_requirement_config c ON v.field_id = c.id
-      WHERE v.lead_requirement_id = $1
-      ORDER BY c.order_index ASC`;
+      WHERE v.lead_requirement_id = $1`;
 
     const result = await db.query(sql, [leadRequirementId]);
     return result;

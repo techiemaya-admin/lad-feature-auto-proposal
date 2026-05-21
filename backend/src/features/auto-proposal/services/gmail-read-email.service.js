@@ -26,6 +26,8 @@ const placeHolderBuilder = require('../../../utils/placeHolderBuilder');
 const PlaceHolderBuilder = require("../../../utils/placeHolderBuilder");
 const tenantProfileService = require("./tenant-profile.service");
 const conversationService = require("./conversation.service");
+const lead_requirement_configRepository = require("../repositories/lead_requirement_config.repository");
+const proposalDraftItemsRepository = require("../repositories/proposal-draft-items.repository");
 
 /* 1️⃣ Start Gmail Watch */
 async function startWatch(email, tenantId) {
@@ -59,9 +61,12 @@ async function startWatch(email, tenantId) {
   return response.data;
 }
 
-async function createProposalDraft(leadRequirementDetails, leadData, email_content, conversation_id, global_message_id, threadId, subject,oAuth2Client) {
+async function createProposalDraft(leadRequirementDetails, leadData, email_content, conversation_id, global_message_id, threadId, subject, oAuth2Client, content) {
   console.log("Calculating final price for conversationid :", conversation_id, " lead requirement details :", leadRequirementDetails, " lead data : ", leadData, " email content : ", email_content);
   const calculatedPriceDetails = await finalPriceCalculationService.calculateFinalPrice(leadRequirementDetails.tenant_id, leadRequirementDetails.id, email_content, leadRequirementDetails.event_type);
+  const leadRequirementValues = await leadRequirementValueRepo.findByRequirementId(leadRequirementDetails.id);
+  const services_given = leadRequirementValues.map(v => v.label).join(', ');
+  console.log("Services given to tenant: ", services_given);
   calculatedPriceDetails.breakdown.sort((a, b) => {
     const aPrice = a.price || 0;
     const bPrice = b.price || 0;
@@ -106,12 +111,16 @@ async function createProposalDraft(leadRequirementDetails, leadData, email_conte
         total_surcharge: calculatedPriceDetails.total_concept_surcharge,
         final_price: calculatedPriceDetails.final_price,
         items: items,
-        date: Date.now()
+        date: Date.now(),
+        event_category: leadRequirementDetails.event_category,
+        services_given: services_given,
+        discount_percentage: ' (' + calculatedPriceDetails.total_discount_percentage + '%)',
+        surcharge_percentage: ' (' + calculatedPriceDetails.total_surcharge_percentage + '%)',
       })
       .build();
     const prosalPathDetails = await aiService.generateProposalFromTemplate(placeholderBuilderForEmail, leadRequirementDetails.tenant_id);
 
-    await gmailSendService.processAndSendDefaultEmailFromDragDrop(leadRequirementDetails.tenant_id, placeholderBuilderForEmail, prosalPathDetails.gcsUrl, calculatedPriceDetails.final_price, conversation_id, global_message_id, threadId, subject, oAuth2Client);
+    const emailResult = await gmailSendService.processAndSendDefaultEmailFromDragDrop(leadRequirementDetails.tenant_id, placeholderBuilderForEmail, prosalPathDetails.gcsUrl, calculatedPriceDetails.final_price, conversation_id, global_message_id, threadId, subject, oAuth2Client, content);
 
     const dataToSave = {
       tenant_id: leadRequirementDetails.tenant_id,
@@ -124,7 +133,21 @@ async function createProposalDraft(leadRequirementDetails, leadData, email_conte
       calculation_snapshot: calculatedPriceDetails,
       pricing_rule_ids: calculatedPriceDetails.applied_package_rules
     }
-    proposalDraftRepository.create(dataToSave)
+    const proposalDraft = await proposalDraftRepository.create(dataToSave);
+    console.log("Proposal draft created with ID:", proposalDraft.id);
+    try {
+
+      let messageData = emailResult.messageData;
+      messageData.proposal_draft_id = proposalDraft.id;
+
+      // Call your specific method
+      const savedMsg = await messageRepository.createMessage(messageData);
+      console.log("Message archived in DB:", savedMsg.id);
+
+    } catch (dbError) {
+      // Log the error but don't stop the process since the email was already sent
+      console.error("Archive Error: Failed to save sent email to DB.", dbError);
+    }
   } else { console.log("quotation should not be made due to price valued is ZERO") }
 
 }
@@ -147,7 +170,7 @@ function isSystemGenerated(headers) {
 
   // E. No-Reply From Address:
   const from = headerMap['from'] || "";
-  if (/no-reply|noreply|notification|donotreply/i.test(from)) return true;
+  if (/no-reply|instagram.com|youtube.com|noreply|notification|donotreply/i.test(from)) return true;
 
   return false;
 }
@@ -317,34 +340,59 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
             console.log("Lead created from email:", leadData.id);
 
             const result = await processIncomingEmail(tenantId, fullMessage, leadData.id, messageId);
+            if (!result) {
+              console.error("Failed to process incoming email for message ID:", messageId);
+              continue;
+            }
             const conversation_id = result.conversation_id;
             const threadId = result.threadId;
             const global_message_id = result.global_message_id;
             console.log("Email saved to conversation with ID:", conversation_id);
             if (tenatDetails.email != from && conversation_id != null && conversation_id != undefined) {
-              const resultToReturn = await createLeadRequirementViaPrompt(body, leadData.id, tenantId, conversation_id);
+              const resultToReturn = await createLeadRequirementViaPrompt(body, leadData, tenantId, conversation_id, global_message_id);
+              console.log("Result from createLeadRequirementViaPrompt:", resultToReturn);
               const type = resultToReturn.type;
               const leadRequirementDetails = resultToReturn.leadRequirementDetails;
               const values = resultToReturn.values;
               const content = resultToReturn.content;
-              if (type === "DISCOVERY_EMAIL") {
-                console.log("The email was classified as a DISCOVERY_EMAIL. No lead requirement was created. AI's suggested email reply content:", content);
+              if (type === "EXISTING_PROPOSAL_MATCH") {
                 const reSendSubject = subject.startsWith("Re:") ? subject : `Re: ${subject}`;
-                const gmailResponse = gmailSendService.sendGmailRaw({
+                const gmailResponse = await gmailSendService.sendGmailRaw({
                   to: contact.email,
                   subject: reSendSubject,
                   html: content,
                   messageId: global_message_id,
                   threadId: threadId,
-                  oAuth2Client : oAuth2Client
+                  oAuth2Client: oAuth2Client,
+                  attachments: [{ filename: "Proposal.pdf", url: resultToReturn.proposalDetails.gcs_storage_path, type: "application/pdf" }], // Optional: handle if passed
                 });
-                await conversationService.createConversationAndConversationMessages(tenantId, contact.email, reSendSubject, content, [], gmailResponse.id);
-              }
-              else {
+                console.log(`Sent AI-generated existing proposal email response to ${contact.email} with Gmail response:`, gmailResponse);
+                const id = gmailResponse.data.id;
+                await conversationService.createConversationAndConversationMessages(tenantId, contact.email, reSendSubject, content, [], id, global_message_id);
+              } else if (type === "DISCOVERY_EMAIL") {
+                console.log("The email was classified as a DISCOVERY_EMAIL. No lead requirement was created. AI's suggested email reply content:", content);
+                const reSendSubject = subject.startsWith("Re:") ? subject : `Re: ${subject}`;
+                const gmailResponse = await gmailSendService.sendGmailRaw({
+                  to: contact.email,
+                  subject: reSendSubject,
+                  html: content,
+                  messageId: global_message_id,
+                  threadId: threadId,
+                  oAuth2Client: oAuth2Client
+                });
+                const id = gmailResponse.data.id;
+                console.log(`Sent AI-generated discovery email response to ${contact.email} with Gmail response:`, gmailResponse);
+                await conversationService.createConversationAndConversationMessages(tenantId, contact.email, reSendSubject, content, [], id, global_message_id);
+              } else if (type === "BUDGET_REQUEST" || type === "RETURNING_CLIENT_QUOTE") {
                 console.log("Lead requirement details:", leadRequirementDetails);
                 console.log("Saved requirement values:", values);
 
-                await createProposalDraft(leadRequirementDetails, leadData, body, conversation_id, global_message_id, threadId, subject,oAuth2Client);
+                await createProposalDraft(leadRequirementDetails, leadData, body, conversation_id, global_message_id, threadId, subject, oAuth2Client, content);
+              } else {
+                console.log("Lead requirement details:", leadRequirementDetails);
+                console.log("Saved requirement values:", values);
+
+                await createProposalDraft(leadRequirementDetails, leadData, body, conversation_id, global_message_id, threadId, subject, oAuth2Client);
                 // // process emails...
               }
             } else {
@@ -459,54 +507,66 @@ async function triggerNewLeadAutomation(first_name, last_name, email) {
   }
 }
 
-async function createLeadRequirementViaPrompt(body, lead_id, tenant_id, conversation_id) {
-  console.log(lead_id)
+async function createLeadRequirementViaPrompt(body, leadData, tenant_id, conversation_id, global_message_id) {
+  console.log(leadData.id)
   try {
 
     console.log("Testing AI prompt :", body);
-    const response =
-      await aiService.generateAIResponse(body, tenant_id, conversation_id);
+    // Extract newly requested service config keys from the active custom configurations
+    const activeConfigs = await lead_requirement_configRepository.findByTenantAndActive(tenant_id);
 
-    // {
-    //   "dynamic_requirements": {
-    //     "main event guest count": 100,
-    //     "catering": null,
-    //     "function_hall": null,
-    //     "Videography": 1,
-    //     "AV Equipment" : 1
-    //   },
-    //   "location": null,
-    //   "event_category": "wedding",
-    //   "event_type": "Technical",
-    //   "support_level": "full_event_management",
-    //   "inquiry_type": "pricing",
-    //   "duration": null,
-    //   "client_type": "B2C",
-    //   "services_requested": [
-    //     "venue coordination",
-    //     "décor",
-    //     "wedding photography and videography",
-    //     "overall event execution",
-    //     "catering services",
-    //     "function hall arrangement"
-    //   ]
-    // }
-
-
+    const response = await aiService.generateAIResponse(body, tenant_id, conversation_id, leadData, global_message_id, activeConfigs);
 
     console.log("Generated AI response:", response);
     if (response.type === "DISCOVERY_EMAIL") {
       console.log("Received a general inquiry. No lead requirement will be created. AI's suggested email reply:", response.content);
       return response;
     }
+
+    const lastMessageWithDraft = response.lastMessageWithDraft;
+    if (lastMessageWithDraft && lastMessageWithDraft.proposal_draft_id != null) {
+      console.log("Found existing proposal draft link:", lastMessageWithDraft.proposal_draft_id);
+
+      // Fetch the service config IDs tied to that prior draft configuration
+      const oldItems = await proposalDraftItemsRepository.findItemsByMessageId(lastMessageWithDraft.proposal_draft_id);
+      const oldConfigIds = oldItems.map(item => item.requirement_config_id);
+
+      // Filter out keys that the AI evaluated as active numbers (non-null and greater than 0)
+      const newlyRequestedConfigIds = activeConfigs
+        .filter(config => data.dynamic_requirements[config.field_key] !== null && Number(data.dynamic_requirements[config.field_key]) > 0)
+        .map(config => config.id);
+
+      // Sort both arrays to perform an exact element match evaluation
+      const oldSorted = [...oldConfigIds].sort();
+      const newSorted = [...newlyRequestedConfigIds].sort();
+
+      const isSameServicesPattern = oldSorted.length === newSorted.length &&
+        oldSorted.every((val, index) => val === newSorted[index]);
+
+      if (isSameServicesPattern) {
+        console.log("Services match exactly! Bypassing generation and returning original asset tracking URLs.");
+
+        // Fetch the full original draft metadata records (which contain your existing GCS URL and historical message configurations)
+        const activeDraftDetails = await proposalDraftRepository.findById(lastMessageWithDraft.proposal_draft_id);
+
+        return {
+          type: "EXISTING_PROPOSAL_MATCH",
+          message: "The customer requested a quotation for identical services. Reusing existing quote record assets.",
+          proposalDetails: activeDraftDetails,
+          content: lastMessageWithDraft.content
+        };
+      }
+
+      console.log("New services detected in the quote request. Proceeding with new proposal configuration generation.");
+    }
     const data = response.data;
-    data.lead_id = lead_id;
+    data.lead_id = leadData.id;
     data.tenant_id = tenant_id;
     const leadRequirementDetails = await leadRequirementRepository.create(data);
     console.log("Lead requirement created with :", leadRequirementDetails);
 
     const results = await leadRequirementValueRepo.saveRequirementValues(tenant_id, leadRequirementDetails.id, data.dynamic_requirements);
-    const resultToReturn = { type: "PROPOSAL_DATA", leadRequirementDetails: leadRequirementDetails, values: results }
+    const resultToReturn = { type: response.type, leadRequirementDetails: leadRequirementDetails, values: results, content: response.data.text_reply }
     return resultToReturn;
   } catch (err) {
     console.error("Error in createLeadRequirementViaPrompt:", err);

@@ -50,6 +50,8 @@ async function calculateFinalPrice(tenantId, leadRequirementId, event_type) {
     let addonServicesSubtotal = 0;
     let totalDiscount = 0;
     let totalSurcharge = 0;
+    let totalDiscountPercentage = 0;
+    let totalSurchargePercentage = 0;
 
     for (const item of leadData) {
       const count = Number(item.value_number) || 0;
@@ -60,6 +62,8 @@ async function calculateFinalPrice(tenantId, leadRequirementId, event_type) {
 
       let itemFinalPrice = itemBasePrice;
       let itemDiscount = 0;
+      let discountPercentage = 0;
+      let surchargePercentage = 0;
       let itemSurcharge = 0;
       let appliedRules = [];
 
@@ -74,6 +78,8 @@ async function calculateFinalPrice(tenantId, leadRequirementId, event_type) {
         itemFinalPrice = ruleResult.finalAmount;
         itemDiscount = ruleResult.discount;
         itemSurcharge = ruleResult.surcharge;
+        discountPercentage = ruleResult.discountPercentage;
+        surchargePercentage = ruleResult.surchargePercentage;
         appliedRules = ruleResult.appliedRules;
 
         addonServicesSubtotal += itemFinalPrice;
@@ -91,10 +97,14 @@ async function calculateFinalPrice(tenantId, leadRequirementId, event_type) {
         price: itemFinalPrice,
         total_discount: itemDiscount,
         total_surcharge: itemSurcharge,
+        discount_percentage: discountPercentage,
+        surcharge_percentage: surchargePercentage,
         applied_rules: appliedRules
       });
 
       totalDiscount += itemDiscount;
+      totalDiscountPercentage += discountPercentage;
+      totalSurchargePercentage += surchargePercentage;
       totalSurcharge += itemSurcharge;
     }
 
@@ -111,6 +121,8 @@ async function calculateFinalPrice(tenantId, leadRequirementId, event_type) {
     const finalPackagePrice = packageResult.finalAmount;
     totalDiscount += packageResult.discount;
     totalSurcharge += packageResult.surcharge;
+    totalDiscountPercentage += packageResult.discountPercentage;
+    totalSurchargePercentage += packageResult.surchargePercentage;
 
     let finalPrice = finalPackagePrice + addonServicesSubtotal;
     console.log(`13. Calculated Final Price (Package + Addons): ${finalPrice}`);
@@ -123,9 +135,10 @@ async function calculateFinalPrice(tenantId, leadRequirementId, event_type) {
       console.log(`14. MINIMUM COST TRIGGERED. Adding adjustment of ${adjustmentAmount}`);
 
       // Add a row to the breakdown to justify the price jump
+
       breakdown.push({
         key: 'min_cost_adjustment',
-        label: `Minimum Package Commitment Adjustment (${concept.name})`,
+        label: `Minimum Package Commitment (${concept.name}) \n (Top up to meet minimum cost)`,
         count: 1,
         base_unit_price: adjustmentAmount,
         price: adjustmentAmount,
@@ -146,6 +159,8 @@ async function calculateFinalPrice(tenantId, leadRequirementId, event_type) {
       final_price: finalPrice,
       total_concept_discount: totalDiscount,
       total_concept_surcharge: totalSurcharge,
+      total_discount_percentage: totalDiscountPercentage,
+      total_surcharge_percentage: totalSurchargePercentage,
       applied_package_rules: packageResult.appliedRules
     };
 
@@ -160,6 +175,8 @@ async function calculateFinalPrice(tenantId, leadRequirementId, event_type) {
     let grandTotal = 0;
     let totalDiscount = 0;
     let totalSurcharge = 0;
+    let totalDiscountPercentage = 0;
+    let totalSurchargePercentage = 0;
 
     for (const item of leadData) {
       const count = Number(item.value_number) || 0;
@@ -190,6 +207,8 @@ async function calculateFinalPrice(tenantId, leadRequirementId, event_type) {
 
       grandTotal += ruleResult.finalAmount;
       totalDiscount += ruleResult.discount;
+      totalDiscountPercentage += ruleResult.discountPercentage;
+      totalSurchargePercentage += ruleResult.surchargePercentage;
       totalSurcharge += ruleResult.surcharge;
     }
 
@@ -202,6 +221,8 @@ async function calculateFinalPrice(tenantId, leadRequirementId, event_type) {
       final_price: grandTotal,
       total_concept_discount: totalDiscount,
       total_concept_surcharge: totalSurcharge,
+      total_discount_percentage: totalDiscountPercentage,
+      total_surcharge_percentage: totalSurchargePercentage,
       applied_package_rules: []
     });
   }
@@ -280,6 +301,8 @@ async function generateFinalPrice(tenantId, leadRequirementId, emailContent, eve
 function applyRuleMathWithDetails(baseAmount, rules, inputValues, forceMatch = false) {
   let finalAmount = baseAmount;
   let discount = 0;
+  let discountPercentage = 0;
+  let surchargePercentage = 0;
   let surcharge = 0;
   let appliedRules = [];
 
@@ -312,14 +335,16 @@ function applyRuleMathWithDetails(baseAmount, rules, inputValues, forceMatch = f
       if (rule.action_type?.toLowerCase() === 'discount') {
         finalAmount -= impact;
         discount += impact;
+        discountPercentage = discountPercentage + actionVal
       } else {
         finalAmount += impact;
         surcharge += impact;
+        surchargePercentage = surchargePercentage + actionVal;
       }
       appliedRules.push(rule.id);
     }
   }
-  return { finalAmount, discount, surcharge, appliedRules };
+  return { finalAmount, discount, surcharge, appliedRules, discountPercentage, surchargePercentage };
 }
 
 

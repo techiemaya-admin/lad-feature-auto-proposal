@@ -572,6 +572,12 @@ CREATE TABLE quotation_email_template (
 ALTER TABLE conversation_messages
 ADD COLUMN global_message_id varchar(1000);
 
+ALTER TABLE conversation_messages
+ADD COLUMN proposal_draft_id uuid,
+ADD CONSTRAINT fk_proposal_draft
+FOREIGN KEY (proposal_draft_id)
+REFERENCES proposal_draft(id);
+
 
 
 INSERT INTO users (

@@ -3,9 +3,10 @@ const db = require("../../../config/data-source");
 
 class QuotationEmailRepository {
   async create(data) {
-    console.log("create " + JSON.stringify(data))
+    console.log("create " + JSON.stringify(data));
     if (data.is_default) {
       await this.clearDefaults(data.tenant_id);
+      data.is_default = true;
     }
 
     const query = `

@@ -29,6 +29,9 @@ const ImageModule = require("docxtemplater-image-module-free");
 const convertAsync = promisify(libre.convert);
 const sizeOf = require("image-size"); // npm install image-size
 const conversationMessageRepository = require("../repositories/conversation-message.repository");
+const tenantRepository = require("../repositories/tenant.repository");
+const pricingModelRepository = require("../repositories/pricingModel.repository");
+const pricingRuleRepository = require("../repositories/pricingRule.repository");
 
 class AIService {
   constructor() {
@@ -105,39 +108,61 @@ class AIService {
 
 
   async callGenAI(prompt) {
+    let retries = this.geminiModels.length * 2; // Allow enough retries to try all keys twice if needed
 
-    const modelInfo = this.getNextApiKey();
-    console.log(
-      "Using Gemini API Key Index:",
-      modelInfo ? modelInfo.keyIndex : "None"
-    );
-    if (!modelInfo) return this.getFallbackResponse();
-
-
-    // ✅ Correct SDK usage
-    const model = modelInfo.client.getGenerativeModel({
-      model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
-    });
-
-    let retries = 5;
     for (let i = 0; i < retries; i++) {
+      // ✅ Fetch a fresh key inside the loop so we rotate on failure
+      const modelInfo = this.getNextApiKey();
+
+      if (!modelInfo) {
+        console.log("No configured Gemini models available.");
+        return this.getFallbackResponse();
+      }
+
+      console.log(`[Attempt ${i + 1}] Using Gemini API Key Index: ${modelInfo.keyIndex}`);
+
       try {
-        console.log("send request to gemini")
+        const model = modelInfo.client.getGenerativeModel({
+          model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
+        });
+
+        console.log("Sending request to Gemini...");
         const result = await model.generateContent(prompt);
         const response = await result.response;
-        console.log(`Response fetched from gen AI after attempt : ${i}`)
+
+        // Update statistics on successful call
+        this.updateUsage(modelInfo);
+        console.log(`✅ Response fetched from Gen AI successfully using Key Index: ${modelInfo.keyIndex}`);
+
         return response.text();
+
       } catch (err) {
-        if (err.message.includes("503") && i < retries - 1) {
-          console.log(`Retrying... attempt ${i + 1}`);
-          await new Promise((res) => setTimeout(res, 20000)); // wait 2s
+        const errorMessage = err.message || "";
+        console.error(`❌ Error with Key Index ${modelInfo.keyIndex}:`, errorMessage);
+
+        // Check for Rate Limit (429), Quota Exhausted, or Service Unavailable (503)
+        const isRateLimit = errorMessage.includes("429") || errorMessage.toLowerCase().includes("quota");
+        const isServiceUnavailable = errorMessage.includes("503");
+
+        if ((isRateLimit || isServiceUnavailable) && i < retries - 1) {
+          console.warn(`⚠️ Key Index ${modelInfo.keyIndex} rate-limited or unavailable. Rotating immediately to the next key...`);
+
+          // Optional: Add a short backoff pause only if it's a transient 503 server error
+          if (isServiceUnavailable) {
+            await new Promise((res) => setTimeout(res, 20000));
+          }
+          console.log(`🔄 Rotating to the next Gemini API key due to error on index ${modelInfo.keyIndex}. Retrying... (Attempt ${i + 2} of ${retries})`);
+          // Continue loop: loop restarts, picks up the NEXT key index via this.getNextApiKey()
+          continue;
         } else {
+          // If it's a completely different error (like bad prompt or auth), throw it immediately
           throw err;
         }
       }
     }
-  }
 
+    throw new Error("All configured Gemini API keys exhausted or rate-limited.");
+  }
 
   async callGenAIWithConfig(prompt, generationConfig) {
 
@@ -177,10 +202,13 @@ class AIService {
     }
   }
 
-  async generateAIResponse(emailContent, tenant_id, conversation_id) {
+  async generateAIResponse(emailContent, tenant_id, conversation_id, leadData, global_message_id,configs) {
     try {
-      const rawHistory = await conversationMessageRepository.findTop10EmailByTenantIdAndConversationId(tenant_id, conversation_id);
-
+      const tenantDetails = await tenantRepository.findById(tenant_id);
+      const rawHistory = await conversationMessageRepository.findTop10EmailByTenantIdAndConversationId(tenant_id, conversation_id, global_message_id);
+      const lastMessageWithDraft = rawHistory.find(m => m.proposal_draft_id !== null);
+      const pricingRules = await pricingRuleRepository.findAllWithConceptAndServiceDetails(tenant_id);
+      const structuredPricingRulesPrompt = JSON.stringify(pricingRules, null, 2);
       // Clean HTML from history content and format for AI
       const formattedHistory = rawHistory
         .reverse() // Oldest to newest
@@ -197,13 +225,23 @@ class AIService {
       const conceptNames = concepts.map(c => c.name).join(', '); // e.g., "LITE, IMPACT, PREMIUM"
       console.log("Fetched concepts for prompt:", conceptNames);
       // Fetch the full config objects instead of just keys
-      const configs = await leadRequirementConfigRepo.findByTenantAndActive(tenant_id);
-
+      
+      const services_provided = configs.map(c => c.label).join(', ');
       // Create a detailed map for the AI
-      const dynamicFieldsPrompt = configs.map(c =>
-        `- ${c.field_key}: (${c.label})`
-      ).join('\n');
+      // const dynamicFieldsPrompt = configs.map(c =>
+      //   `- ${c.field_key}: (${c.label})`
+      // ).join('\n');
+      console.log("services_provided:: " + services_provided);
+      const pricingModels = await pricingModelRepository.findAll(tenant_id);
+      const dynamicFieldsPrompt = configs
+        .map(config => {
+          // Find the matching pricing model label (e.g., "Per Person", "Fixed Rate")
+          const model = pricingModels.find(m => m.id === config.pricing_model_id);
+          const pricingType = model ? model.label : 'Fixed/Flat Rate';
 
+          return `- ${config.field_key}: Description: ${config.label} (Pricing Structure: ${pricingType})`;
+        })
+        .join('\n');
       // Create a sample JSON structure for the AI to follow
       const dynamicJsonStructure = configs.reduce((acc, c) => {
         acc[c.field_key] = "value or null";
@@ -219,16 +257,32 @@ class AIService {
       ).join('\n');
 
       // ... (Keep your existing schema and mapping variables)
+      const currentDateString = new Date().toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
 
       const prompt = `
     You are an expert Data Extraction and Service Matching AI. 
-    Your goal is to extract structured details from a lead's email and ensure every requested service has a valid numeric quantity so a quotation can be generated.
+    Your goal is to extract structured details from a lead's email and ensure every requested service has a valid numeric quantity so a quotation can be generated when appropriate.
 
+    ### SYSTEM TIMELINE CONTEXT (CRITICAL):
+    - Today's Reference Date is: ${currentDateString} (Use this exact baseline year to evaluate if client dates are valid or have passed).
+
+    ### SENDER IDENTITY (MANDATORY FOR TEXT_REPLY):
+    - Company Name: ${tenantDetails.name}
+    - Company Email: ${tenantDetails.email || 'Not Specified'}
+    - Company Website: ${tenantDetails.website || 'Not Specified'}
+    
     ### CONVERSATION HISTORY (FOR CONTEXT):
     ${formattedHistory}
 
     ### CUSTOM SCHEMA FIELDS (MANDATORY):
     ${dynamicFieldsPrompt}
+
+    ### ACTIVE AVAILABLE PRICING RULES DATA SCHEMAS:
+    ${structuredPricingRulesPrompt}
 
     ### STANDARD FIELDS:
     - location: (City or Country)
@@ -241,30 +295,142 @@ class AIService {
     - services_requested: (array of strings/keys extracted from the email)
 
     ### EXTRACTION & CONSULTATION RULES:
-    1. **NO ZERO OR TEXT QUANTITIES**: For every key in "dynamic_requirements", you must return ONLY a Number or null. Never return text descriptions like "study permit process" inside numeric fields.
-    2. **MANDATORY MINIMUM QUANTITY**: If a lead requests a service but does not specify a quantity (e.g., "I need visa help"), you MUST assign a value of **1**. This ensures the total price is never zero.
-    3. **INTELLIGENT SERVICE MATCHING**: If the lead's demand is clear (e.g., "Canada study visa") but they don't list specific sub-services, check the CUSTOM SCHEMA and enable the service keys that are logically required to fulfill that demand (e.g., set "visa_assistance": 1).
+    1. **NO ZERO OR TEXT QUANTITIES**: For every key in "dynamic_requirements", you must return ONLY a Number or null. Never return text descriptions inside numeric fields.
+    2. **MANDATORY MINIMUM QUANTITY**: If a lead requests a service but does not specify a quantity, you MUST assign a value of **1**. This ensures the total price is never zero.
+    3. **INTELLIGENT SERVICE MATCHING**: If the lead's demand is clear but they don't list specific sub-services, check the CUSTOM SCHEMA and enable the service keys that are logically required.
     4. **SPECIFIC COUNT EXTRACTION**: If the email mentions a specific number (e.g., "100 guests"), extract ONLY that number for the corresponding key.
-    5. **NULL FOR UNRELATED**: Return null ONLY for services that are completely unrelated to the lead's email content.
-    6. **NO BOOLEANS**: Do not use "yes", "no", or "true". Use numbers only.
-    7. **FORMATTING**: Return ONLY raw valid JSON. No markdown, no backticks, no explanations.
+    5. **CRITICAL GUEST COUNT CROSS-DEPENDENCY**: If the email specifies a guest count (e.g., "200 guests"), that exact number MUST scale and apply to ALL requested services that are dependent on or provided per person, such as catering/plates.
+    6. **NULL FOR UNRELATED**: Return null ONLY for services that are completely unrelated to the lead's email content.
+    7. **NO BOOLEANS**: Do not use "yes", "no", or "true". Use numbers only.
+    8. **FORMATTING**: Return ONLY raw valid JSON. No markdown, no backticks, no explanations.
+    9. **NO SERVICE HALLUCINATIONS (BUG 2 Fix)**: You must ONLY refer to services that are explicitly listed in the Whitelist: [${conceptNames}]. Never infer, extrapolate, or name services that are not in this list (e.g., Do NOT invent names like "Main Event Lite" or "Corporate Workshop").
+    10. **NO RAW MARKDOWN (BUG 9 Fix)**: Never use markdown formatting like asterisks (**text**) or hashes (#) in the "text_reply". Use plain, clean text formatting only.
+    11. **NO PROACTIVE CATALOG DUMPING (BUG 4 Fix)**: Never list available services, packages, or pricing structure models unless the lead has explicitly asked "what services do you offer" or similar. Keep early dialogue tightly focused on what they asked.
     
-    ### DECISION LOGIC:
-    1. ANALYZE HISTORY: Review the conversation history. Have we already answered their questions? Have we already sent a service list?
-    2. INTENT CHECK: 
-       - IF the email is just a greeting (e.g., "Hi", "Hello") OR a general inquiry (e.g., "What do you do?", "Price list please"): 
-      Set "intent" to "GENERAL". 
-      Write a warm "text_reply" that introduces our services (${conceptNames}) and specifically mentions: ${dynamicFieldsPrompt}. End by asking for their event details.
+    ### AUTOMATED STEP-BY-STEP PROCESSING PIPELINE:
 
-    - IF the email asks for a specific service or quote (e.g., "I need a wedding quote"): 
-      Set "intent" to "SERVICE_REQUEST". 
+      #### STEP 1: SENTIMENT DETECTION (BUG 11 Fix)
+      - Analyze the email for negative/angry sentiment (e.g., "unprofessional", "delayed response", frustration).
+      - If negative sentiment is detected, you MUST begin your "text_reply" with a profound, sincere personal apology addressing their complaint directly before taking any other action.
 
-    3. DISCOVERY RULE: If intent is "GENERAL", write a warm email. Mention these services ONLY if they haven't been mentioned in the history: ${conceptNames}.
+      #### STEP 2: UNANSWERED QUESTION EXTRACTION (BUG 8 Fix)
+      - Scan the lead's current email and compile an internal list of all direct or indirect questions asked (e.g., "Is pricing negotiable?").
+      - You MUST explicitly address and answer each of these questions inside your "text_reply", or state that you will have the team follow up on that specific topic. Never drop an active question.
 
+      #### STEP 4: 4-STATE INTENT CLASSIFICATION (BUG 1 Fix)
+        You must classify the "intent" into exactly one of these 4 states based on the priority matrix rules below:
+        
+        - State 1: "GREETING" -> If the email is just a basic greeting, hello, or sign-in opening. 
+          * Action: Set intent to "GREETING". Write a brief, friendly, conversational welcome response. Do not dump your catalog. 
+          * Action : Start with "Hi ${leadData.first_name || 'Valued Client'},". Do not dump your catalog.
+          
+- State 2: "SERVICE_INQUIRY" -> If the lead is asking general exploratory questions, or explicitly asks a structural query like "share me the packages" to understand available options.
+          * CRITICAL RESTRICTION: If the customer is completely missing BOTH a guest count and service choices (e.g., "I'd like to know more about what you offer"), you MUST NOT use the package exposure strategy below. Instead, let STEP 6 override the text_reply with the data gathering template.
+          * Package & Pricing Rules Exposure Strategy (CRITICAL):
+            1. IF there are entries present inside the "concepts" array:
+               List each package concept by its "concept_name". Under each package name, print its associated "pricing_rules" details in clean, natural language sentences.
+            2. IF the "concepts" array is empty, fall back entirely to the "standaloneRequirements" array:
+               List the available core services by their "service_label" and cleanly explain their active rules using the same natural, non-technical sentence structure.
+          * Rule: Do not execute a live calculation, do not build a custom quote grid table, and do not show raw database syntax terms like 'uuid' or 'target_type' to the client. Keep it conversational.
+               
+        - State 3: "QUOTE_REQUEST" -> If and only if the lead is actively asking for a concrete financial estimate, has provided actionable specifications (date, counts), has a valid future date, and has never received a quote in the conversation history thread.
+          * Action: Set intent to "QUOTE_REQUEST". Set text_reply to null (letting backend code take over).
+          * Action : Start with "Hi ${leadData.first_name || 'Valued Client'},"
+          
+        - State 4: "BOOKING_CONFIRMATION" -> If the lead uses confirmation milestones like "go ahead", "confirm", "book", "advance payment", or "next steps".
+          * Action: Set intent to "BOOKING_CONFIRMATION". Set text_reply exactly to: "Thank you for confirming! We're excited to work with you. Our team will reach out to you shortly with the advance payment details and booking formalities."
+          * Action : Start with "Hi ${leadData.first_name || 'Valued Client'},"
+        
+        - State 5: "BUDGET_REQUEST" -> If the customer specifies clear service parameters/selections and asks how it looks "budget-wise", asks for a quote regarding their budget, or provides an expected cost limit.
+          * Action: Force intent to "BUDGET_REQUEST". Populate text_reply using the specific attached-proposal greeting block template.
+          * Action : Start with "Hi ${leadData.first_name || 'Valued Client'},"
+        
+        - State 6: "RETURNING_CLIENT_QUOTE" -> Triggered strictly when a returning customer with an established past real-world relationship re-connects warmly AND provides complete specifications (guest count + services requested) to request a new pricing proposal.
+          * Action: Force intent to "RETURNING_CLIENT_QUOTE". You MUST generate a warm, deeply personalized "text_reply" email body text that acknowledges their past relationship details enthusiastically before telling them their proposal breakdown is attached. Populated requirements will still allow backend attachment generation.
+
+
+    ### DECISION LOGIC & GATEKEEPERS (EVALUATE STRICTLY IN ORDER):
+
+    1. STEP 1: DYNAMIC GREETING PATTERN
+       - Whenever you construct a "text_reply", you must explicitly start the message with a greeting addressed to the lead, formatted exactly as: "Hi ${leadData.first_name || 'Valued Client'},"
+
+    2. STEP 2: PAST DATE DETECTION (OVERRIDES ALL QUOTE GENERATION)
+       - If the client mentions an event date that is in the PAST relative to today's date (${currentDateString}):
+         * Force "intent" to "SERVICE_INQUIRY".
+         * Write a polite "text_reply" noting that the specified date has passed, and ask for an updated timeline so you can look up packages. Keep "dynamic_requirements" fields as null. Skip all remaining steps.
+
+    3. STEP 3: UNSTUPPORTED SERVICES CHECK
+       - If the lead is explicitly asking for a service that is NOT in your CUSTOM SCHEMA FIELDS (e.g., they ask for "photography" but it's not listed in your system):
+         * Force "intent" to "SERVICE_INQUIRY".
+         * Set "text_reply" exactly to: 
+           "Thank you for reaching out! Unfortunately, [Name of requested unsupported service] isn't a service we currently offer.\\nWe specialize in end-to-end event planning — covering our core offerings like ${conceptNames}. If you're planning an event and need any of these, we'd love to help!\\nFeel free to reach out if there's anything else we can assist with."
+         * Keep "dynamic_requirements" fields as null. Skip remaining steps.
+
+    4. STEP 4: BOOKING / CONFIRMATION INTENT DETECTION
+       - If the email contains action-oriented confirmation keywords like "go ahead", "confirm", "book", "advance payment", or "next steps":
+         * Force "intent" to "BOOKING_CONFIRMATION" (Suppress generating a new quote layout).
+         * Set "text_reply" exactly to:
+           "Thank you for confirming! We're excited to work with you. Our team will reach out to you shortly with the advance payment details and booking formalities."
+         * Skip remaining steps.
+    
+    5. STEP 5: PRIOR REAL-WORLD RELATIONSHIP INTERCEPTOR (HIGH PRIORITY LOGIC)
+       - Scan the incoming email content and history thread for clear indicators of an established past relationship, older successful events organized by you years ago, or warm structural updates (e.g., "event you organised for us two years ago", "team still talks about it", "reconnect").
+       - **IF PRIOR RELATIONSHIP DETECTED AND SPECIFICATIONS ARE COMPLETE**:
+         * If they provided a guest count AND service parameters (like Chethan's email regarding 150 people for Main Event + Function Hall):
+           * Force "intent" to "RETURNING_CLIENT_QUOTE".
+           * **DYNAMIC GENERATION RULES**: Write a beautifully custom, warm text email response. You must hit these exact markers:
+             1. Greet them warmly by name.
+             2. Enthusiastically acknowledge the specific past memory they raised (e.g., "We are absolutely thrilled to hear that the team still talks about the event we organized two years ago!").
+             3. Validate their life update text (e.g., "Huge congratulations on the new office and all your new projects!").
+             4. Confirm you'd love to organize their upcoming event in August for their 150 guests.
+             5. Clearly state that your automated pricing engine has calculated their investment breakdown and attached the official proposal to this message thread for their immediate review.
+             6. End with a personal, warm sign-off as ${tenantDetails.name}.
+             7. CRITICAL: Never use markdown bolding (**), bullet lists, or hash headers (#) inside "text_reply". Use clean paragraphs separated by double newlines (\\n\\n).
+           * Extract and fully populate "dynamic_requirements" using your standard numeric rules so your backend can generate the attached layout files. Skip all remaining steps.
+         * **IF PRIOR RELATIONSHIP DETECTED BUT SPECIFICATIONS ARE VAGUE/MISSING**:
+           * Force "intent" to "SERVICE_INQUIRY".
+           * Generate a personalized message catching up warmly, but guide them to share their numbers/selections before you can dump a rate matrix. Skip remaining steps.
+    
+
+    6. STEP 6: HISTORY & DUPLICATE QUOTE CHECK
+       - Analyze the ### CONVERSATION HISTORY. If a quotation/proposal breakdown has already been explicitly sent to the client in this thread:
+         * Force "intent" to "SERVICE_INQUIRY" (Do not re-trigger a duplicate "QUOTE_REQUEST" workflow or modify the database arrays).
+         * Provide a natural "text_reply" addressing any new text questions they had, or ask if they need help finalizing the details. Skip remaining steps.
+
+    7. STEP 7: EXPLORATORY & PREMATURE INQUIRY PROTECTION
+       - **MANDATORY DETAILS CHECK (CRITICAL)**: Both a specified guest count (or headcount) AND at least one explicit service from our available offerings must be present to qualify for a quotation or package dump. If the incoming email is completely missing BOTH a guest count and service choices, you MUST treat it as an exploratory data-gathering phase.
+       - Force "intent" to "SERVICE_INQUIRY" IF:
+         a) It is the FIRST email in the thread AND the customer has NOT included or listed any specific services and guest counts they want (e.g., "how much do you charge?").
+         b) The lead asks completely vague questions with no numbers/selections.
+       - **CRITICAL OVERRIDE**: If the lead explicitly includes or names specific services they want (e.g., "We need decoration and catering" or "Main Event setup"), SKIP this protection step entirely and proceed down to generation loops.
+       - **DYNAMIC REPETITION GUARD**: 
+         * **IF FIRST EMAIL INTERACTION WITH NO MANDATORY METRICS**: Use the standard 4-question data gathering template layout block.
+         * **IF HARDCODED LIST WAS SENT**: Write a completely unique conversational follow-up response without repeating the questions list layout block.
+       - Keep "dynamic_requirements" fields as null. Skip remaining steps.
+
+   8. STEP 8: BUDGET REQUEST DETECTOR (CRITICAL PROPOSAL BYPASS - HIGH PRIORITY INTERCEPT)
+       - If the lead shares an expected budget value, a specific target cost metric, asks how an arrangement looks "budget-wise", or explicitly brings up competitor quote metrics while providing a guest count and selecting concrete service options:
+         * Force "intent" to "BUDGET_REQUEST".
+         * **DYNAMIC TEXT_REPLY GENERATION RULES**: Write a natural, highly custom email response based on their input. You must follow these absolute guidelines:
+           1. Start exactly with: "Hi ${leadData.first_name || 'Valued Client'},"
+           2. Dynamically reference their unique context: Politely acknowledge the exact budget amount, price targets, or competitive comparisons they mentioned, along with their specified guest count, as extracted strictly from their incoming email.
+           3. Maintain price integrity: Gracefully communicate that your pricing structures are aligned with delivering premium menu, setup, and service quality benchmarks, while reassuring them that you always aim to optimize options to align with their event goals.
+           4. Clearly state that a tailored pricing/quotation proposal layout has been generated and attached to this email thread for their immediate review.
+           5. End with a polite sign-off strictly as ${tenantDetails.name}.
+           6. CRITICAL: Never include markdown bolding (**), bullet lists, or hash headers (#). Use clean, plain text with standard double newlines (\\n\\n) between paragraphs.
+         * Extract and populate "dynamic_requirements" completely using the details mentioned in the email layout. Skip remaining steps.
+
+    9. STEP 9: QUOTE_REQUEST QUALIFICATION
+       - ONLY if the date is in the future (or unspecified yet) and the lead has provided the mandatory details—explicitly stating a guest count AND selecting concrete choices of our services: [${services_provided}]—requesting a price outline:
+         * Set "intent" to "QUOTE_REQUEST".
+         * Set "text_reply" to null (This forces backend processing code to take over and build the proposal sheet).
+         * Populate "dynamic_requirements" completely using your extraction rules.
+       
     ### REQUIRED JSON STRUCTURE:
     {
-    "intent": "GENERAL" | "SERVICE_REQUEST",
-    "text_reply": "Natural email response for GENERAL intent, else null",
+      "intent": "GREETING" | "SERVICE_INQUIRY" | "QUOTE_REQUEST" | "BOOKING_CONFIRMATION" | "BUDGET_REQUEST",
+      "text_reply": "Natural email response string matching the step triggered above, else null. Remember to strictly sign off as ${tenantDetails.name} and use clean structural newlines (\\n) between paragraphs.",
+      "sentiment_is_negative": true | false,
       "dynamic_requirements": ${JSON.stringify(dynamicJsonStructure)},
       "location": null,
       "event_category": null,
@@ -280,6 +446,7 @@ class AIService {
     "${emailContent}"
 `;
 
+
       const text = await this.callGenAI(prompt);
       // this.updateUsage(modelInfo);
 
@@ -294,10 +461,11 @@ class AIService {
       }
 
       const parsed = JSON.parse(cleanedText);
-      if (parsed.intent === "GENERAL") {
+      if (parsed.intent != "QUOTE_REQUEST" && parsed.intent != "BUDGET_REQUEST" && parsed.intent != "RETURNING_CLIENT_QUOTE") {
         return {
           type: "DISCOVERY_EMAIL",
-          content: parsed.text_reply
+          content: parsed.text_reply,
+          lastMessageWithDraft: lastMessageWithDraft
         };
       }
       console.log("Before update event_type : " + parsed.event_type)
@@ -330,8 +498,9 @@ class AIService {
       parsed.event_type = bestMatch;
       console.log("After update event_type : " + parsed.event_type)
       return {
-        type: "PROPOSAL_DATA",
-        data: parsed
+        type: parsed.intent,
+        data: parsed,
+        lastMessageWithDraft: lastMessageWithDraft
       };
     } catch (err) {
       console.error("AI Generation Error:", err);

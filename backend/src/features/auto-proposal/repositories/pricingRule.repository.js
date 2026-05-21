@@ -53,7 +53,9 @@ class PricingRuleRepository {
     const sql = `
       SELECT pr.*, 
              c.name as concept_name, 
-             lrc.label as service_label
+             lrc.label as service_label,
+             c.id as concept_id,
+              lrc.id as requirement_config_id
       FROM pricing_rules pr
       LEFT JOIN concept c ON pr.concept_id = c.id
       LEFT JOIN lead_requirement_config lrc ON pr.requirement_config_id = lrc.id
@@ -62,6 +64,87 @@ class PricingRuleRepository {
     `;
     const result = await db.query(sql, [tenantId]);
     return Array.isArray(result) ? result : result.rows || [];
+  }
+
+
+  async findAllWithConceptAndServiceDetails(tenantId) {
+    const sql = `
+      SELECT pr.*, 
+             c.name as concept_name, 
+             lrc.label as service_label,
+             c.id as concept_id,
+             lrc.id as requirement_config_id
+      FROM pricing_rules pr
+      LEFT JOIN concept c ON pr.concept_id = c.id
+      LEFT JOIN lead_requirement_config lrc ON pr.requirement_config_id = lrc.id
+      WHERE pr.tenant_id = $1 AND pr.is_deleted = false
+      ORDER BY pr.priority DESC, pr.created_at DESC
+    `;
+    
+    const result = await db.query(sql, [tenantId]);
+    const rows = Array.isArray(result) ? result : result.rows || [];
+
+    const conceptsMap = {};
+    const standaloneRequirementsMap = {};
+
+    for (const row of rows) {
+      // Reassemble the rule data cleanly matching your architectural condition/action layout
+      const pricingRule = {
+        id: row.id,
+        name: row.name,
+        priority: row.priority,
+        is_active: row.is_active,
+        target_type: row.target_type,
+        
+        // Formatted Condition Sub-object
+        condition: row.condition_field ? {
+          field: row.condition_field,
+          operator: row.condition_operator,
+          value: row.condition_value ? Number(row.condition_value) : null
+        } : null,
+        
+        // Formatted Action Sub-object
+        action: row.action_type ? {
+          type: row.action_type,            // e.g., 'discount', 'surcharge'
+          mode: row.action_mode,            // e.g., 'subtract', 'add', 'set'
+          value: row.action_value ? Number(row.action_value) : null,
+          value_type: row.action_value_type // e.g., 'fixed', 'percentage'
+        } : null,
+        
+        metadata: row.metadata,
+        created_at: row.created_at,
+        updated_at: row.updated_at
+      };
+
+      // 1. Group by package concept rules
+      if (row.target_type === 'package' && row.concept_id) {
+        if (!conceptsMap[row.concept_id]) {
+          conceptsMap[row.concept_id] = {
+            concept_id: row.concept_id,
+            concept_name: row.concept_name || 'Unnamed Package Concept',
+            pricing_rules: []
+          };
+        }
+        conceptsMap[row.concept_id].pricing_rules.push(pricingRule);
+
+      // 2. Group by standalone service rules
+      } else if (row.target_type === 'service' && row.requirement_config_id) {
+        if (!standaloneRequirementsMap[row.requirement_config_id]) {
+          standaloneRequirementsMap[row.requirement_config_id] = {
+            requirement_config_id: row.requirement_config_id,
+            service_label: row.service_label || 'Unnamed Service Requirement',
+            pricing_rules: []
+          };
+        }
+        standaloneRequirementsMap[row.requirement_config_id].pricing_rules.push(pricingRule);
+      }
+    }
+
+    // Convert the dictionary tracking maps to arrays to easily send to your frontend UI or AI context parser
+    return {
+      concepts: Object.values(conceptsMap),
+      standaloneRequirements: Object.values(standaloneRequirementsMap)
+    };
   }
 
   /**

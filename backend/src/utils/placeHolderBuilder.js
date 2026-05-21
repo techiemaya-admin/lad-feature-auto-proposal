@@ -35,7 +35,11 @@ class PlaceHolderBuilder {
 
       notes: "",
       terms_conditions: "",
-      prepared_by: ""
+      prepared_by: "",
+      event_category: "",
+      services_given: "",
+      surcharge_percentage: "",
+      discount_percentage: ""
     };
 
     this.setBulk(initialData);

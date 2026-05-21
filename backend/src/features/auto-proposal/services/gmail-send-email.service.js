@@ -55,7 +55,7 @@ async function sendQuotationEmail(senderEmail, url, price, oAuth2Client) {
 async function processAndSendDefaultEmail(tenantId, data, url, price, oAuth2Client) {
   console.log(" tenantid : " + tenantId + " date : " + JSON.stringify(data) + " price: " + price);
   if (data.lead_email) {
-    
+
     try {
       const SOCIAL_ICONS = {
         instagram_url: "https://cdn-icons-png.flaticon.com/32/174/174855.png",
@@ -214,8 +214,8 @@ async function processAndSendDefaultEmail(tenantId, data, url, price, oAuth2Clie
 
 }
 
-async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price, conversation_id, global_message_id, threadId, subject, oAuth2Client) {
-  console.log(`Sending email for tenant: ${tenantId} conversation_id: ${conversation_id} lead_email: ${data.lead_email} url: ${url} price: ${price} global_message_id: ${global_message_id} threadId: ${threadId}`);
+async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price, conversation_id, global_message_id, threadId, subject, oAuth2Client, content) {
+  console.log(`Sending email for tenant: ${tenantId} conversation_id: ${conversation_id} lead_email: ${data.lead_email} url: ${url} price: ${price} global_message_id: ${global_message_id} threadId: ${threadId} content: ${content}`);
 
   if (!data.lead_email) {
     console.warn("Email not sent because lead_email is undefined");
@@ -228,16 +228,13 @@ async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price
       linkedin_url: "https://cdn-icons-png.flaticon.com/32/174/174857.png",
       whatsapp_url: "https://cdn-icons-png.flaticon.com/32/733/733585.png"
     };
-
-    // 1. Fetch Template from Database
-    const template = await quotationEmailTemplateRepo.findDefaultByTenant(tenantId);
-    console.log("templaete :: " + JSON.stringify(template));
     let htmlContent = "";
     let subjectLine = "";
-
-    // Regex for placeholders {{key}} or [key]
     const placeholderRegex = /{{(.*?)}}|\[(.*?)\]/g;
     const templateData = { ...data, price, url };
+    console.log(" data for email to add : " + JSON.stringify(templateData));
+
+    // Regex for placeholders {{key}} or [key]
 
     const replaceFn = (match, p1, p2) => {
       const key = (p1 || p2).trim();
@@ -265,40 +262,6 @@ async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price
 
       return value !== undefined ? value : match;
     };
-
-    // 2. Determine Content Source
-    if (!template && template === undefined) {
-      // Fallback if no default template exists in DB
-      htmlContent = await emailTemplateService.defaultEmailTemplateIfNoTemplateUpload();
-      subjectLine = "Re: Quotation from [company_name]";
-    } else {
-      if (subject !== undefined && subject.trim() !== "") {
-        subjectLine = subject.startsWith("Re:") ? subject : `Re: ${subject}`;
-      } else {
-        subjectLine = template.subject.startsWith("Re:") ? template.subject : `Re: ${template.subject}`;
-      }
-
-      // Logic for HTML vs Plain Text
-      if (template.content_format === 'html') {
-        htmlContent = template.body_html;
-      } else {
-        // If it's plain text, we wrap it in basic HTML to preserve line breaks
-        htmlContent = `<div style="white-space: pre-wrap; font-family: sans-serif;">${template.body_text}</div>`;
-      }
-    }
-    // If media_url exists in the incoming 'data' object, prepend it to the htmlContent
-    if (template.media_url) {
-      const mediaHtml = `
-    <div style="text-align:center; margin-bottom:20px;">
-      <img src="${template.media_url}" alt="Header Media" style="max-width:100%; height:auto; display:block; margin:0 auto;" />
-    </div>`;
-      htmlContent = mediaHtml + htmlContent;
-    }
-    // 3. Perform Replacements
-    const finalSubject = subjectLine.replace(placeholderRegex, replaceFn);
-    const finalHtml = htmlContent.replace(placeholderRegex, replaceFn);
-
-    // 4. Fetch Attachment (Same as before)
     let attachmentBase64 = "";
     const filename = "Proposal.pdf";
     try {
@@ -308,107 +271,160 @@ async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price
       console.error("Attachment fetch failed:", err.message);
     }
 
-    // 5. Build RFC 2822 Message
-    const boundary = "__boundary_string_generated_123__";
-    const CRLF = "\r\n";
+    let finalSubject = '';
+    let finalHtml = '';
+    let messageId;
+    if (content != undefined && content != null && content.trim() !== "") {
+      subjectLine = sanitizeSubjectLine(subject.startsWith("Re:") ? subject : `Re: ${subject}`);
+      htmlContent = content;
+      const response = await sendGmailRaw({
+        to: data.lead_email,
+        subject: subjectLine,
+        html: htmlContent,
+        global_message_id: global_message_id,
+        threadId: threadId,
+        oAuth2Client,
+        attachments: [],
+        attachmentBase64: attachmentBase64,
+        filename: filename
+      });
+      finalSubject = response.finalSubject;
+      messageId = response.data.id;
+      finalHtml = response.finalHtml;
+    } else {
+      // 1. Fetch Template from Database
+      const template = await quotationEmailTemplateRepo.findDefaultByTenant(tenantId);
+      console.log("templaete :: " + JSON.stringify(template));
 
 
-    const cleanMessageId = global_message_id.startsWith('<')
-      ? global_message_id
-      : `<${global_message_id}>`;
+      // 2. Determine Content Source
+      if (!template && template === undefined) {
+        // Fallback if no default template exists in DB
+        htmlContent = await emailTemplateService.defaultEmailTemplateIfNoTemplateUpload();
+        subjectLine = "Re: Quotation from [company_name]";
+      } else {
+        if (subject !== undefined && subject.trim() !== "") {
+          subjectLine = sanitizeSubjectLine(subject.startsWith("Re:") ? subject : `Re: ${subject}`);
+        } else {
+          subjectLine = sanitizeSubjectLine(template.subject.startsWith("Re:") ? template.subject : `Re: ${template.subject}`);
+        }
 
-    // Headers end with exactly ONE blank line
-    const emailHeaders = [
-      `To: ${data.lead_email}`,
-      `Subject: ${finalSubject.startsWith('Re:') ? finalSubject : 'Re: ' + finalSubject}`,
-      `In-Reply-To: ${cleanMessageId}`,
-      `References: ${cleanMessageId}`,
-      "MIME-Version: 1.0",
-      `Content-Type: multipart/mixed; boundary="${boundary}"`,
-      "", // Mandatory blank line
-    ].join(CRLF);
+        // Logic for HTML vs Plain Text
+        if (template.content_format === 'html') {
+          htmlContent = template.body_html;
+        } else {
+          // If it's plain text, we wrap it in basic HTML to preserve line breaks
+          htmlContent = `<div style="white-space: pre-wrap; font-family: sans-serif;">${template.body_text}</div>`;
+        }
+      }
+      // If media_url exists in the incoming 'data' object, prepend it to the htmlContent
+      if (template.media_url) {
+        const mediaHtml = `
+    <div style="text-align:center; margin-bottom:20px;">
+      <img src="${template.media_url}" alt="Header Media" style="max-width:100%; height:auto; display:block; margin:0 auto;" />
+    </div>`;
+        htmlContent = mediaHtml + htmlContent;
+      }
 
-    const bodyPart = [
-      `--${boundary}`,
-      "Content-Type: text/html; charset=utf-8",
-      "Content-Transfer-Encoding: 7bit",
-      "", // Blank line before the actual HTML content
-      finalHtml,
-      "" // CRLF after the HTML content
-    ].join(CRLF);
+      // 3. Perform Replacements
+      finalSubject = subjectLine.replace(placeholderRegex, replaceFn);
+      finalHtml = htmlContent.replace(placeholderRegex, replaceFn);
 
-    const attachmentPart = attachmentBase64 ? [
-      `--${boundary}`,
-      `Content-Type: application/pdf; name="${filename}"`,
-      `Content-Disposition: attachment; filename="${filename}"`,
-      "Content-Transfer-Encoding: base64",
-      "", // Blank line before base64 data
-      attachmentBase64,
-      ""
-    ].join(CRLF) : "";
+      // 4. Fetch Attachment (Same as before)
 
-    // Join them together. Note: No extra CRLF between emailHeaders and bodyPart 
-    // because emailHeaders already includes the blank line via the empty string.
-    const fullMessage = 
-      emailHeaders + 
-      CRLF + CRLF + // This is the mandatory gap that separates headers from body
-      bodyPart + 
-      attachmentPart + 
-      `--${boundary}--`;
 
-    // 6. Encode and Send via Gmail API
-    const encodedMessage = Buffer.from(fullMessage)
-      .toString("base64")
-      .replace(/\+/g, "-")
-      .replace(/\//g, "_")
-      .replace(/=+$/, "");
+      // 5. Build RFC 2822 Message
+      const boundary = "__boundary_string_generated_123__";
+      const CRLF = "\r\n";
 
-    const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
-    const response = await gmail.users.messages.send({
-      userId: "me",
-      requestBody: {
-        raw: encodedMessage,
-        threadId: threadId // Ensure the reply is in the same thread
-      },
-    });
 
-    console.log("Email successfully sent:", response.data.id);
+      const cleanMessageId = global_message_id.startsWith('<')
+        ? global_message_id
+        : `<${global_message_id}>`;
+
+      // Headers end with exactly ONE blank line
+      const emailHeaders = [
+        `To: ${data.lead_email}`,
+        `Subject: ${finalSubject.startsWith('Re:') ? finalSubject : 'Re: ' + finalSubject}`,
+        `In-Reply-To: ${cleanMessageId}`,
+        `References: ${cleanMessageId}`,
+        "MIME-Version: 1.0",
+        `Content-Type: multipart/mixed; boundary="${boundary}"`,
+        "", // Mandatory blank line
+      ].join(CRLF);
+
+      const bodyPart = [
+        `--${boundary}`,
+        "Content-Type: text/html; charset=utf-8",
+        "Content-Transfer-Encoding: 7bit",
+        "", // Blank line before the actual HTML content
+        finalHtml,
+        "" // CRLF after the HTML content
+      ].join(CRLF);
+
+      const attachmentPart = attachmentBase64 ? [
+        `--${boundary}`,
+        `Content-Type: application/pdf; name="${filename}"`,
+        `Content-Disposition: attachment; filename="${filename}"`,
+        "Content-Transfer-Encoding: base64",
+        "", // Blank line before base64 data
+        attachmentBase64,
+        ""
+      ].join(CRLF) : "";
+
+      // Join them together. Note: No extra CRLF between emailHeaders and bodyPart 
+      // because emailHeaders already includes the blank line via the empty string.
+      const fullMessage =
+        emailHeaders +
+        CRLF + CRLF + // This is the mandatory gap that separates headers from body
+        bodyPart +
+        attachmentPart +
+        `--${boundary}--`;
+
+      // 6. Encode and Send via Gmail API
+      const encodedMessage = Buffer.from(fullMessage)
+        .toString("base64")
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, "");
+
+      const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
+      const response = await gmail.users.messages.send({
+        userId: "me",
+        requestBody: {
+          raw: encodedMessage,
+          threadId: threadId // Ensure the reply is in the same thread
+        },
+      });
+      messageId = response.data.id;
+      console.log("Email successfully sent:", response.data.id);
+    }
     // 7. Save to Database
     // 7. Save to Database using your createMessage method
-    try {
-      const leadId = data.lead_id || data.id; // Fallback for contact identifier
 
-      const messageData = {
-        tenant_id: tenantId,
-        conversation_id: conversation_id, // Ensure this is in the 'data' object
-        sender_type: 'agent',
-        sender_id: null, // Or the ID of the logged-in user
-        channel: 'email',
-        message_type: 'email',
-        content: finalHtml,
-        message_id: response.data.id, // Gmail's message ID
-        raw_payload: {
-          subject: finalSubject,
-          to: data.lead_email,
-          // Saving attachment info so the UI can render the download link
-          attachments: attachmentBase64 ? [{
-            filename: filename,
-            url: url, // The link to the PDF
-            type: "application/pdf"
-          }] : []
-        },
-        global_message_id: global_message_id // Pass the global_message_id for tracking
-      };
+    const messageData = {
+      tenant_id: tenantId,
+      conversation_id: conversation_id, // Ensure this is in the 'data' object
+      sender_type: 'agent',
+      sender_id: null, // Or the ID of the logged-in user
+      channel: 'email',
+      message_type: 'email',
+      content: finalHtml,
+      message_id: messageId, // Gmail's message ID
+      raw_payload: {
+        subject: finalSubject,
+        to: data.lead_email,
+        // Saving attachment info so the UI can render the download link
+        attachments: attachmentBase64 ? [{
+          filename: filename,
+          url: url, // The link to the PDF
+          type: "application/pdf"
+        }] : []
+      },
+      global_message_id: global_message_id // Pass the global_message_id for tracking
+    };
 
-      // Call your specific method
-      const savedMsg = await conversationMessageRepository.createMessage(messageData);
-      console.log("Message archived in DB:", savedMsg.id);
-
-    } catch (dbError) {
-      // Log the error but don't stop the process since the email was already sent
-      console.error("Archive Error: Failed to save sent email to DB.", dbError);
-    }
-    return { success: true };
+    return { success: true, messageData: messageData };
 
   } catch (error) {
     console.error("Email Service Error:", error);
@@ -416,9 +432,19 @@ async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price
   }
 }
 
+function sanitizeSubjectLine(subject) {
+  if (!subject) return "";
+  return subject
+    .replace(/[\u2014]/g, "--")       // Replace em dash
+    .replace(/[\u201C\u201D]/g, '"')   // Replace smart double quotes
+    .replace(/[\u2018\u2019]/g, "'")   // Replace smart single quotes
+    .normalize("NFKD")                 // ✅ Fixed: Strips accents and decomposes combined characters correctly
+    .replace(/[^\x00-\x7F]/g, "");     // Ensure clean ASCII header string
+}
+
 // services/email.service.js
 
-async function sendGmailWithAttachments({ to, subject, html, attachments,oAuth2Client }) {
+async function sendGmailWithAttachments({ to, subject, html, attachments, oAuth2Client }) {
   const boundary = "bulk_mail_boundary_" + Date.now();
   const CRLF = "\r\n";
 
@@ -470,7 +496,7 @@ async function sendGmailWithAttachments({ to, subject, html, attachments,oAuth2C
     .replace(/=+$/, "");
 
   const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
-  
+
   // 2. Send the message
   const res = await gmail.users.messages.send({
     userId: "me",
@@ -496,44 +522,134 @@ async function sendGmailWithAttachments({ to, subject, html, attachments,oAuth2C
   };
 }
 
-async function sendGmailRaw({ to, subject, html, messageId, threadId, oAuth2Client }) {
-  console.log("Preparing to send email with subject:", subject, "to:", to, "in thread:", threadId, "replying to message ID:", messageId);
+async function sendGmailRaw({ to, subject, html, global_message_id, threadId, oAuth2Client, attachments, attachmentBase64, filename }) {
+  console.log("Preparing to send email with subject:", subject, "to:", to, "in thread:", threadId, "replying to message ID:", global_message_id);
+  const boundary = "__boundary_string_generated_123__";
   const CRLF = "\r\n";
 
   // Ensure subject starts with Re: (Standard for threading)
   const replySubject = subject.startsWith("Re:") ? subject : `Re: ${subject}`;
 
-  const messageParts = [
+  // If your object uses 'content' instead of 'body', extract it safely
+  let rawBody = html;
+
+  // 1. Unify structural formatting by removing any old embedded HTML break tags
+  rawBody = rawBody.replace(/<br\s*\/?>/gi, '\n');
+
+  // 2. CONVERT MARKDOWN BOLD TO STABLE HTML STRONG TAGS
+  // This changes '**LITE**' into '<strong>LITE</strong>' so Gmail and ReactQuill parse it instantly
+  rawBody = rawBody.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  rawBody = rawBody
+    .split('\n')
+    .map(line => {
+      const trimmed = line.trim();
+
+      // If the line has text content, give it a bottom margin so it doesn't bunch up in Gmail
+      if (trimmed) {
+        return `<p style="margin: 0 0 14px 0; font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #334155;">${trimmed}</p>`;
+      }
+
+      // If the line is empty, return a true visual spacing block that Gmail cannot collapse
+      return '<div style="height: 14px; margin: 0 0 14px 0;"><br /></div>';
+    })
+    .join('');
+
+
+
+  // 5. Build RFC 2822 Message
+
+
+  const cleanMessageId = global_message_id.startsWith('<')
+    ? global_message_id
+    : `<${global_message_id}>`;
+
+  // Headers end with exactly ONE blank line
+  const emailHeaders = [
     `To: ${to}`,
     `Subject: ${replySubject}`,
-    `In-Reply-To: ${messageId}`,
-    `References: ${messageId}`,
+    `In-Reply-To: ${cleanMessageId}`,
+    `References: ${cleanMessageId}`,
     "MIME-Version: 1.0",
-    `Content-Type: text/html; charset=utf-8`,
-    "Content-Transfer-Encoding: 7bit",
-    "",
-    html
-  ];
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+    "", // Mandatory blank line
+  ].join(CRLF);
 
-  const rawMessage = messageParts.join(CRLF);
-  const encodedMessage = Buffer.from(rawMessage)
+  const bodyPart = [
+    `--${boundary}`,
+    "Content-Type: text/html; charset=utf-8",
+    "Content-Transfer-Encoding: 7bit",
+    "", // Blank line before the actual HTML content
+    rawBody,
+    "" // CRLF after the HTML content
+  ].join(CRLF);
+
+  const attachmentPart = (attachmentBase64 && attachmentBase64 !== undefined) ? [
+    `--${boundary}`,
+    `Content-Type: application/pdf; name="${filename}"`,
+    `Content-Disposition: attachment; filename="${filename}"`,
+    "Content-Transfer-Encoding: base64",
+    "", // Blank line before base64 data
+    attachmentBase64,
+    ""
+  ].join(CRLF) : "";
+
+  if (attachments && attachments.length > 0) {
+    for (const file of attachments) {
+      try {
+        // Download the file from GCS URL
+        const response = await axios.get(file.url, { responseType: 'arraybuffer' });
+        const base64Content = Buffer.from(response.data).toString('base64');
+
+        attachmentPart.push(
+          `--${boundary}`,
+          `Content-Type: ${file.type || 'application/octet-stream'}; name="${file.filename}"`,
+          `Content-Disposition: attachment; filename="${file.filename}"`,
+          "Content-Transfer-Encoding: base64",
+          "",
+          base64Content,
+          ""
+        );
+      } catch (error) {
+        console.error(`Failed to fetch attachment from ${file.url}:`, error.message);
+        // Continue with other attachments even if one fails
+      }
+    }
+    attachmentPart.push(`--${boundary}--`);
+
+  }
+
+
+  // Join them together. Note: No extra CRLF between emailHeaders and bodyPart 
+  // because emailHeaders already includes the blank line via the empty string.
+  const fullMessage =
+    emailHeaders +
+    CRLF + CRLF + // This is the mandatory gap that separates headers from body
+    bodyPart +
+    attachmentPart +
+    `--${boundary}--`;
+
+  if (attachments && attachments.length > 0) {
+    attachmentPart.join(CRLF);
+  }
+  // 6. Encode and Send via Gmail API
+  const encodedMessage = Buffer.from(fullMessage)
     .toString("base64")
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "");
 
   const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
-
-  const res = await gmail.users.messages.send({
+  const response = await gmail.users.messages.send({
     userId: "me",
     requestBody: {
       raw: encodedMessage,
-      // CRITICAL: This is what groups it in the same conversation thread
-      threadId: threadId
+      threadId: threadId // Ensure the reply is in the same thread
     },
   });
+  messageId = response.data.id;
+  console.log("Email successfully sent:", response.data.id);
 
-  return res.data;
+  return { data: response.data, finalHtml: rawBody, finalSubject: replySubject };
 }
 
 module.exports = { processAndSendDefaultEmail, sendQuotationEmail, processAndSendDefaultEmailFromDragDrop, sendGmailRaw, sendGmailWithAttachments };

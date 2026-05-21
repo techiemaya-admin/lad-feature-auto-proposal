@@ -57,6 +57,7 @@ class ProposalDraftItemsRepository {
     return await AppDataSource.query(sql, [proposalDraftId]);
   }
 
+
   // =====================================================
   // DELETE ALL ITEMS (If re-calculating a draft)
   // =====================================================
@@ -68,6 +69,16 @@ class ProposalDraftItemsRepository {
     `;
 
     return await AppDataSource.query(sql, [proposalDraftId]);
+  }
+
+  async findItemsByMessageId(proposalDraftId) {
+    const sql = `
+    SELECT requirement_config_id 
+    FROM proposal_draft_items 
+    WHERE proposal_draft_id = $1
+  `;
+    const result = await AppDataSource.query(sql, [proposalDraftId]);
+    return Array.isArray(result) ? result : result.rows || [];
   }
 }
 
