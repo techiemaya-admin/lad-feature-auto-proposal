@@ -1,64 +1,116 @@
 # Rush Away – Quotation & Pricing System
 
-Node.js + Express backend. Multi-tenant quotation and pricing system with PostgreSQL and TypeORM.
+Node.js + Express backend. Multi-tenant quotation and pricing system with PostgreSQL and TypeORM following LAD architecture guidelines.
 
-## Tech stack
+---
+
+## Tech Stack
 
 - **Runtime:** Node.js 18+
 - **Framework:** Express.js
 - **Database:** PostgreSQL
 - **ORM:** TypeORM (plain JavaScript, EntitySchema)
-- **Language:** JavaScript only (no TypeScript)
+- **Language:** JavaScript only (CommonJS)
 
-## Setup
+---
 
-1. Copy env and set DB credentials:
-   ```bash
-   cp .env.example .env
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Start PostgreSQL and ensure DB `lad_dev` exists (or set `DB_NAME` in `.env`).
-4. Run the app:
-   ```bash
-   npm run dev
-   ```
-   In development, TypeORM will create/update tables (`synchronize: true`). For production, use migrations and set `synchronize: false`.
+## Setup & Running
 
-5. Run tests (optional):
-   ```bash
-   npm test
-   ```
-   Tests use Jest and mocks for repositories (no DB required for unit tests).
+### 1. Configure Environment
+Copy the example environment file and configure your database & service credentials:
+```bash
+cp .env.example .env
+```
 
-## API
+### 2. Install Dependencies
+```bash
+npm install
+```
 
-All tenant-scoped APIs require header: `X-Tenant-Id: <tenant-uuid>` (except tenants).
+### 3. Database Setup
+Start PostgreSQL and ensure the database `lad_dev` exists (or matches `DB_NAME` in `.env`).
+
+### 4. Run the Application
+```bash
+# Development mode with hot-reloading:
+npm run dev
+
+# Production mode:
+npm start
+```
+> **Note:** In development, TypeORM will auto-synchronize schemas (`synchronize: true`). For production, run migrations and set `synchronize: false`.
+
+### 5. Running Migrations
+```bash
+npm run migration:run
+```
+
+### 6. Running Tests & Linting
+```bash
+npm test              # Run all tests
+npm run test:watch   # Run tests in watch mode
+npm run lint         # Lint codebase
+```
+
+---
+
+## Architecture Principles (LAD Multi-Tenant Standards)
+
+1. **Multi-Tenancy (Strict Requirement):**
+   - Every feature table is scoped by `tenant_id`.
+   - Every database query must include `WHERE tenant_id = $1`.
+   - Tenant context is passed via `X-Tenant-Id: <tenant-uuid>` header (or extracted from auth token).
+
+2. **Clean Layering:**
+   - **Controllers:** HTTP parsing, validation, orchestration only (no business logic, no SQL).
+   - **Services:** Pure business logic (no direct SQL, no HTTP response handling).
+   - **Repositories:** Data access layer only (SQL queries & entity persistence).
+   - **DTOs:** Request and response field mapping.
+
+3. **Centralized Logging:**
+   - All logs use `src/utils/logger.js` (`logger.info()`, `logger.warn()`, `logger.error()`).
+   - No direct `console.log()` in production code.
+
+---
+
+## Project Structure
+
+```
+├── .env                     # Environment variables (git-ignored)
+├── package.json             # Root dependencies & scripts
+├── jest.config.js           # Jest test runner configuration
+├── API_LIST.md              # Complete API reference
+├── API_CURL_EXAMPLES.md     # Example curl requests
+├── migrations/              # TypeORM database migrations
+└── src/
+    ├── config/              # Database & service configurations
+    ├── middleware/          # Global middleware (auth, tenant context, validator)
+    ├── utils/               # Shared utilities (logger, pdf generator, gcs uploader)
+    ├── features/            # Feature-scoped modules
+    │   ├── auto-proposal/   # AI-powered quotation & proposal generation
+    │   ├── concept/         # Concept catalog & pricing matrix
+    │   ├── lead/            # Lead capture & requirements
+    │   ├── location/        # Multi-location management
+    │   ├── pricing/         # Pricing rules engine
+    │   ├── quotation/       # Quotation generation & templates
+    │   └── tenant/          # Multi-tenant root management
+    ├── app.js               # Express application initialization
+    └── index.js             # Server startup entry point
+```
+
+---
+
+## API Overview
+
+All tenant-scoped APIs require the header: `X-Tenant-Id: <tenant-uuid>` (except global tenant registration).
 
 - **Health:** `GET /health`
 - **Tenants:** `POST /api/tenants`, `GET /api/tenants`, `GET /api/tenants/:id`
-- **Locations:** `POST /api/locations`, `GET /api/locations`, `GET /api/locations/:id` (X-Tenant-Id)
-- **Concepts:** `POST /api/concepts`, `GET /api/concepts`, `GET /api/concepts?location_id=...`, `GET /api/concepts/:id`, `POST /api/concepts/:conceptId/locations/:locationId`, `POST /api/concepts/:id/pricing` (body: `base_price`, optional `min_quantity`, `unit`, `location_multiplier`) (X-Tenant-Id)
-- **Leads:** `POST /api/leads`, `GET /api/leads`, `GET /api/leads/:id` (X-Tenant-Id)
-- **Pricing:** `POST /api/pricing/calculate` (body: `concept_id`, optional `location_id`, `quantity`, `lead_requirement_id`), `POST /api/pricing/rules` (body: `name`, `rule_type`, optional `parameters`, `evaluation_order`, `is_active`) (X-Tenant-Id)
-- **Quotations:** `POST /api/quotations/generate` (body: `lead_requirement_id`, `concept_id`, optional `quantity`, `quotation_template_metadata_id`), `GET /api/quotations/lead/:leadId`, `GET /api/quotations/:id` (X-Tenant-Id)
-- **Quotation templates:** `POST /api/quotation-templates` (body: `name`, optional `template_key`, `structure`, `is_default`), `GET /api/quotation-templates`, `GET /api/quotation-templates/:id`, `PATCH /api/quotation-templates/:id/default` (X-Tenant-Id)
+- **Locations:** `POST /api/locations`, `GET /api/locations`, `GET /api/locations/:id`
+- **Concepts:** `POST /api/concepts`, `GET /api/concepts`, `GET /api/concepts/:id`, `POST /api/concepts/:id/pricing`
+- **Leads:** `POST /api/leads`, `GET /api/leads`, `GET /api/leads/:id`
+- **Pricing:** `POST /api/pricing/calculate`, `POST /api/pricing/rules`
+- **Quotations:** `POST /api/quotations/generate`, `GET /api/quotations/lead/:leadId`, `GET /api/quotations/:id`
+- **Quotation Templates:** `POST /api/quotation-templates`, `GET /api/quotation-templates`, `GET /api/quotation-templates/:id`
 
-## Example flows
-
-1. **Create lead:** Create tenant → create location → create lead with `location_id`.
-2. **Generate quotation:** Create concept, link to location (ConceptLocation), add ConceptPricingMatrix row, optionally add PricingRule. Then `POST /api/quotations/generate` with `lead_requirement_id` and `concept_id`.
-3. **Calculate pricing only:** `POST /api/pricing/calculate` with `concept_id`, `location_id`, `quantity`.
-
-## Project structure
-
-- `src/config/` – DataSource, base columns
-- `src/middleware/` – Tenant context (X-Tenant-Id)
-- `src/features/**/entities/` – TypeORM EntitySchema (Tenant, Location, Concept, etc.)
-- `src/features/**/repositories/` – DB access only
-- `src/features/**/services/` – Business logic (including `pricing-engine.service.js`)
-- `src/features/**/controllers/` – HTTP handlers
-- `src/features/**/dtos/` – Request/response shapes
-- `src/features/**/modules/` – Feature routers
+For full request/response documentation and curl examples, refer to [API_LIST.md](API_LIST.md) and [API_CURL_EXAMPLES.md](API_CURL_EXAMPLES.md).

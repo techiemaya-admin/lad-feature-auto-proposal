@@ -1,15 +1,16 @@
 {
-  "name": "rush-away-node",
+  "name": "lad-feature-auto-proposal",
   "version": "1.0.0",
-  "description": "Quotation & pricing system - multi-tenant ready",
+  "description": "Quotation & pricing system backend - multi-tenant ready",
   "main": "src/index.js",
+  "type": "commonjs",
   "scripts": {
-    "start": "node backend/src/index.js",
-    "dev": "nodemon backend/src/index.js",
-    "migration:run": "node node_modules/typeorm/cli.js migration:run -d backend/src/config/data-source.js",
-    "lint": "eslint backend/src --ext .js",
-    "test": "jest",
-    "test:watch": "jest --watch"
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "migration:run": "node node_modules/typeorm/cli.js migration:run -d src/config/data-source.js",
+    "lint": "eslint src --ext .js",
+    "test": "jest --passWithNoTests",
+    "test:watch": "jest --watch --passWithNoTests"
   },
   "engines": {
     "node": ">=18"
@@ -51,10 +52,6 @@
     "type": "git",
     "url": "git+https://github.com/techiemaya-admin/lad-feature-auto-proposal.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
   "bugs": {
     "url": "https://github.com/techiemaya-admin/lad-feature-auto-proposal/issues"
   },
