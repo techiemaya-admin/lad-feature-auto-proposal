@@ -63,8 +63,8 @@ async function updateConcept(tenantId, id, data) {
   return conceptRepository.update(tenantId, id, data);
 }
 
-async function deleteConcept(id) {
-  return conceptRepository.softDelete(id);
+async function deleteConcept(tenantId, id) {
+  return conceptRepository.softDelete(tenantId, id);
 }
 
 module.exports = {

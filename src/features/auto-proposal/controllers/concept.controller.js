@@ -6,7 +6,7 @@ async function create(req, res, next) {
     console.log('Creating concept with data:', req.body);
     const dto = createConceptDto(req.body);
     console.log('DTO after validation:', dto);
-    const concept = await conceptService.createConcept(req.body.tenant_id, dto);
+    const concept = await conceptService.createConcept(req.tenantId, dto);
     res.status(201).json(toConceptResponse(concept));
   } catch (err) {
     console.error('Error in create:', err);
@@ -25,9 +25,14 @@ async function getById(req, res, next) {
 }
 
 async function list(req, res, next) {
-  console.log('Listing concepts for tenant:', req.params.tenant_id);
-  const data = await conceptService.listConcepts(req.params.tenant_id);
-  res.json(data);
+  try {
+    console.log('Listing concepts for tenant:', req.tenantId);
+    const data = await conceptService.listConcepts(req.tenantId);
+    res.json(data);
+  } catch (err) {
+    console.error('Error in list:', err);
+    next(err);
+  }
 }
 
 async function linkLocation(req, res, next) {
@@ -67,7 +72,7 @@ async function addPricing(req, res, next) {
 async function update(req, res, next) {
   try {
     console.log('Updating concept with ID:', req.params.id, 'and data:', req.body);
-    const concept = await conceptService.updateConcept(req.body.tenant_id, req.params.id, req.body);
+    const concept = await conceptService.updateConcept(req.tenantId, req.params.id, req.body);
     res.json(toConceptResponse(concept));
   } catch (err) { 
     console.error('Error in update:', err);
@@ -78,7 +83,7 @@ async function update(req, res, next) {
 async function remove(req, res, next) {
   try {
     console.log('Deleting concept with ID:', req.params.id);
-    await conceptService.deleteConcept(req.params.id);
+    await conceptService.deleteConcept(req.tenantId, req.params.id);
     res.status(204).send();
   } catch (err) { 
     console.error('Error in remove:', err);

@@ -40,7 +40,7 @@ class ConversationController {
       const { body_html, subject, recipients, attachments, provider } = req.body;
       const tenantId = req.tenantId; // Taken from auth middleware
       const userId = req.userId; // Taken from auth middleware
-      console.log("Received bulk email send request for tenant:", tenantId, "userid : ", userId, " with payload:", req.body);
+      console.log("Received bulk email send request for tenant:", tenantId, "userId:", userId, "recipientsCount:", Array.isArray(recipients) ? recipients.length : 0);
 
       // Basic Validation
       if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
@@ -68,8 +68,7 @@ class ConversationController {
 
   async uploadAttachment(req, res) {
     try {
-      console.log('File Object:', req.file); // Check your terminal!
-      console.log('Body Object:', req.body);
+      console.log("Uploading attachment for tenant:", req.tenantId, "filename:", req.file?.originalname);
       if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
       }
@@ -97,11 +96,8 @@ class ConversationController {
     try {
       const { contactId } = req.params;
       console.log("Generating follow-up for contact_id:", contactId, "tenant:", req.tenantId);
-      // 1. Fetch the last message from this contact (Inbound)
       const lastMessage = await conversationService.findLastMessagesByContactId(req.tenantId, contactId);
-      console.log("Last message fetched for follow-up generation: ", lastMessage);
       const clientText = lastMessage[0]?.body_text || lastMessage[0]?.body_html || "No previous message found.";
-      console.log("Last client message fetched for follow-up generation: ", clientText);
       const tenantDetails=await tenantService.getTenantById(req.tenantId);
       const leadDetails = await leadService.getLeadById(contactId, req.tenantId);
      const result = await aiResponseService.generateFollowUpEmailContent(clientText, tenantDetails,leadDetails);
@@ -121,14 +117,12 @@ class ConversationController {
   async generateFollowUpCrux(req, res) {
     try {
       const { contactId } = req.params;
-      console.log("Generating follow-up for contact_id:", contactId, "tenant:", req.tenantId);
+      console.log("Generating follow-up crux for contact_id:", contactId, "tenant:", req.tenantId);
       // 1. Fetch the last message from this contact (Inbound)
       const messages = await conversationService.getContactMessages(req.tenantId, contactId);
-      console.log("Messages fetched for follow-up crux generation: ", messages);
       const tenantDetails=await tenantService.getTenantById(req.tenantId);
       const leadDetails = await leadService.getLeadById(contactId, req.tenantId);
-     const crux = await aiResponseService.generateEmailMessagesCrux(messages, tenantDetails, leadDetails);
-     console.log("Generated Crux: ", crux);
+      const crux = await aiResponseService.generateEmailMessagesCrux(messages, tenantDetails, leadDetails);
       res.status(200).json({ success: true, crux });
 
     } catch (error) {

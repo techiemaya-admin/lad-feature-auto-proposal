@@ -16,7 +16,7 @@ class EmailTemplateController {
     // API 2: Get Preview URL
     async preview(req, res) {
         try {
-            const url = await service.getPreviewUrl(req.params.id);
+            const url = await service.getPreviewUrl(req.params.id, req.tenantId);
             res.status(200).json({ publicUrl: url });
         } catch (error) {
             console.error("Preview failed:", error);
@@ -37,7 +37,7 @@ class EmailTemplateController {
     // API 4: Delete Template
     async remove(req, res) {
         try {
-            await service.deleteTemplate(req.params.id);
+            await service.deleteTemplate(req.params.id, req.tenantId);
             res.status(200).json({ message: "Template deleted successfully" });
         } catch (error) {
             res.status(500).json({ error: error.message });

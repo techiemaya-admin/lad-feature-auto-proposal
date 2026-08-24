@@ -234,15 +234,15 @@ class ConceptRepository {
     return updatedConcept;
   }
 
-  async softDelete(id) {
-    const sql = `UPDATE concept SET is_deleted = true, updated_at = NOW() WHERE id = $1 RETURNING id`;
-    const result = await db.query(sql, [id]);
+  async softDelete(tenantId, id) {
+    const sql = `UPDATE concept SET is_deleted = true, updated_at = NOW() WHERE id = $1 AND tenant_id = $2 RETURNING id`;
+    const result = await db.query(sql, [id, tenantId]);
     return result[0] || null;
   }
 
-  async hardDelete(id) {
-    const sql = `DELETE FROM concept WHERE id = $1 RETURNING id`;
-    const result = await db.query(sql, [id]);
+  async hardDelete(tenantId, id) {
+    const sql = `DELETE FROM concept WHERE id = $1 AND tenant_id = $2 RETURNING id`;
+    const result = await db.query(sql, [id, tenantId]);
     return result[0] || null;
   }
 

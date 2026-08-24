@@ -129,8 +129,7 @@ async function processAndSendDefaultEmail(tenantId, data, url, price, oAuth2Clie
       };
       if (!template) {
         htmlValue = await emailTemplateService.defaultEmailTemplateIfNoTemplateUpload();
-        finalSubject = "Qutotation from [company_name]".replace(placeholderRegex, replaceFn);
-      } else {
+        finalSubject = "Quotation from [company_name]".replace(placeholderRegex, replaceFn);      } else {
         // 2. Convert .docx to HTML
         const bucket = storage.bucket(process.env.GCS_BUCKET);
         const [fileBuffer] = await bucket.file(template.storage_path).download();

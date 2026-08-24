@@ -504,10 +504,9 @@ class AIService {
       };
     } catch (err) {
       console.error("AI Generation Error:", err);
-
+      throw err;
     }
   }
-
   // Simple regex helper to strip HTML tags
   stripHtml(html) {
     if (!html) return "";
@@ -700,8 +699,7 @@ class AIService {
         },
       };
       let doc;
-      if (templateData.company_logo != '') {
-        console.log(" image")
+      if (typeof templateData.company_logo === 'string' && templateData.company_logo.trim() !== '') {
         // 2. Initialize Docxtemplater with the Image Module
         const imageModule = new ImageModule(imageOptions);
         doc = new Docxtemplater(zip, {
@@ -986,12 +984,13 @@ class AIService {
   }
 
   async generateFollowUpEmailContent(lastMessage, tenantDetails, leadDetails) {
+    const clientName = [leadDetails?.first_name, leadDetails?.last_name].filter(Boolean).join(' ').trim() || 'Valued Client';
     // 2. Call AI Model
     const finalPrompt = `
       You are an expert sales and customer relations assistant for ${tenantDetails.name}. 
       RECIPIENT (The Client):
-      - Name: ${leadDetails.first_name + " " + leadDetails.last_name || 'Valued Client'}
-      - Company: ${leadDetails.company || 'Not Specified'}
+      - Name: ${clientName}
+      - Company: ${leadDetails?.company || 'Not Specified'}
 
       SENDER (Your Identity):
       - Company Name: ${tenantDetails.name}
@@ -1000,10 +999,10 @@ class AIService {
       - Your Phone: ${tenantDetails.phone}
 
       CORE RULE: 
-              The email is FROM ${tenantDetails.name} TO ${leadDetails.first_name + " " + leadDetails.last_name || 'Valued Client'}. 
+              The email is FROM ${tenantDetails.name} TO ${clientName}. 
               DO NOT address the email to "${tenantDetails.name}".
-              START the email with "Dear ${leadDetails.first_name + " " + leadDetails.last_name || 'Valued Client'}," or "Hi ${leadDetails.first_name + " " + leadDetails.last_name || 'Valued Client'},".
-                  The client (${leadDetails.first_name + " " + leadDetails.last_name || 'Valued Client'}) recently sent this message:
+              START the email with "Dear ${clientName}," or "Hi ${clientName},".
+                  The client (${clientName}) recently sent this message:
               "${lastMessage}"
 
               Based on their message, draft a warm, professional follow-up. 
@@ -1013,7 +1012,7 @@ class AIService {
       Draft a professional, warm, and proactive follow-up email. 
 
       CRITICAL RULES:
-1. START the email with: "Dear ${leadDetails.first_name + " " + leadDetails.last_name || 'Valued Client'}," or "Hi ${leadDetails.first_name + " " + leadDetails.last_name || 'Valued Client'},".
+1. START the email with: "Dear ${clientName}," or "Hi ${clientName},".
 3. End the email by signing off as "${tenantDetails.name}".
 4. Mention that they can visit your website ${tenantDetails.website} or email ${tenantDetails.email} for more info.
 
@@ -1051,8 +1050,9 @@ class AIService {
   }
 
   async generateEmailMessagesCrux(messages, tenantDetails, leadDetails) {
+    const clientName = [leadDetails?.first_name, leadDetails?.last_name].filter(Boolean).join(' ').trim() || 'Valued Client';
     const prompt = `You are an expert executive assistant for ${tenantDetails.name}.
-Below is a conversation history with a client named ${leadDetails.first_name + " " + leadDetails.last_name || 'Valued Client'}.
+Below is a conversation history with a client named ${clientName}.
 
 CONVERSATION:
 ${messages.map(msg => `- ${msg.sender_type === 'lead' ? 'Client' : 'You'}: ${msg.body_html}`).join('\n')}
@@ -1070,7 +1070,7 @@ Return ONLY a JSON object where the value is a single string formatted with mark
 { 
   "crux": "Here is the crux of the conversation:\n\n* **Core Objective:** [Details here]\n* **Key Requirements:** [Details here]\n* **Current Status:** [Details here]" 
 }`;
-    console.log(prompt)
+    console.log(prompt);
     const aiResponse = await this.callGenAI(prompt);
     const cleanJson = aiResponse.replace(/```json|```/g, "").trim();
     const result = JSON.parse(cleanJson);

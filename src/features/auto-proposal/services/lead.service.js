@@ -42,6 +42,15 @@ class LeadService {
   }
 
   /**
+   * List leads for a tenant with pagination
+   */
+  async listLeads(tenantId, limit = 100, offset = 0) {
+    if (!tenantId) throw new Error("Tenant ID is required");
+    const leads = await leadRepository.findByTenant(tenantId);
+    return leads;
+  }
+
+  /**
    * Get a specific lead
    */
   async getLeadById(id, tenantId) {

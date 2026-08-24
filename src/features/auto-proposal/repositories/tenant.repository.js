@@ -1,6 +1,19 @@
 const AppDataSource = require("../../../config/data-source");
 const { v4: uuidv4 } = require('uuid');
 
+const ALLOWED_FIELDS = [
+  'name',
+  'slug',
+  'status',
+  'plan_tier',
+  'email',
+  'phone',
+  'website',
+  'metadata',
+  'logo_url',
+  'settings'
+];
+
 class TenantRepository {
   
   // =====================================================
@@ -70,14 +83,16 @@ class TenantRepository {
   // UPDATE TENANT
   // =====================================================
   async update(id, updateData) {
-    const fields = Object.keys(updateData);
+    if (!updateData || typeof updateData !== 'object') return null;
+
+    const fields = Object.keys(updateData).filter(field => ALLOWED_FIELDS.includes(field));
     if (fields.length === 0) return null;
 
     const setClause = fields
       .map((field, index) => `${field} = $${index + 2}`)
       .join(", ");
     
-    const values = [id, ...Object.values(updateData)];
+    const values = [id, ...fields.map(field => updateData[field])];
 
     const sql = `
       UPDATE tenants 

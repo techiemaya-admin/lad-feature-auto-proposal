@@ -22,8 +22,10 @@ async function getById(req, res, next) {
 
 async function list(req, res, next) {
   try {
-    const limit = Math.min(parseInt(req.query.limit, 10) || 100, 100);
-    const offset = parseInt(req.query.offset, 10) || 0;
+    const rawLimit = parseInt(req.query.limit, 10);
+    const rawOffset = parseInt(req.query.offset, 10);
+    const limit = Number.isNaN(rawLimit) ? 100 : Math.max(0, Math.min(rawLimit, 100));
+    const offset = Number.isNaN(rawOffset) ? 0 : Math.max(0, rawOffset);
     const leads = await leadService.listLeads(req.tenantId, limit, offset);
     res.json(leads.map(toLeadResponse));
   } catch (err) {

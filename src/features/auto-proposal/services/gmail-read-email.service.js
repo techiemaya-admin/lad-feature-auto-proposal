@@ -533,9 +533,8 @@ async function createLeadRequirementViaPrompt(body, leadData, tenant_id, convers
 
       // Filter out keys that the AI evaluated as active numbers (non-null and greater than 0)
       const newlyRequestedConfigIds = activeConfigs
-        .filter(config => data.dynamic_requirements[config.field_key] !== null && Number(data.dynamic_requirements[config.field_key]) > 0)
+        .filter(config => aiData?.dynamic_requirements?.[config.field_key] != null && Number(aiData.dynamic_requirements[config.field_key]) > 0)
         .map(config => config.id);
-
       // Sort both arrays to perform an exact element match evaluation
       const oldSorted = [...oldConfigIds].sort();
       const newSorted = [...newlyRequestedConfigIds].sort();
@@ -570,6 +569,7 @@ async function createLeadRequirementViaPrompt(body, leadData, tenant_id, convers
     return resultToReturn;
   } catch (err) {
     console.error("Error in createLeadRequirementViaPrompt:", err);
+    throw err;
   }
 }
 

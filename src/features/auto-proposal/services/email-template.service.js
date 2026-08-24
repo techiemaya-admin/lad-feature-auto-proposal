@@ -49,7 +49,11 @@ class EmailTemplateService {
     async getVisualPreview(req, res) {
         try {
             const { id } = req.params;
-            const template = await repository.findById(id);
+            const tenantId = req.tenantId || req.params.tenantId;
+            const template = await repository.findById(id, tenantId);
+            if (!template) {
+                return res.status(404).json({ error: "Template not found" });
+            }
             const [fileBuffer] = await bucket.file(template.storage_path).download();
 
             // Pass the path directly if the library supports it, 
@@ -74,12 +78,12 @@ class EmailTemplateService {
         return await repository.setAsDefault(tenantId, templateId);
     }
 
-    async deleteTemplate(templateId) {
-        return await repository.softDelete(templateId);
+    async deleteTemplate(templateId, tenantId) {
+        return await repository.softDelete(templateId, tenantId);
     }
 
-    async getPreviewUrl(templateId) {
-        const template = await repository.findById(templateId);
+    async getPreviewUrl(templateId, tenantId) {
+        const template = await repository.findById(templateId, tenantId);
         if (!template) throw new Error("Template not found");
         return template.relative_path;
     }
