@@ -50,7 +50,7 @@ describe('ConversationController', () => {
   });
 
   afterEach(() => {
-    logSpy.mockRestore();
+    jest.restoreAllMocks();
   });
 
   describe('sendBulkEmails', () => {
