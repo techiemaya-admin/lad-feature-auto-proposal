@@ -1,5 +1,5 @@
 const AppDataSource = require("../../../config/data-source");
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 
 const ALLOWED_FIELDS = [
   'name',
@@ -20,7 +20,7 @@ class TenantRepository {
   // CREATE TENANT
   // =====================================================
   async create(tenantData) {
-    const id = uuidv4();
+    const id = crypto.randomUUID();
     const { name, slug, logo_url, settings } = tenantData;
 
     const sql = `

@@ -6,3 +6,5 @@ node_modules/
 *.iml
 service-account.json
 .rough
+graphify-out
+.agents

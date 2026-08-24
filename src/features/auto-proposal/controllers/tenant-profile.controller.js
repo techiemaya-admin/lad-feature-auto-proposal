@@ -1,11 +1,11 @@
-const service = require('../services/tenant-profile.service');
+const repository = require('../repositories/tenant-profile.repository');
 const { uploadBufferToGCS } = require('../../../utils/gcsUploader');
 
 class TenantProfileController {
     async getProfile(req, res) {
         try {
             const { tenantId } = req.params;
-            const profile = await service.getProfile(tenantId);
+            const profile = await repository.findByTenantId(tenantId);
             res.status(200).json(profile);
         } catch (error) {
             // THIS IS THE IMPORTANT PART:
@@ -26,7 +26,7 @@ class TenantProfileController {
 
             if (!field) return res.status(400).json({ error: "Field name is required" });
 
-            const updatedProfile = await service.updateProfileField(tenantId, field, value);
+            const updatedProfile = await repository.updateField(tenantId, field, value);
             res.status(200).json({
                 message: `${field} updated successfully`,
                 data: updatedProfile
@@ -40,7 +40,7 @@ class TenantProfileController {
     async getLogoPreview(req, res) {
         try {
             const { tenantId } = req.params;
-            const profile = await service.getProfile(tenantId);
+            const profile = await repository.findByTenantId(tenantId);
 
             if (!profile || !profile.company_logo_url) {
                 return res.status(404).json({ error: "No logo found for this tenant" });
@@ -71,7 +71,7 @@ class TenantProfileController {
 
             // 3. Save the path/URL to the database
             // We use the same updateField logic from before
-            const updatedProfile = await service.updateProfileField(tenantId, 'company_logo_url', publicUrl);
+            const updatedProfile = await repository.updateField(tenantId, 'company_logo_url', publicUrl);
 
             res.status(200).json({
                 message: "Logo uploaded successfully",

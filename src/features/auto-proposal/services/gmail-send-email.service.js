@@ -5,7 +5,6 @@ const quotationEmailTemplateRepo = require('../repositories/quotation-email-temp
 const templateRepo = require('../repositories/email-template.repository');
 const placeholderRepo = require('../repositories/quotation-placeholder.repository');
 const _ = require('lodash');
-const axios = require('axios'); // You'll need this to fetch the file from the URL
 const mammoth = require("mammoth");
 const { Storage } = require("@google-cloud/storage");
 const emailTemplateService = require("./email-template.service");
@@ -144,8 +143,10 @@ async function processAndSendDefaultEmail(tenantId, data, url, price, oAuth2Clie
       let attachmentBase64 = "";
       const filename = "Proposal.pdf";
       try {
-        const attachmentRes = await axios.get(url, { responseType: 'arraybuffer' });
-        attachmentBase64 = Buffer.from(attachmentRes.data).toString('base64');
+        const attachmentRes = await fetch(url);
+        if (!attachmentRes.ok) throw new Error(`HTTP error! status: ${attachmentRes.status}`);
+        const arrayBuf = await attachmentRes.arrayBuffer();
+        attachmentBase64 = Buffer.from(arrayBuf).toString('base64');
       } catch (err) {
         console.error("Attachment fetch failed:", err.message);
       }
@@ -264,8 +265,10 @@ async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price
     let attachmentBase64 = "";
     const filename = "Proposal.pdf";
     try {
-      const attachmentRes = await axios.get(url, { responseType: 'arraybuffer' });
-      attachmentBase64 = Buffer.from(attachmentRes.data).toString('base64');
+      const attachmentRes = await fetch(url);
+      if (!attachmentRes.ok) throw new Error(`HTTP error! status: ${attachmentRes.status}`);
+      const arrayBuf = await attachmentRes.arrayBuffer();
+      attachmentBase64 = Buffer.from(arrayBuf).toString('base64');
     } catch (err) {
       console.error("Attachment fetch failed:", err.message);
     }
@@ -466,8 +469,10 @@ async function sendGmailWithAttachments({ to, subject, html, attachments, oAuth2
     for (const file of attachments) {
       try {
         // Download the file from GCS URL
-        const response = await axios.get(file.url, { responseType: 'arraybuffer' });
-        const base64Content = Buffer.from(response.data).toString('base64');
+        const response = await fetch(file.url);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const arrayBuf = await response.arrayBuffer();
+        const base64Content = Buffer.from(arrayBuf).toString('base64');
 
         messageParts.push(
           `--${boundary}`,
@@ -596,8 +601,10 @@ async function sendGmailRaw({ to, subject, html, global_message_id, threadId, oA
     for (const file of attachments) {
       try {
         // Download the file from GCS URL
-        const response = await axios.get(file.url, { responseType: 'arraybuffer' });
-        const base64Content = Buffer.from(response.data).toString('base64');
+        const response = await fetch(file.url);
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        const arrayBuf = await response.arrayBuffer();
+        const base64Content = Buffer.from(arrayBuf).toString('base64');
 
         attachmentPart.push(
           `--${boundary}`,

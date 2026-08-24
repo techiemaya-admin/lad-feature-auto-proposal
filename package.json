@@ -10,7 +10,8 @@
     "migration:run": "node node_modules/typeorm/cli.js migration:run -d src/config/data-source.js",
     "lint": "eslint src --ext .js",
     "test": "jest --passWithNoTests",
-    "test:watch": "jest --watch --passWithNoTests"
+    "test:watch": "jest --watch --passWithNoTests",
+    "smoke:test": "node scripts/dev/smoke-test.js"
   },
   "engines": {
     "node": ">=18"
@@ -18,30 +19,23 @@
   "dependencies": {
     "@google-cloud/storage": "^7.19.0",
     "@google/generative-ai": "^0.24.1",
-    "axios": "^1.15.2",
-    "class-transformer": "^0.5.1",
-    "class-validator": "^0.14.1",
     "cors": "^2.8.6",
     "docxtemplater": "^3.68.5",
     "docxtemplater-image-module-free": "^1.1.1",
     "dotenv": "^16.6.1",
     "express": "^4.22.1",
     "googleapis": "^171.4.0",
-    "html-docx-js": "^0.3.1",
-    "image-size": "^2.0.2",
     "jsonwebtoken": "^9.0.3",
     "libreoffice-convert": "^1.8.1",
     "lodash": "^4.18.1",
     "mammoth": "^1.12.0",
     "multer": "^2.1.1",
     "openai": "^6.34.0",
-    "pdf-lib": "^1.17.1",
     "pdfkit": "^0.17.2",
     "pg": "^8.19.0",
     "pizzip": "^3.2.0",
     "puppeteer": "^24.40.0",
-    "typeorm": "^0.3.20",
-    "uuid": "^10.0.0"
+    "typeorm": "^0.3.20"
   },
   "devDependencies": {
     "eslint": "^9.14.0",

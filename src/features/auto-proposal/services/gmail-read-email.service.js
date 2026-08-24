@@ -9,22 +9,20 @@ const messageRepository = require("../repositories/conversation-message.reposito
 const { logger } = require("../../../utils/logger");
 const aiService = require("./ai-response.service");
 const leadRequirementRepository = require("../repositories/lead-requirement.repository");
-const finalPriceCalculationService = require("./final-price-calculaton.service");
+const finalPriceCalculationRepository = require("../repositories/final-price-calculation.repository");
 const userIdentityRepository = require("../repositories/user-identity.repository");
 const gmailWatchService = require("./gmail-watch.service");
 const proposalDraftRepository = require("../repositories/proposal-draft.repository");
 const gmailWatchRepository = require("../repositories/gmail-watch.repository");
 // Inside another service (e.g., MarketingService.js)
 const leadService = require("./lead.service");
-const CommonUtil = require("../../../utils/common-utils");
+const { parseContactInfo } = require("../../../utils/common-utils");
 const leadRequirementValueRepo = require("../repositories/lead_requirement_values.repository");
 const tenatDetailsRepo = require("../repositories/tenant.repository");
 const leadRepository = require("../repositories/lead.repository");
 const conversationParticipantsRepository = require("../repositories/conversation-participants.repository");
 const gmailSendService = require("./gmail-send-email.service");
 const placeHolderBuilder = require('../../../utils/placeHolderBuilder');
-const PlaceHolderBuilder = require("../../../utils/placeHolderBuilder");
-const tenantProfileService = require("./tenant-profile.service");
 const conversationService = require("./conversation.service");
 const lead_requirement_configRepository = require("../repositories/lead_requirement_config.repository");
 const proposalDraftItemsRepository = require("../repositories/proposal-draft-items.repository");
@@ -63,7 +61,7 @@ async function startWatch(email, tenantId) {
 
 async function createProposalDraft(leadRequirementDetails, leadData, email_content, conversation_id, global_message_id, threadId, subject, oAuth2Client, content) {
   console.log("Calculating final price for conversationid :", conversation_id, " lead requirement details :", leadRequirementDetails, " lead data : ", leadData, " email content : ", email_content);
-  const calculatedPriceDetails = await finalPriceCalculationService.calculateFinalPrice(leadRequirementDetails.tenant_id, leadRequirementDetails.id, email_content, leadRequirementDetails.event_type);
+  const calculatedPriceDetails = await finalPriceCalculationRepository.generateFinalPrice(leadRequirementDetails.tenant_id, leadRequirementDetails.id, email_content, leadRequirementDetails.event_type);
   const leadRequirementValues = await leadRequirementValueRepo.findByRequirementId(leadRequirementDetails.id);
   const services_given = leadRequirementValues.map(v => v.label).join(', ');
   console.log("Services given to tenant: ", services_given);
@@ -331,7 +329,7 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
           const headers = fullMessage.data.payload.headers;
           const subject = headers.find(h => h.name === "Subject")?.value || "";
           const from = headers.find(h => h.name === "From")?.value || "";
-          const contact = CommonUtil.parseContactInfo(from);
+          const contact = parseContactInfo(from);
           const body = getEmailBody(fullMessage.data.payload);
           console.log("subject: " + subject + " from : " + from + " contact: " + JSON.stringify(contact) + " body : " + body);
           console.log("Checking if email is system generated...");

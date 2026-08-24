@@ -1,5 +1,5 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
-const { v4: uuidv4 } = require("uuid");
+const crypto = require("crypto");
 const path = require("path");
 const { generatePDF } = require("../../../utils/pdfGenerator");
 const { uploadToGCS } = require("../../../utils/gcsUploader");
@@ -16,9 +16,7 @@ const fs = require('fs').promises;
 const quotationTemplateMetadataRepository = require("../repositories/quotation-template-metadata.repository");
 const placeholderRepo = require('../repositories/quotation-placeholder.repository');
 const _ = require('lodash');
-const axios = require('axios'); // You'll need this to fetch the file from the URL
 const mammoth = require("mammoth");
-const pricngRuleRepo = require('../repositories/pricingRule.repository')
 const { Storage } = require("@google-cloud/storage");
 const { uploadBufferToGCS } = require('../../../utils/gcsUploader');
 const storage = new Storage({
@@ -27,7 +25,6 @@ const storage = new Storage({
 
 const ImageModule = require("docxtemplater-image-module-free");
 const convertAsync = promisify(libre.convert);
-const sizeOf = require("image-size"); // npm install image-size
 const conversationMessageRepository = require("../repositories/conversation-message.repository");
 const tenantRepository = require("../repositories/tenant.repository");
 const pricingModelRepository = require("../repositories/pricingModel.repository");
@@ -608,7 +605,7 @@ class AIService {
     // 1. Fetch the default template path from your metadata table
     const templateMetadata = await templateRepository.findDefaultByTenant(tenantId);
     console.log("templateMetadata:: " + templateMetadata)
-    let fileName = `quotation - ${uuidv4()}.pdf`;
+    let fileName = `quotation - ${crypto.randomUUID()}.pdf`;
     fileName = `proposals/${fileName}`; // Add proposals/ prefix here
     const localPath = path.join(__dirname, "../", fileName);
 
@@ -687,8 +684,10 @@ class AIService {
       const imageOptions = {
         getImage: async (tagValue) => {
           try {
-            const res = await axios.get(tagValue, { responseType: 'arraybuffer' });
-            return res.data;
+            const res = await fetch(tagValue);
+            if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+            const arrayBuf = await res.arrayBuffer();
+            return Buffer.from(arrayBuf);
           } catch (err) {
             console.error(`Failed to fetch image at ${tagValue}:`, err.message);
             return null;

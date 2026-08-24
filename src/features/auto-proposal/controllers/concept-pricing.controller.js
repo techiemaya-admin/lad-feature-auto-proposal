@@ -1,4 +1,3 @@
-const { list } = require('pdfkit');
 const matrixService = require('../services/concept-pricing.service');
 
 async function create(req, res, next) {

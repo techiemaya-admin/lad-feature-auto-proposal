@@ -13,7 +13,6 @@ const tenantRoute = require('./features/auto-proposal/routes/tenant-route');
 const locationRoute = require('./features/auto-proposal/routes/location-routes');
 const conceptRoute = require('./features/auto-proposal/routes/concept-routes');
 const leadRoute = require('./features/auto-proposal/routes/lead-routes');
-const pricingRoute = require('./features/auto-proposal/routes/pricing-routes');
 const quotationRoute = require('./features/auto-proposal/routes/quotation-routes');
 const quotationTemplateRoute = require('./features/auto-proposal/routes/quotation-template-routes');
 const gmailRoutes = require("../src/features/auto-proposal/routes/gmail-routes");
@@ -47,14 +46,12 @@ app.use('/api/locations', locationRoute);
 app.use('/api/concepts', conceptRoute);
 app.use('/api/concept-pricing-matrix', conceptPricingRoute);
 app.use('/api/leads', leadRoute);
-app.use('/api/pricing', pricingRoute);
 app.use('/api/quotations', quotationRoute);
 app.use('/api/quotation-templates', quotationTemplateRoute);
 app.use('/api/proposal-draft', proposalDraftRoute);
 app.use('/api/lead-requirement-config', leadRequirementConfigRoute);
 app.use('/api/pricing-models', pricingModelRoute);
 app.use('/api/pricing-rules', pricingRuleRoute);
-app.use('/api/test', require('./features/auto-proposal/routes/test.route')); // Add this line to include the test route
 app.use('/api/tenant-profile', require('./features/auto-proposal/routes/tenant-profile.routes')); // Add this line to include tenant profile routes
 app.use('/api/email-templates', require('./features/auto-proposal/routes/email-template.routes')); // Add this line to include email template routes
 app.use('/api/template-placeholder', require('./features/auto-proposal/routes/quotation-placeholder-routes'))

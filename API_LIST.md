@@ -242,7 +242,7 @@ Response (201):
   "quotation_template_metadata_id": "template-uuid",
   "status": "draft",
   "quotation_number": "Q-0001",
-  "body": { /* rendered quotation body */ },
+  "body": {},
   "created_at": "2026-02-13T00:00:00.000Z",
   "updated_at": "2026-02-13T00:00:00.000Z"
 }
@@ -281,7 +281,7 @@ Response (200):
 {
   "total": 4500.0,
   "currency": "INR",
-  "breakdown": { /* pricing breakdown object from pricing engine */ }
+  "breakdown": {}
 }
 ```
 

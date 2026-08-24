@@ -1,4 +1,4 @@
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 const dataSource = require('../../../config/data-source');
 
 function getRepository() {
@@ -8,7 +8,7 @@ function getRepository() {
 async function create(tenantId, conceptId, locationId, options = {}) {
   const repo = getRepository();
   const entity = repo.create({
-    id: uuidv4(),
+    id: crypto.randomUUID(),
     tenant_id: tenantId,
     concept_id: conceptId,
     location_id: locationId,

@@ -1,21 +1,21 @@
-const service = require("../services/lead_requirement_config.service");
+const repo = require("../repositories/lead_requirement_config.repository");
 
 exports.create = async (req, res) => {
-  const data = await service.createField(req.body);
+  const data = await repo.create(req.body);
   res.json(data);
 };
 
 exports.get = async (req, res) => {
-  const data = await service.getFields(req.params.tenant_id);
+  const data = await repo.findByTenant(req.params.tenant_id);
   res.json(data);
 };
 
 exports.update = async (req, res) => {
-  const data = await service.updateField(req.params.id, req.body);
+  const data = await repo.update(req.params.id, req.body);
   res.json(data);
 };
 
 exports.delete = async (req, res) => {
-  await service.deleteField(req.params.id);
+  await repo.delete(req.params.id);
   res.json({ message: "Field disabled" });
 };

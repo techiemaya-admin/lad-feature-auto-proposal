@@ -1,11 +1,6 @@
 //  Import service that talks to Gmail and processes messages
 const gmailService = require("../services/gmail-read-email.service");
-
 const logger = require('../../../utils/logger');
-const finalPriceCalculationService = require("../services/final-price-calculaton.service");
-const aiService = require("../services/ai-response.service");
-const proposalDraftRepository = require("../repositories/proposal-draft.repository");
-const { file } = require("pdfkit");
 
 async function startWatch(req, res) {
   logger.info("Testing start watch>>")

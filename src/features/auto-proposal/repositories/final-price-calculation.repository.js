@@ -1,4 +1,3 @@
-const { v4: uuidv4 } = require("uuid");
 const dataSource = require("../../../config/data-source"); // adjust path
 const conceptRepository = require("./concept.repository");
 const aiService = require("../services/ai-response.service");

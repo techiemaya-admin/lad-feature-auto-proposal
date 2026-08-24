@@ -1,10 +1,10 @@
 const AppDataSource = require("../../../config/data-source");
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 
 class ConversationMessageRepository {
 
   async createMessage(data) {
-    const id = uuidv4();
+    const id = crypto.randomUUID();
     const {
       tenant_id, conversation_id, sender_type, sender_id,
       channel, message_type, content, raw_payload, message_id, global_message_id, proposal_draft_id

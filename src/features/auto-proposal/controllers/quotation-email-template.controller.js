@@ -2,7 +2,6 @@
 const service = require('../services/quotation-email-template.service');
 const leadService = require('../services/lead.service');
 const tenantService = require('../services/tenant.service');
-const tenantProfileService = require('../services/tenant-profile.service');
 
 exports.create = async (req, res) => {
   try {

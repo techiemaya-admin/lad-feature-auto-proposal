@@ -1,5 +1,4 @@
 const leadRepository = require("../repositories/lead.repository");
-const { v4: uuidv4 } = require("uuid");
 
 class LeadService {
   /**
