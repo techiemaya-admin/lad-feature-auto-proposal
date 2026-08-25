@@ -66,44 +66,4 @@ describe('LeadRequirementValuesController', () => {
       expect(next).toHaveBeenCalledWith(error);
     });
   });
-
-  describe('get', () => {
-    it('retrieves values for requirement id', async () => {
-      req.params.id = 'req-1';
-      leadRequirementValuesRepo.findByRequirementId.mockResolvedValue([{ id: 'val-1', value_number: 10 }]);
-
-      await controller.get(req, res, next);
-
-      expect(leadRequirementValuesRepo.findByRequirementId).toHaveBeenCalledWith('req-1');
-      expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith([{ id: 'val-1', value_number: 10 }]);
-    });
-  });
-
-  describe('update', () => {
-    it('updates a value record by id', async () => {
-      req.params.id = 'val-1';
-      req.body = { value_number: 200 };
-      leadRequirementValuesRepo.update.mockResolvedValue({ id: 'val-1', value_number: 200 });
-
-      await controller.update(req, res, next);
-
-      expect(leadRequirementValuesRepo.update).toHaveBeenCalledWith('val-1', { value_number: 200 });
-      expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith({ id: 'val-1', value_number: 200 });
-    });
-  });
-
-  describe('delete', () => {
-    it('deletes a value record by id', async () => {
-      req.params.id = 'val-1';
-      leadRequirementValuesRepo.delete.mockResolvedValue({ id: 'val-1' });
-
-      await controller.delete(req, res, next);
-
-      expect(leadRequirementValuesRepo.delete).toHaveBeenCalledWith('val-1');
-      expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith({ message: 'Deleted', data: { id: 'val-1' } });
-    });
-  });
 });

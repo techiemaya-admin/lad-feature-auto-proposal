@@ -39,4 +39,28 @@ describe('ConceptRepository', () => {
       expect(result).toEqual({ id: 'concept-1' });
     });
   });
+
+  describe('findByIds', () => {
+    it('queries database with ANY filter and tenant isolation', async () => {
+      db.query.mockResolvedValue([
+        { id: 'c-1', name: 'Concept 1', requirement_configs: [] },
+        { id: 'c-2', name: 'Concept 2', requirement_configs: [] },
+      ]);
+
+      const result = await conceptRepository.findByIds('tenant-123', ['c-1', 'c-2']);
+
+      expect(db.query).toHaveBeenCalledWith(
+        expect.stringMatching(/WHERE\s+c\.tenant_id\s*=\s*\$1\s+AND\s+c\.id\s*=\s*ANY\(\$2\)/i),
+        ['tenant-123', ['c-1', 'c-2']]
+      );
+      expect(result).toHaveLength(2);
+    });
+
+    it('returns empty array when empty array is passed without running database query', async () => {
+      const result = await conceptRepository.findByIds('tenant-123', []);
+      expect(result).toEqual([]);
+      expect(db.query).not.toHaveBeenCalled();
+    });
+  });
 });
+

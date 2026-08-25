@@ -106,4 +106,19 @@ describe('QuotationEmailTemplateController', () => {
       expect(res.json).toHaveBeenCalledWith({ error: 'DB failure' });
     });
   });
+
+  describe('remove', () => {
+    it('resolves req.params.tenantId fallback and calls deleteTemplate', async () => {
+      delete req.tenantId; // simulate no req.tenantId on request object
+      req.params = { id: 'tpl-123', tenantId: 'tenant-789' };
+      service.deleteTemplate.mockResolvedValue(true);
+
+      await quotationEmailTemplateController.remove(req, res);
+
+      expect(service.deleteTemplate).toHaveBeenCalledWith('tpl-123', 'tenant-789');
+      expect(res.status).toHaveBeenCalledWith(204);
+      expect(res.send).toHaveBeenCalled();
+    });
+  });
 });
+
