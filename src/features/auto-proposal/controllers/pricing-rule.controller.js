@@ -49,8 +49,8 @@ exports.update = async (req, res, next) => {
 exports.delete = async (req, res, next) => {
   try {
     logger.debug('Deleting pricing rule with ID:', req.params.id);
-    const tenantId = req.tenantId || req.query?.tenant_id;
-    await repo.delete(req.params.id, tenantId);
+    const tenantId = req.tenantId || req.params.tenantId || req.params.tenant_id || req.query?.tenant_id || req.body?.tenant_id;
+    await repo.softDelete(req.params.id, tenantId);
     res.json({ message: 'Deleted successfully' });
   } catch (err) {
     next(err);

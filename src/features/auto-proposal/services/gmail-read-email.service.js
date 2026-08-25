@@ -6,7 +6,7 @@ const googleConfig = require("../../../config/google.config");
 
 const conversationRepository = require("../repositories/conversation.repository");
 const messageRepository = require("../repositories/conversation-message.repository");
-const { logger } = require("../../../utils/logger");
+const logger = require("../../../utils/logger");
 const aiService = require("./ai-response.service");
 const leadRequirementRepository = require("../repositories/lead-requirement.repository");
 const finalPriceCalculationRepository = require("../repositories/final-price-calculation.repository");
@@ -61,11 +61,11 @@ async function startWatch(email, tenantId) {
 }
 
 async function createProposalDraft(leadRequirementDetails, leadData, email_content, conversation_id, global_message_id, threadId, subject, oAuth2Client, content) {
-  console.log("Calculating final price for conversationid :", conversation_id, " lead requirement details :", leadRequirementDetails, " lead data : ", leadData, " email content : ", email_content);
+  logger.debug("Calculating final price for conversationid :", conversation_id, " lead requirement details :", leadRequirementDetails, " lead data : ", leadData, " email content : ", email_content);
   const calculatedPriceDetails = await finalPriceCalculationRepository.generateFinalPrice(leadRequirementDetails.tenant_id, leadRequirementDetails.id, email_content, leadRequirementDetails.event_type);
   const leadRequirementValues = await leadRequirementValueRepo.findByRequirementId(leadRequirementDetails.id);
   const services_given = leadRequirementValues.map(v => v.label).join(', ');
-  console.log("Services given to tenant: ", services_given);
+  logger.debug("Services given to tenant: ", services_given);
   calculatedPriceDetails.breakdown.sort((a, b) => {
     const aPrice = a.price || 0;
     const bPrice = b.price || 0;
@@ -77,15 +77,15 @@ async function createProposalDraft(leadRequirementDetails, leadData, email_conte
     if (aPrice > 0 && bPrice === 0) return -1;
     return 0; // Keep original order for items with same price status
   });
-  console.log("Final price calculated:", calculatedPriceDetails);
+  logger.debug("Final price calculated:", calculatedPriceDetails);
 
   if (calculatedPriceDetails.final_price != 0) {
 
     const tenantDetails = (await tenatDetailsRepo.findById(leadRequirementDetails.tenant_id)) || {};
     const tenantProfileDetails = (await tenantProfileRepository.findByTenantId(leadRequirementDetails.tenant_id)) || {};
-    console.log("tenantDetails : " + JSON.stringify(tenantDetails));
-    console.log("lead data : " + JSON.stringify(leadData))
-    console.log("tenant profile details : " + JSON.stringify(tenantProfileDetails))
+    logger.debug("tenantDetails : " + JSON.stringify(tenantDetails));
+    logger.debug("lead data : " + JSON.stringify(leadData));
+    logger.debug("tenant profile details : " + JSON.stringify(tenantProfileDetails));
     const items = calculatedPriceDetails.breakdown.map(item => ({
       qty: item.count,
       description: item.label,
@@ -133,23 +133,25 @@ async function createProposalDraft(leadRequirementDetails, leadData, email_conte
       pricing_rule_ids: calculatedPriceDetails.applied_package_rules
     }
     const proposalDraft = await proposalDraftRepository.create(dataToSave);
-    console.log("Proposal draft created with ID:", proposalDraft.id);
+    logger.info("Proposal draft created with ID:", proposalDraft.id);
     try {
 
-      let messageData = emailResult.messageData;
-      messageData.proposal_draft_id = proposalDraft.id;
+      let messageData = emailResult?.messageData;
+      if (messageData) {
+        messageData.proposal_draft_id = proposalDraft.id;
 
-      // Call your specific method
-      const savedMsg = await messageRepository.createMessage(messageData);
-      console.log("Message archived in DB:", savedMsg.id);
+        // Call your specific method
+        const savedMsg = await messageRepository.createMessage(messageData);
+        logger.info("Message archived in DB:", savedMsg.id);
+      }
 
     } catch (dbError) {
       // Log the error but don't stop the process since the email was already sent
-      console.error("Archive Error: Failed to save sent email to DB.", dbError);
+      logger.error("Archive Error: Failed to save sent email to DB.", dbError);
     }
     return proposalDraft;
   } else {
-    console.log("quotation should not be made due to price valued is ZERO");
+    logger.info("quotation should not be made due to price valued is ZERO");
     return null;
   }
 

@@ -1,4 +1,5 @@
 const AppDataSource = require("../../../config/data-source");
+const logger = require("../../../utils/logger");
 
 class LeadRepository {
   /**
@@ -16,7 +17,7 @@ class LeadRepository {
 
       // 2. If lead exists, return the existing lead instead of creating a new one
       if (existingLeads && existingLeads.length > 0) {
-        console.log(`Lead with email ${data.email} already exists for tenant ${data.tenant_id}. Skipping creation.`);
+        logger.info(`Lead with email ${data.email} already exists for tenant ${data.tenant_id}. Skipping creation.`);
         return existingLeads[0];
       }
     }

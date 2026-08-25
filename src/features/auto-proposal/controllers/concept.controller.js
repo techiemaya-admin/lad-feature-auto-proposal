@@ -1,15 +1,16 @@
 const conceptService = require('../services/concept.service');
 const { createConceptDto, toConceptResponse } = require('../dtos/concept.dto');
+const logger = require('../../../utils/logger');
 
 async function create(req, res, next) {
   try {
-    console.log('Creating concept with data:', req.body);
+    logger.debug('Creating concept with data:', req.body);
     const dto = createConceptDto(req.body);
-    console.log('DTO after validation:', dto);
+    logger.debug('DTO after validation:', dto);
     const concept = await conceptService.createConcept(req.tenantId, dto);
     res.status(201).json(toConceptResponse(concept));
   } catch (err) {
-    console.error('Error in create:', err);
+    logger.error('Error in create concept:', err);
     next(err);
   }
 }
@@ -19,18 +20,18 @@ async function getById(req, res, next) {
     const concept = await conceptService.getConceptById(req.tenantId, req.params.id);
     res.json(toConceptResponse(concept));
   } catch (err) {
-    console.error('Error in getById:', err);
+    logger.error('Error in getById concept:', err);
     next(err);
   }
 }
 
 async function list(req, res, next) {
   try {
-    console.log('Listing concepts for tenant:', req.tenantId);
+    logger.debug('Listing concepts for tenant:', req.tenantId);
     const data = await conceptService.listConcepts(req.tenantId);
     res.json(data);
   } catch (err) {
-    console.error('Error in list:', err);
+    logger.error('Error in list concepts:', err);
     next(err);
   }
 }
@@ -46,7 +47,7 @@ async function linkLocation(req, res, next) {
       is_available: link.is_available,
     });
   } catch (err) {
-    console.error('Error in linkLocation:', err);
+    logger.error('Error in linkLocation:', err);
     next(err);
   }
 }
@@ -64,29 +65,29 @@ async function addPricing(req, res, next) {
       location_multiplier: pricing.location_multiplier,
     });
   } catch (err) {
-    console.error('Error in addPricing:', err);
+    logger.error('Error in addPricing:', err);
     next(err);
   }
 }
 
 async function update(req, res, next) {
   try {
-    console.log('Updating concept with ID:', req.params.id, 'and data:', req.body);
+    logger.debug('Updating concept with ID:', req.params.id, 'and data:', req.body);
     const concept = await conceptService.updateConcept(req.tenantId, req.params.id, req.body);
     res.json(toConceptResponse(concept));
   } catch (err) { 
-    console.error('Error in update:', err);
+    logger.error('Error in update concept:', err);
     next(err); 
   }
 }
 
 async function remove(req, res, next) {
   try {
-    console.log('Deleting concept with ID:', req.params.id);
+    logger.debug('Deleting concept with ID:', req.params.id);
     await conceptService.deleteConcept(req.tenantId, req.params.id);
     res.status(204).send();
   } catch (err) { 
-    console.error('Error in remove:', err);
+    logger.error('Error in remove concept:', err);
     next(err); 
   }
 }

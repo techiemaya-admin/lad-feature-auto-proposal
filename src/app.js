@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const logger = require('./utils/logger');
 const app = express();
 const corsOptions = {
   origin: 'http://localhost:3000', // Matches your frontend exactly
@@ -16,8 +17,9 @@ const leadRoute = require('./features/auto-proposal/routes/lead-routes');
 const quotationRoute = require('./features/auto-proposal/routes/quotation-routes');
 const quotationTemplateRoute = require('./features/auto-proposal/routes/quotation-template-routes');
 const gmailRoutes = require("../src/features/auto-proposal/routes/gmail-routes");
-const proposalDraftRoute = require("../src/features/auto-proposal/routes/proposal-draft.routes");
-const leadRequirementConfigRoute = require("../src/features/auto-proposal/routes/lead_requirement_config-routes");
+const proposalDraftRoute = require("./features/auto-proposal/routes/proposal-draft.routes");
+const leadRequirementConfigRoute = require("./features/auto-proposal/routes/lead_requirement_config-routes");
+const leadRequirementValuesRoute = require("./features/auto-proposal/routes/lead_requirement_values-routes");
 const conceptPricingRoute = require("./features/auto-proposal/routes/concept-pricing.routes");
 const pricingModelRoute = require("./features/auto-proposal/routes/pricingModel.routes");
 const pricingRuleRoute = require("./features/auto-proposal/routes/pricingRule.routes");
@@ -27,7 +29,7 @@ const socialIntegrationRoutes = require('./features/auto-proposal/routes/social-
 // In your main server.js
 app.use((req, res, next) => {
   if (req.originalUrl === '/api/email-conversations/upload') {
-    console.log("Skipping JSON parsing for upload route");
+    logger.debug("Skipping JSON parsing for upload route");
     next(); // Skip JSON parsing for the upload route
   } else {
     express.json()(req, res, next);
@@ -50,6 +52,7 @@ app.use('/api/quotations', quotationRoute);
 app.use('/api/quotation-templates', quotationTemplateRoute);
 app.use('/api/proposal-draft', proposalDraftRoute);
 app.use('/api/lead-requirement-config', leadRequirementConfigRoute);
+app.use('/api/lead-requirement-values', leadRequirementValuesRoute);
 app.use('/api/pricing-models', pricingModelRoute);
 app.use('/api/pricing-rules', pricingRuleRoute);
 app.use('/api/tenant-profile', require('./features/auto-proposal/routes/tenant-profile.routes')); // Add this line to include tenant profile routes

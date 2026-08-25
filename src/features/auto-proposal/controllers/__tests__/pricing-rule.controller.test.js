@@ -60,19 +60,19 @@ describe('PricingRuleController', () => {
   });
 
   describe('delete', () => {
-    it('passes req.params.id and req.tenantId to repo.delete to enforce tenant isolation', async () => {
+    it('passes req.params.id and req.tenantId to repo.softDelete to enforce tenant isolation', async () => {
       req.params = { id: 'pr-1' };
-      repo.delete.mockResolvedValue({ id: 'pr-1' });
+      repo.softDelete.mockResolvedValue({ id: 'pr-1' });
 
       await controller.delete(req, res, next);
 
-      expect(repo.delete).toHaveBeenCalledWith('pr-1', 'auth-tenant-123');
+      expect(repo.softDelete).toHaveBeenCalledWith('pr-1', 'auth-tenant-123');
       expect(res.json).toHaveBeenCalledWith({ message: 'Deleted successfully' });
     });
 
     it('forwards error to next on failure', async () => {
       const error = new Error('Database delete failed');
-      repo.delete.mockRejectedValue(error);
+      repo.softDelete.mockRejectedValue(error);
       req.params = { id: 'pr-1' };
 
       await controller.delete(req, res, next);

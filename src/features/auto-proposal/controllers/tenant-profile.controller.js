@@ -1,5 +1,6 @@
 const repository = require('../repositories/tenant-profile.repository');
 const { uploadBufferToGCS } = require('../../../utils/gcsUploader');
+const logger = require('../../../utils/logger');
 
 class TenantProfileController {
     async getProfile(req, res) {
@@ -8,21 +9,21 @@ class TenantProfileController {
             const profile = await repository.findByTenantId(tenantId);
             res.status(200).json(profile);
         } catch (error) {
-            // THIS IS THE IMPORTANT PART:
-            console.error("DETAILED ERROR:", error); // This WILL show in your console
+            logger.error("Error in getProfile:", error);
             res.status(500).json({
                 success: false,
                 message: error.message,
-                stack: error.stack // Include this temporarily to see exactly where it fails
+                stack: error.stack
             });
         }
     }
 
     async updateField(req, res) {
         try {
-            console.log("Received update request with body:", req.body); // Log the incoming request body
+            logger.debug("Received update request with body:", req.body);
             const { tenantId } = req.params;
-            const { field, value } = req.body; // e.g., { "field": "whatsapp_url", "value": "https://wa.me/..." }
+            const field = req.body.field || req.body.fieldName;
+            const value = req.body.value !== undefined ? req.body.value : req.body.fieldValue;
 
             if (!field) return res.status(400).json({ error: "Field name is required" });
 
@@ -32,7 +33,7 @@ class TenantProfileController {
                 data: updatedProfile
             });
         } catch (error) {
-            console.error("DETAILED ERROR in update field :", error); // This WILL show in your console
+            logger.error("Error in updateField:", error);
             res.status(400).json({ error: error.message });
         }
     }
@@ -51,7 +52,7 @@ class TenantProfileController {
                 logoUrl: profile.company_logo_url
             });
         } catch (error) {
-            console.error("DETAILED ERROR in getLogoPreview:", error); // This WILL show in your console
+            logger.error("Error in getLogoPreview:", error);
             res.status(500).json({ error: error.message });
         }
     }
@@ -60,9 +61,9 @@ class TenantProfileController {
         try {
             const { tenantId } = req.params;
             const file = req.file;
-            console.log("Received file for upload:", tenantId); // Log the incoming file details
+            logger.debug("Received file for upload:", tenantId);
             if (!file) return res.status(400).json({ error: "No image file provided" });
-            console.log("File details:", file); // Log the incoming file details
+            logger.debug("File details:", file);
             // 1. Generate unique path in GCS
             const destination = `logos/${tenantId}/${Date.now()}_${file.originalname}`;
 
@@ -70,7 +71,6 @@ class TenantProfileController {
             const publicUrl = await uploadBufferToGCS(file.buffer, destination, file.mimetype);
 
             // 3. Save the path/URL to the database
-            // We use the same updateField logic from before
             const updatedProfile = await repository.updateField(tenantId, 'company_logo_url', publicUrl);
 
             res.status(200).json({
@@ -79,7 +79,7 @@ class TenantProfileController {
                 data: updatedProfile
             });
         } catch (error) {
-            console.error("Logo Upload Error:", error);
+            logger.error("Logo Upload Error:", error);
             res.status(500).json({ error: error.message });
         }
     }

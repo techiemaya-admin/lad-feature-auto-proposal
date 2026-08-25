@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const path = require("path");
 const { generatePDF } = require("../../../utils/pdfGenerator");
 const { uploadToGCS } = require("../../../utils/gcsUploader");
+const logger = require("../../../utils/logger");
 const leadRequirementConfigRepo = require("../repositories/lead_requirement_config.repository");
 const puppeteer = require('puppeteer');
 const proposalDraftService = require('./proposal-draft.service');
@@ -58,7 +59,7 @@ class AIService {
       }
 
       if (!apiKeys.length) {
-        console.warn("⚠️ No valid Gemini API keys found. AI service running in unconfigured mode.");
+        logger.warn("⚠️ No valid Gemini API keys found. AI service running in unconfigured mode.");
         return;
       }
 
@@ -186,7 +187,7 @@ class AIService {
     this.ensureConfigured();
 
     const modelInfo = this.getNextApiKey();
-    console.log(
+    logger.debug(
       "Using Gemini API Key Index:",
       modelInfo ? modelInfo.keyIndex : "None"
     );
@@ -206,17 +207,17 @@ class AIService {
     let retries = 3;
     for (let i = 0; i < retries; i++) {
       try {
-        console.log("send request to gemini");
+        logger.debug("send request to gemini");
         const result = await model.generateContent(prompt);
         const response = await result.response;
         this.updateUsage(modelInfo);
-        console.log(`Response fetched from gen AI after attempt : ${i}`);
+        logger.debug(`Response fetched from gen AI after attempt : ${i}`);
         const resp = JSON.parse(response.text());
-        console.log("REsponse:: " + JSON.stringify(resp));
+        logger.debug("REsponse:: " + JSON.stringify(resp));
         return resp;
       } catch (err) {
         if (err.message && err.message.includes("503") && i < retries - 1) {
-          console.log(`Retrying... attempt ${i + 1}`);
+          logger.debug(`Retrying... attempt ${i + 1}`);
           await new Promise((res) => setTimeout(res, 2000));
         } else {
           throw err;
@@ -779,7 +780,7 @@ class AIService {
 
   async suggestConcepts(tenantId) {
     this.ensureConfigured();
-    console.log("tenantId:: " + tenantId);
+    logger.debug("tenantId:: " + tenantId);
 
     const [configs, tenant, profile] = await Promise.all([
       leadRequirementConfigRepo.findByTenantAndActive(tenantId),

@@ -1,4 +1,5 @@
 const db = require("../../../config/data-source");
+const logger = require("../../../utils/logger");
 
 class ConceptRepository {
   /**
@@ -6,7 +7,7 @@ class ConceptRepository {
    * Updated to match schema: tenant_id, metadata, name, minimum_cost, description
    */
   async create(tenantId, data) {
-    console.log(`Creating concept for tenant ${tenantId} with data:`, data);
+    logger.debug(`Creating concept for tenant ${tenantId} with data:`, data);
 
     const sql = `
       INSERT INTO concept 
@@ -177,6 +178,39 @@ class ConceptRepository {
   }
 
   /**
+   * Fetch multiple concepts by IDs for a tenant with their requirement configurations
+   */
+  async findByIds(tenantId, ids) {
+    if (!ids || ids.length === 0) return [];
+    const sql = `
+      SELECT 
+        c.*,
+        COALESCE(
+          json_agg(
+            json_build_object(
+              'id', lrc.id,
+              'field_key', lrc.field_key,
+              'label', lrc.label,
+              'is_required', lrc.is_required,
+              'is_active', lrc.is_active,
+              'base_price', lrc.base_price,
+              'pricing_model_id', lrc.pricing_model_id
+            )
+          ) FILTER (WHERE lrc.id IS NOT NULL), 
+          '[]'
+        ) AS requirement_configs
+      FROM concept c
+      LEFT JOIN concept_requirement_config_mapping crcm ON c.id = crcm.concept_id
+      LEFT JOIN lead_requirement_config lrc ON crcm.requirement_config_id = lrc.id
+      WHERE c.tenant_id = $1 AND c.id = ANY($2) AND c.is_deleted = false
+      GROUP BY c.id
+      ORDER BY c.created_at DESC;
+    `;
+    const result = await db.query(sql, [tenantId, ids]);
+    return Array.isArray(result) ? result : result.rows || [];
+  }
+
+  /**
    * Update an existing concept
    */
   async update(tenantId, id, data) {
@@ -278,7 +312,7 @@ class ConceptRepository {
       // Ensures we return a clean array regardless of driver response format
       return Array.isArray(result) ? result : result.rows || [];
     } catch (error) {
-      console.error("Error in findAllWithRequirements:", error);
+      logger.error("Error in findAllWithRequirements:", error);
       throw error;
     }
   }

@@ -2,23 +2,26 @@ const service = require('../services/quotation-email-template.service');
 const leadService = require('../services/lead.service');
 const tenantService = require('../services/tenant.service');
 const tenantProfileRepository = require('../repositories/tenant-profile.repository');
+const logger = require('../../../utils/logger');
 
 exports.create = async (req, res) => {
   try {
-    const data = await service.createTemplate(req.params.tenantId, req.body);
+    const tenantId = req.tenantId || req.params.tenantId || req.params.tenant_id;
+    const data = await service.createTemplate(tenantId, req.body);
     res.status(201).json(data);
   } catch (err) {
-    console.error('Error in create:', err);
+    logger.error('Error in create template:', err);
     res.status(400).json({ error: err.message });
   }
 };
 
 exports.list = async (req, res) => {
   try {
-    const data = await service.getAllTemplates(req.params.tenantId);
+    const tenantId = req.tenantId || req.params.tenantId || req.params.tenant_id;
+    const data = await service.getAllTemplates(tenantId);
     res.json(data);
   } catch (err) {
-    console.error('Error in list:', err);
+    logger.error('Error in list templates:', err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -26,9 +29,8 @@ exports.list = async (req, res) => {
 exports.listViaAuth = async (req, res) => {
   try {
     const tenantId = req.tenantId; // From auth middleware
-    console.log(req.params)
     const contactId = req.params.contact_id;
-    console.log("Fetching email templates for tenant via auth : " + tenantId + " contactId : " + contactId)
+    logger.debug("Fetching email templates for tenant via auth : " + tenantId + " contactId : " + contactId);
     const data = await service.getAllTemplates(tenantId);
 
     const [leadData, tenantDetails, tenantProfileDetails] = await Promise.all([
@@ -88,49 +90,54 @@ exports.listViaAuth = async (req, res) => {
         created_at: t.created_at.toISOString(),
       };
     });
-    console.log("Templates fetched: ", templatesMap);
+    logger.debug("Templates fetched: ", templatesMap);
     res.status(200).json({ data: templatesMap });
   } catch (err) {
-    console.error('Error in list:', err);
+    logger.error('Error in listViaAuth templates:', err);
     res.status(500).json({ error: err.message });
   }
 };
 
 exports.getById = async (req, res) => {
   try {
-    const data = await service.getTemplate(req.params.id, req.params.tenantId);
+    const tenantId = req.tenantId || req.params.tenantId || req.params.tenant_id;
+    const data = await service.getTemplate(req.params.id, tenantId);
     res.json(data);
   } catch (err) {
-    console.error('Error in getById:', err);
+    logger.error('Error in getById template:', err);
     res.status(404).json({ error: err.message });
   }
 };
 
 exports.update = async (req, res) => {
   try {
-    const data = await service.updateTemplate(req.params.id, req.params.tenantId, req.body);
+    const tenantId = req.tenantId || req.params.tenantId || req.params.tenant_id;
+    const data = await service.updateTemplate(req.params.id, tenantId, req.body);
     res.json(data);
   } catch (err) {
-    console.error('Error in update:', err);
+    logger.error('Error in update template:', err);
     res.status(400).json({ error: err.message });
   }
 };
 
 exports.remove = async (req, res) => {
   try {
-    await service.deleteTemplate(req.params.id, req.params.tenant_id);
+    const tenantId = req.tenantId || req.params.tenantId || req.params.tenant_id;
+    await service.deleteTemplate(req.params.id, tenantId);
     res.status(204).send();
   } catch (err) {
-    console.error('Error in remove:', err);
+    logger.error('Error in remove template:', err);
     res.status(500).json({ error: err.message });
   }
 };
 
 exports.makeDefault = async (req, res) => {
   try {
-    const result = await service.setDefault(req.params.tenantId, req.params.id);
+    const tenantId = req.tenantId || req.params.tenantId || req.params.tenant_id;
+    const result = await service.setDefault(tenantId, req.params.id);
     res.status(200).json({ message: "Default template updated", data: result });
   } catch (error) {
+    logger.error('Error in makeDefault template:', error);
     res.status(500).json({ error: error.message });
   }
-}
+};

@@ -38,7 +38,8 @@ exports.update = async (req, res, next) => {
 
 exports.delete = async (req, res, next) => {
   try {
-    await repo.delete(req.params.id);
+    const tenantId = req.tenantId || req.params.tenantId || req.params.tenant_id || req.query.tenant_id || req.body?.tenant_id;
+    await repo.delete(req.params.id, tenantId);
     res.json({ message: "Field disabled" });
   } catch (err) {
     next(err);

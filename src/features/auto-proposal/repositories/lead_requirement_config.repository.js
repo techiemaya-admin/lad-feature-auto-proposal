@@ -1,4 +1,5 @@
 const db = require("../../../config/data-source");
+const logger = require("../../../utils/logger");
 
 class LeadRequirementConfigRepository {
   /**
@@ -6,7 +7,7 @@ class LeadRequirementConfigRepository {
    * Updated: Added base_price and pricing_model_id
    */
   async create(data) {
-    console.log("Creating lead requirement config with data:", data);
+    logger.debug("Creating lead requirement config with data:", data);
     const sql = `
       INSERT INTO lead_requirement_config 
       (tenant_id, field_key, label, is_active,base_price, pricing_model_id) 
@@ -99,18 +100,25 @@ class LeadRequirementConfigRepository {
     await db.query(sql, [conceptId, requirementConfigId]);
   }
 
-  async deactivate(id) {
-    await db.query(
-      `UPDATE lead_requirement_config SET is_active=false WHERE id=$1`,
-      [id]
-    );
+  async deactivate(id, tenantId) {
+    let sql = `UPDATE lead_requirement_config SET is_active=false WHERE id=$1`;
+    const values = [id];
+    if (tenantId) {
+      sql += ` AND tenant_id=$2`;
+      values.push(tenantId);
+    }
+    await db.query(sql, values);
   }
 
-  async delete(id) {
-    const result = await db.query(
-      `DELETE FROM lead_requirement_config WHERE id = $1 RETURNING *`,
-      [id]
-    );
+  async delete(id, tenantId) {
+    let sql = `DELETE FROM lead_requirement_config WHERE id = $1`;
+    const values = [id];
+    if (tenantId) {
+      sql += ` AND tenant_id = $2`;
+      values.push(tenantId);
+    }
+    sql += ` RETURNING *`;
+    const result = await db.query(sql, values);
     return result[0];
   }
 
@@ -124,7 +132,7 @@ class LeadRequirementConfigRepository {
       const result = await db.query(sql, [tenantId]);
       return result[0]?.keys || "";
     } catch (error) {
-      console.error("Error fetching field keys string:", error);
+      logger.error("Error fetching field keys string:", error);
       return "";
     }
   }
@@ -135,7 +143,7 @@ class LeadRequirementConfigRepository {
         SELECT id 
         FROM lead_requirement_config 
         WHERE tenant_id = $1 
-        AND id = $2 
+        AND (field_key = $2 OR id = $2) 
         AND is_active = true
         LIMIT 1
       `;

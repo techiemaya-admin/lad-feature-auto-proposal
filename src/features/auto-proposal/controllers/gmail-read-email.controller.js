@@ -3,11 +3,11 @@ const gmailService = require("../services/gmail-read-email.service");
 const logger = require('../../../utils/logger');
 
 async function startWatch(req, res) {
-  logger.info("Testing start watch>>")
+  logger.info("Testing start watch>>");
   let tenantId = "e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5";
   const email = "shweta.goel1711@gmail.com";
   const result = await gmailService.startWatch(email, tenantId);
-  console.log(result)
+  logger.debug(result);
   res.json(result.data);
 }
 
@@ -16,7 +16,7 @@ async function startWatch(req, res) {
 async function webhook(req, res) {
 
   // Log the incoming webhook request for debugging
-  console.log('Received webhook:');
+  logger.debug('Received webhook:');
 
   // Start try to protect from exceptions. Any error should not cause the webhook to fail because Google expects a 200 response to consider the webhook successful. We can log the error and return a 200 response with an error message in the body.
   try {
@@ -28,13 +28,13 @@ async function webhook(req, res) {
       Buffer.from(message.data, "base64").toString()
     );
     // print the decoded data for debugging
-    console.log("Webhook data:", data);
+    logger.debug("Webhook data:", data);
 
     // Extract historyId from payload. The historyId is a unique identifier for the email event and can be used to fetch the new email details from Gmail API. 
     const historyId = data.historyId;
 
     // Log the historyId for debugging
-    console.log("History ID:", historyId);
+    logger.debug("History ID:", historyId);
 
     // Call the service function to fetch new email details from Gmail API using the email address and historyId. The service function will use the Gmail API to fetch the new email details based on the historyId and process it accordingly (e.g. save to DB, trigger AI processing, lead requirement cretaed, calculated price, create quatotion, send to gcs,then create proposal draft .)
     await gmailService.fetchNewEmails(data.emailAddress, historyId);
@@ -45,7 +45,7 @@ async function webhook(req, res) {
     // If there is any error during processing, catch it and log the error for debugging. We can return a 200 response with an error message in the body to acknowledge the webhook but indicate that there was an error during processing. This way, Google will not retry the webhook since we are returning a 200 status, but we can still log and monitor the errors in our system.
   } catch (err) {
     // Log the error for debugging
-    console.error(err);
+    logger.error("Error in webhook:", err);
 
     // Return a 200 response with an error message in the body to acknowledge the webhook but indicate that there was an error during processing. This way, Google will  not retry the webhook since we are returning a 200 status, but we can still log and monitor the errors in our system.
     res.status(200).send("Error");
@@ -65,10 +65,10 @@ async function testprompt(req, res) {
       phone: "1234567890"
     };
     const tenantId = "e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5";
-    console.log("Testing AI prompt in controller : " + req.body.prompt);
+    logger.debug("Testing AI prompt in controller : " + req.body.prompt);
     const { leadRequirementDetails, values } = await gmailService.createLeadRequirementViaPrompt(body, leadData.id, tenantId);
-    console.log("Lead requirement details:", leadRequirementDetails);
-    console.log("Saved requirement values:", values);
+    logger.debug("Lead requirement details:", leadRequirementDetails);
+    logger.debug("Saved requirement values:", values);
     const draft = await gmailService.createProposalDraft(leadRequirementDetails, leadData, body);
 
     return res.status(200).json({
@@ -80,7 +80,7 @@ async function testprompt(req, res) {
       }
     });
   } catch (error) {
-    console.error("Error in testprompt:", error);
+    logger.error("Error in testprompt:", error);
     return res.status(500).json({ error: error.message });
   }
 }
