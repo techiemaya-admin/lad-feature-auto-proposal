@@ -168,54 +168,114 @@ class PricingRuleRepository {
   }
 
   /**
+   * Find a pricing rule by ID and tenant
+   */
+  async findById(id, tenantId) {
+    if (tenantId) {
+      const sql = `SELECT * FROM pricing_rules WHERE id = $1 AND tenant_id = $2 AND is_deleted = false`;
+      const result = await db.query(sql, [id, tenantId]);
+      return result[0] || null;
+    }
+    const sql = `SELECT * FROM pricing_rules WHERE id = $1 AND is_deleted = false`;
+    const result = await db.query(sql, [id]);
+    return result[0] || null;
+  }
+
+  /**
    * Update a pricing rule
    */
-  async update(id, data) {
+  async update(id, data, tenantId) {
     console.log("Updating pricing rule with id : " + id + " data:", data);
-    const sql = `
-      UPDATE pricing_rules
-      SET 
-        name = COALESCE($1, name),
-        target_type = COALESCE($2, target_type),
-        concept_id = $3,
-        requirement_config_id = $4,
-        priority = COALESCE($5, priority),
-        is_active = COALESCE($6, is_active),
-        condition_field = COALESCE($7, condition_field),
-        condition_operator = COALESCE($8, condition_operator),
-        condition_value = COALESCE($9, condition_value),
-        action_type = COALESCE($10, action_type),
-        action_mode = COALESCE($11, action_mode),
-        action_value = COALESCE($12, action_value),
-        action_value_type = COALESCE($13, action_value_type),
-        metadata = COALESCE($14, metadata),
-        updated_at = NOW()
-      WHERE id = $15
-      RETURNING *`;
-
-    const values = [
-      data.name,
-      data.target_type,
-      data.target_type === 'package' ? data.concept_id : null,
-      data.target_type === 'service' ? data.requirement_config_id : null,
-      data.priority,
-      data.is_active,
-      data.condition_field,
-      data.condition_operator,
-      data.condition_value,
-      data.action_type,
-      data.action_mode,
-      data.action_value,
-      data.action_value_type,
-      data.metadata ? JSON.stringify(data.metadata) : null,
-      id
-    ];
+    let sql, values;
+    if (tenantId) {
+      sql = `
+        UPDATE pricing_rules
+        SET 
+          name = COALESCE($1, name),
+          target_type = COALESCE($2, target_type),
+          concept_id = $3,
+          requirement_config_id = $4,
+          priority = COALESCE($5, priority),
+          is_active = COALESCE($6, is_active),
+          condition_field = COALESCE($7, condition_field),
+          condition_operator = COALESCE($8, condition_operator),
+          condition_value = COALESCE($9, condition_value),
+          action_type = COALESCE($10, action_type),
+          action_mode = COALESCE($11, action_mode),
+          action_value = COALESCE($12, action_value),
+          action_value_type = COALESCE($13, action_value_type),
+          metadata = COALESCE($14, metadata),
+          updated_at = NOW()
+        WHERE id = $15 AND tenant_id = $16
+        RETURNING *`;
+      values = [
+        data.name,
+        data.target_type,
+        data.target_type === 'package' ? data.concept_id : null,
+        data.target_type === 'service' ? data.requirement_config_id : null,
+        data.priority,
+        data.is_active,
+        data.condition_field,
+        data.condition_operator,
+        data.condition_value,
+        data.action_type,
+        data.action_mode,
+        data.action_value,
+        data.action_value_type,
+        data.metadata ? JSON.stringify(data.metadata) : null,
+        id,
+        tenantId
+      ];
+    } else {
+      sql = `
+        UPDATE pricing_rules
+        SET 
+          name = COALESCE($1, name),
+          target_type = COALESCE($2, target_type),
+          concept_id = $3,
+          requirement_config_id = $4,
+          priority = COALESCE($5, priority),
+          is_active = COALESCE($6, is_active),
+          condition_field = COALESCE($7, condition_field),
+          condition_operator = COALESCE($8, condition_operator),
+          condition_value = COALESCE($9, condition_value),
+          action_type = COALESCE($10, action_type),
+          action_mode = COALESCE($11, action_mode),
+          action_value = COALESCE($12, action_value),
+          action_value_type = COALESCE($13, action_value_type),
+          metadata = COALESCE($14, metadata),
+          updated_at = NOW()
+        WHERE id = $15
+        RETURNING *`;
+      values = [
+        data.name,
+        data.target_type,
+        data.target_type === 'package' ? data.concept_id : null,
+        data.target_type === 'service' ? data.requirement_config_id : null,
+        data.priority,
+        data.is_active,
+        data.condition_field,
+        data.condition_operator,
+        data.condition_value,
+        data.action_type,
+        data.action_mode,
+        data.action_value,
+        data.action_value_type,
+        data.metadata ? JSON.stringify(data.metadata) : null,
+        id
+      ];
+    }
 
     const result = await db.query(sql, values);
     return result[0] || null;
   }
 
-  async delete(id) {
+  async delete(id, tenantId) {
+    if (tenantId) {
+      const sql = `DELETE FROM pricing_rules WHERE id = $1 AND tenant_id = $2 RETURNING id`;
+      const result = await db.query(sql, [id, tenantId]);
+      return result[0] || null;
+    }
     const sql = `DELETE FROM pricing_rules WHERE id = $1 RETURNING id`;
     const result = await db.query(sql, [id]);
     return result[0] || null;

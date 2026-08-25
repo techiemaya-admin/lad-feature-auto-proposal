@@ -1,3 +1,4 @@
-# CommonJS and TypeORM EntitySchema for Data Access
+# CommonJS and Parameterized SQL for Data Access
 
-We use Node.js CommonJS modules and TypeORM `EntitySchema` definitions instead of TypeScript decorator classes or Prisma/Knex. This avoids transpilation overhead, keeps runtime entities pure JavaScript, and maintains compatibility across all LAD backend microservices.
+We use Node.js CommonJS modules and raw parameterized SQL queries executed via TypeORM's `AppDataSource.query()` and `pg`. This avoids ORM mapping overhead, provides total control over SQL query plans, and prevents entity metadata desynchronization while maintaining compatibility across all LAD backend microservices.
+
