@@ -12,7 +12,10 @@ const authenticateJWT = (req, res, next) => {
   }
 
   try {
-    const secret = process.env.JWT_SECRET || 'default-secret-for-dev-and-test';
+    const secret = process.env.JWT_SECRET || (process.env.NODE_ENV !== 'production' ? 'default-secret-for-dev-and-test' : null);
+    if (!secret) {
+      return res.status(500).json({ error: 'JWT_SECRET is not configured' });
+    }
     const decoded = jwt.verify(token, secret);
 
     if (!decoded || !decoded.tenantId) {

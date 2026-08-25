@@ -1,4 +1,5 @@
 const matrixService = require('../services/concept-pricing.service');
+const logger = require('../../../utils/logger');
 
 async function create(req, res, next) {
   try {
@@ -40,9 +41,9 @@ async function deleteEntry(req, res, next) {
 async function listAll(req, res, next) {
   try {
     const tenantId = req.tenantId || req.params.tenant_id;
-    console.log('Fetching all pricing entries for tenant:', tenantId);
+    logger.debug('Fetching all pricing entries for tenant:', tenantId);
     const entries = await matrixService.getAllPricingEntries(tenantId);
-    console.log('All pricing entries:', entries);
+    logger.debug('All pricing entries count:', entries?.length);
     res.json(entries);
   } catch (err) {
     next(err);

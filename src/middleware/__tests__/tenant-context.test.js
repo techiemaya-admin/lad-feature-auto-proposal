@@ -53,6 +53,19 @@ describe('Tenant Context Middleware (tenantContext)', () => {
     expect(res.status).not.toHaveBeenCalled();
   });
 
+  it('resolves tenant from req.tenantId when X-Tenant-Id header is not set', async () => {
+    req.tenantId = 'tenant-from-jwt-456';
+    const mockTenant = { id: 'tenant-from-jwt-456', name: 'Acme Corp' };
+    tenantRepository.findById.mockResolvedValue(mockTenant);
+
+    await tenantContext(req, res, next);
+
+    expect(tenantRepository.findById).toHaveBeenCalledWith('tenant-from-jwt-456');
+    expect(req.tenantId).toBe('tenant-from-jwt-456');
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
   it('passes repository errors to next()', async () => {
     req.headers['x-tenant-id'] = 'tenant-valid-123';
     const dbError = new Error('Database connection failure');

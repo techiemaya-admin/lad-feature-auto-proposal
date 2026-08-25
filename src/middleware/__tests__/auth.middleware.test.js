@@ -93,4 +93,18 @@ describe('Auth Middleware (authenticateJWT)', () => {
     expect(next).toHaveBeenCalledTimes(1);
     expect(res.status).not.toHaveBeenCalled();
   });
+
+  it('returns 500 in production when JWT_SECRET is not configured', () => {
+    delete process.env.JWT_SECRET;
+    process.env.NODE_ENV = 'production';
+    req.headers.authorization = 'Bearer some-token';
+
+    authenticateJWT(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({ error: 'JWT_SECRET is not configured' });
+    expect(next).not.toHaveBeenCalled();
+
+    process.env.NODE_ENV = 'test';
+  });
 });

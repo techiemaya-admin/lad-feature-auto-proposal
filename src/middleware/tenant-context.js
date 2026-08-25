@@ -5,7 +5,7 @@ const tenantRepository = require('../features/auto-proposal/repositories/tenant.
  * Responds 400 if header missing, 404 if tenant not found.
  */
 async function tenantContext(req, res, next) {
-  const tenantId = req.headers['x-tenant-id'];
+  const tenantId = req.headers['x-tenant-id'] || req.tenantId;
   if (!tenantId) {
     return res.status(400).json({ error: 'X-Tenant-Id header is required' });
   }
