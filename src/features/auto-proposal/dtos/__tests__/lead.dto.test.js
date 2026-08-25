@@ -75,6 +75,20 @@ describe('Lead DTO', () => {
       expect(dto.metadata).toEqual(input.metadata);
     });
 
+    it('safely ignores non-string metadata.customer_name values without throwing', () => {
+      const inputWithNum = { metadata: { customer_name: 12345 } };
+      expect(() => createLeadDto(inputWithNum)).not.toThrow();
+      const dto1 = createLeadDto(inputWithNum);
+      expect(dto1.first_name).toBeNull();
+      expect(dto1.last_name).toBeNull();
+
+      const inputWithObj = { metadata: { customer_name: { full: 'Test Name' } } };
+      expect(() => createLeadDto(inputWithObj)).not.toThrow();
+      const dto2 = createLeadDto(inputWithObj);
+      expect(dto2.first_name).toBeNull();
+      expect(dto2.last_name).toBeNull();
+    });
+
     it('handles empty or missing body gracefully with defaults', () => {
       const dto = createLeadDto({});
 

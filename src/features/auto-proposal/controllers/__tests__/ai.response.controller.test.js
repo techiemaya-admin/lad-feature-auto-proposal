@@ -18,6 +18,7 @@ describe('AiResponseController', () => {
     service.isConfigured = true;
 
     req = {
+      tenantId: 'tenant-123',
       params: {
         tenantId: 'tenant-123'
       }

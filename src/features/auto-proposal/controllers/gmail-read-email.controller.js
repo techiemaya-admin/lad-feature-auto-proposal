@@ -57,14 +57,14 @@ async function webhook(req, res) {
 async function testprompt(req, res) {
   try {
     const body = req.body.prompt;
+    const tenantId = req.tenantId || req.headers?.['x-tenant-id'] || "e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5";
     const leadData = {
-      id: "7cb0954d-ba2c-4224-969c-a3fa353a68fd",
+      id: req.leadId || "7cb0954d-ba2c-4224-969c-a3fa353a68fd",
       first_name: "Test",
       last_name: "Lead",
       email: "usha.dhamija0510@gmail.com",
       phone: "1234567890"
     };
-    const tenantId = "e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5";
     logger.debug("Testing AI prompt in controller : " + req.body.prompt);
     const { leadRequirementDetails, values } = await gmailService.createLeadRequirementViaPrompt(body, leadData.id, tenantId);
     logger.debug("Lead requirement details:", leadRequirementDetails);

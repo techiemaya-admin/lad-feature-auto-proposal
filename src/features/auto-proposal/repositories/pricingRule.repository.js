@@ -172,14 +172,11 @@ class PricingRuleRepository {
    * Find a pricing rule by ID and tenant
    */
   async findById(id, tenantId) {
-    let sql = `SELECT * FROM pricing_rules WHERE id = $1`;
-    const values = [id];
-    if (tenantId) {
-      sql += ` AND tenant_id = $2`;
-      values.push(tenantId);
+    if (!tenantId) {
+      throw new Error('Tenant ID is required');
     }
-    sql += ` AND is_deleted = false`;
-    const result = await db.query(sql, values);
+    const sql = `SELECT * FROM pricing_rules WHERE id = $1 AND tenant_id = $2 AND is_deleted = false`;
+    const result = await db.query(sql, [id, tenantId]);
     return result[0] || null;
   }
 
@@ -188,7 +185,10 @@ class PricingRuleRepository {
    */
   async update(id, data, tenantId) {
     logger.debug('Updating pricing rule with id:', id, 'tenantId:', tenantId);
-    let sql = `
+    if (!tenantId) {
+      throw new Error('Tenant ID is required');
+    }
+    const sql = `
       UPDATE pricing_rules
       SET 
         name = COALESCE($1, name),
@@ -206,7 +206,8 @@ class PricingRuleRepository {
         action_value_type = COALESCE($13, action_value_type),
         metadata = COALESCE($14, metadata),
         updated_at = NOW()
-      WHERE id = $15`;
+      WHERE id = $15 AND tenant_id = $16
+      RETURNING *`;
 
     const values = [
       data.name,
@@ -223,29 +224,20 @@ class PricingRuleRepository {
       data.action_value,
       data.action_value_type,
       data.metadata ? JSON.stringify(data.metadata) : null,
-      id
+      id,
+      tenantId
     ];
-
-    if (tenantId) {
-      sql += ` AND tenant_id = $16`;
-      values.push(tenantId);
-    }
-
-    sql += ` RETURNING *`;
 
     const result = await db.query(sql, values);
     return result[0] || null;
   }
 
   async delete(id, tenantId) {
-    let sql = `DELETE FROM pricing_rules WHERE id = $1`;
-    const values = [id];
-    if (tenantId) {
-      sql += ` AND tenant_id = $2`;
-      values.push(tenantId);
+    if (!tenantId) {
+      throw new Error('Tenant ID is required');
     }
-    sql += ` RETURNING id`;
-    const result = await db.query(sql, values);
+    const sql = `DELETE FROM pricing_rules WHERE id = $1 AND tenant_id = $2 RETURNING id`;
+    const result = await db.query(sql, [id, tenantId]);
     return result[0] || null;
   }
   

@@ -27,16 +27,19 @@ async function runSmokeTest() {
   const tenantId = process.env.DEV_TEST_TENANT_ID || process.env.DEFAULT_TENANT_ID || "e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5";
   console.log(`[Smoke Test] Starting test for Tenant: ${tenantId}...`);
 
+  let browser;
+  let localPdfPath;
+
   try {
     const templateMetadata = await templateRepository.findDefaultByTenant(tenantId);
     if (!templateMetadata) {
       console.warn(`[Smoke Test] No default template found for tenant ${tenantId}. Ensure database is seeded.`);
-      return;
+      return false;
     }
 
     const tempDir = path.join(os.tmpdir(), 'lad-dev-tests');
     await fs.mkdir(tempDir, { recursive: true });
-    const localPdfPath = path.join(tempDir, `quotation-${crypto.randomUUID()}.pdf`);
+    localPdfPath = path.join(tempDir, `quotation-${crypto.randomUUID()}.pdf`);
 
     const storage = new Storage({ keyFilename: process.env.GCS_KEY_FILE });
     const bucket = storage.bucket(process.env.GCS_BUCKET);
@@ -67,23 +70,41 @@ async function runSmokeTest() {
     const filledDocxBuffer = doc.getZip().generate({ type: "nodebuffer" });
 
     const { value: htmlBody } = await mammoth.convertToHtml({ buffer: filledDocxBuffer });
-    const browser = await puppeteer.launch({ headless: "new" });
+    browser = await puppeteer.launch({ headless: "new" });
     const page = await browser.newPage();
     await page.setContent(`<html><body>${htmlBody}</body></html>`, { waitUntil: 'networkidle0' });
     await page.pdf({ path: localPdfPath, format: 'A4' });
-    await browser.close();
 
     console.log(`[Smoke Test] Generated PDF successfully at temp path: ${localPdfPath}`);
-    // Cleanup local temp file
-    await fs.unlink(localPdfPath);
     console.log(`[Smoke Test] Completed successfully.`);
+    return true;
   } catch (err) {
     console.error(`[Smoke Test] Failed with error:`, err);
+    return false;
+  } finally {
+    if (browser) {
+      try {
+        await browser.close();
+      } catch (closeErr) {
+        // Ignore close error during teardown
+      }
+    }
+    if (localPdfPath) {
+      try {
+        await fs.unlink(localPdfPath);
+      } catch (unlinkErr) {
+        // Ignore unlink error if file was not created or already removed
+      }
+    }
   }
 }
 
 if (require.main === module) {
-  runSmokeTest();
+  runSmokeTest().then((success) => {
+    if (!success) {
+      process.exitCode = 1;
+    }
+  });
 }
 
 module.exports = { runSmokeTest };

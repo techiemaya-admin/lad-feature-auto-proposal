@@ -101,24 +101,19 @@ class LeadRequirementConfigRepository {
   }
 
   async deactivate(id, tenantId) {
-    let sql = `UPDATE lead_requirement_config SET is_active=false WHERE id=$1`;
-    const values = [id];
-    if (tenantId) {
-      sql += ` AND tenant_id=$2`;
-      values.push(tenantId);
+    if (!tenantId) {
+      throw new Error('Tenant ID is required');
     }
-    await db.query(sql, values);
+    const sql = `UPDATE lead_requirement_config SET is_active = false WHERE id = $1 AND tenant_id = $2`;
+    await db.query(sql, [id, tenantId]);
   }
 
   async delete(id, tenantId) {
-    let sql = `DELETE FROM lead_requirement_config WHERE id = $1`;
-    const values = [id];
-    if (tenantId) {
-      sql += ` AND tenant_id = $2`;
-      values.push(tenantId);
+    if (!tenantId) {
+      throw new Error('Tenant ID is required');
     }
-    sql += ` RETURNING *`;
-    const result = await db.query(sql, values);
+    const sql = `DELETE FROM lead_requirement_config WHERE id = $1 AND tenant_id = $2 RETURNING *`;
+    const result = await db.query(sql, [id, tenantId]);
     return result[0];
   }
 

@@ -12,8 +12,7 @@ class TenantProfileController {
             logger.error("Error in getProfile:", error);
             res.status(500).json({
                 success: false,
-                message: error.message,
-                stack: error.stack
+                message: "Failed to retrieve tenant profile"
             });
         }
     }

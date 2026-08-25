@@ -120,18 +120,19 @@ curl -i -X POST http://localhost:3000/api/concepts \
 ```
 
 ### `GET /api/concepts/:tenant_id`
-List all concepts configured for a tenant.
+List all concepts configured for a tenant. Requires `X-Tenant-Id` header.
 
 ```bash
-curl -i http://localhost:3000/api/concepts/<tenant-id>
+curl -i -H "X-Tenant-Id: <tenant-id>" http://localhost:3000/api/concepts/<tenant-id>
 ```
 
 ### `PUT /api/concepts/:id`
-Update an existing concept.
+Update an existing concept. Requires `X-Tenant-Id` header.
 
 ```bash
 curl -i -X PUT http://localhost:3000/api/concepts/<concept-id> \
   -H "Content-Type: application/json" \
+  -H "X-Tenant-Id: <tenant-id>" \
   -d '{
     "name": "IMPACT Premium",
     "code": "IMP-02",
@@ -140,10 +141,11 @@ curl -i -X PUT http://localhost:3000/api/concepts/<concept-id> \
 ```
 
 ### `DELETE /api/concepts/:id`
-Delete a concept.
+Delete a concept. Requires `X-Tenant-Id` header.
 
 ```bash
-curl -i -X DELETE http://localhost:3000/api/concepts/<concept-id>
+curl -i -X DELETE http://localhost:3000/api/concepts/<concept-id> \
+  -H "X-Tenant-Id: <tenant-id>"
 ```
 
 ---

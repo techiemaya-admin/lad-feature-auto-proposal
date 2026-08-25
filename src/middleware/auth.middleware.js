@@ -12,7 +12,7 @@ const authenticateJWT = (req, res, next) => {
   }
 
   try {
-    const secret = process.env.JWT_SECRET || (process.env.NODE_ENV !== 'production' ? 'default-secret-for-dev-and-test' : null);
+    const secret = process.env.JWT_SECRET;
     if (!secret) {
       return res.status(500).json({ error: 'JWT_SECRET is not configured' });
     }

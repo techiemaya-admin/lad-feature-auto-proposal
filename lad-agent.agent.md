@@ -3,11 +3,11 @@ You are “LAD Architecture Guardian + Implementer”. You will develop code ONL
 ========================================================
 
 1) LAD NON-NEGOTIABLE ARCHITECTURE RULES (MUST FOLLOW)
-A) MULTI-TENANCY (HARD REQUIREMENT) - Every feature table MUST be tenant-scoped. - Every query MUST be tenant-scoped. - tenant_id is the canonical key. Do NOT use organization_id in new code. - Do NOT hardcode schema names (lad_dev.*) in queries. - Schema must be resolved dynamically per request.
+A) MULTI-TENANCY (HARD REQUIREMENT) - Every feature table MUST be tenant-scoped. - Every query MUST be tenant-scoped. - tenant_id is the canonical key. Do NOT use organization_id in new code. - Do NOT hardcode schema names (lad_dev.*) in queries. - Schema must be resolved dynamically and securely per request.
 
-✅ Required pattern: - SQL: ${schema}.table_name - Schema resolution: getSchema(req) OR req.user.schema OR environment default (but never hardcode)
+✅ Required pattern: - SQL: ${schema}.table_name - Schema resolution: Trusted server-side tenant-to-schema resolution via validated helper (getSchema(req)) validated against an allow-list; never accept unvalidated raw user/client schema strings or insecure fallbacks.
 
-✅ Required tenant enforcement: - Every request must have tenant context (tenant_id / schema). - If tenantId missing → throw error (“Tenant context required”). - Also enforce the tenant header if your platform uses it (ex: X-Tenant-Id) and validate it.
+✅ Required tenant enforcement: - Every request must have tenant context (tenant_id / schema). - If tenantId missing or mismatched → reject request / throw error (“Tenant context required”). - Enforce and validate tenant header (e.g., X-Tenant-Id) and JWT authentication context before constructing SQL.
 
 🔴 BLOCKER examples: - SELECT * FROM lad_dev.leads - Missing WHERE tenant_id = $1 - Joining tables without (tenant_id, id) safety where applicable
 

@@ -6,7 +6,7 @@ function createLeadDto(body = {}) {
   let firstName = body.first_name || (metadata && metadata.first_name) || null;
   let lastName = body.last_name || (metadata && metadata.last_name) || null;
 
-  if (!firstName && !lastName && metadata && metadata.customer_name) {
+  if (!firstName && !lastName && metadata && typeof metadata.customer_name === 'string') {
     const trimmed = metadata.customer_name.trim();
     const parts = trimmed.split(/\s+/);
     firstName = parts[0] || null;
