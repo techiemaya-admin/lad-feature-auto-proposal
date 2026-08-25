@@ -5,88 +5,93 @@ class LeadRepository {
    * Create a new Lead with full schema support
    */
   async create(data) {
-  // 1. Check if email is provided
-  if (data.email) {
-    const checkSql = `
-      SELECT * FROM leads 
-      WHERE email = $1 AND tenant_id = $2 AND is_deleted = false 
-      LIMIT 1`;
-    
-    const existingLeads = await AppDataSource.query(checkSql, [data.email, data.tenant_id]);
+    // 1. Check if email is provided
+    if (data.email) {
+      const checkSql = `
+        SELECT * FROM leads 
+        WHERE email = $1 AND tenant_id = $2 AND is_deleted = false 
+        LIMIT 1`;
+      
+      const existingLeads = await AppDataSource.query(checkSql, [data.email, data.tenant_id]);
 
-    // 2. If lead exists, return the existing lead instead of creating a new one
-    if (existingLeads && existingLeads.length > 0) {
-      console.log(`Lead with email ${data.email} already exists for tenant ${data.tenant_id}. Skipping creation.`);
-      return existingLeads[0];
+      // 2. If lead exists, return the existing lead instead of creating a new one
+      if (existingLeads && existingLeads.length > 0) {
+        console.log(`Lead with email ${data.email} already exists for tenant ${data.tenant_id}. Skipping creation.`);
+        return existingLeads[0];
+      }
     }
+
+    // 3. If no existing lead found, proceed with insertion
+    const sql = `
+      INSERT INTO leads 
+      (
+        user_id, tenant_id, source, source_id, first_name, last_name, 
+        email, phone, company_name, company_domain, title, linkedin_url, 
+        location, status, priority, stage, tags, custom_fields, notes, 
+        raw_data, created_by_user_id, assigned_user_id, estimated_value, 
+        currency, country_code, base_number, apollo_person_id, 
+        phone_type, phone_confidence
+      ) 
+      VALUES 
+      ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29) 
+      RETURNING *`;
+
+    const customFields = data.custom_fields && Object.keys(data.custom_fields).length > 0 
+      ? data.custom_fields 
+      : (data.metadata || {});
+
+    const values = [
+      data.user_id || null,
+      data.tenant_id,
+      data.source || null,
+      data.source_id || null,
+      data.first_name || null,
+      data.last_name || null,
+      data.email || null,
+      data.phone || null,
+      data.company_name || null,
+      data.company_domain || null,
+      data.title || null,
+      data.linkedin_url || null,
+      data.location || data.location_id || null,
+      data.status || 'active',
+      data.priority != null ? parseInt(data.priority, 10) : 0,
+      data.stage || 'new',
+      data.tags ? JSON.stringify(data.tags) : '[]',
+      customFields ? JSON.stringify(customFields) : '{}',
+      data.notes || null,
+      data.raw_data ? JSON.stringify(data.raw_data) : null,
+      data.created_by_user_id || null,
+      data.assigned_user_id || null,
+      data.estimated_value != null ? Number(data.estimated_value) : 0,
+      data.currency || 'USD',
+      data.country_code || null,
+      data.base_number || null,
+      data.apollo_person_id || null,
+      data.phone_type || null,
+      data.phone_confidence || null
+    ];
+
+    const result = await AppDataSource.query(sql, values);
+    return result[0];
   }
 
-  // 3. If no existing lead found, proceed with insertion
-  const sql = `
-    INSERT INTO leads 
-    (
-      user_id, tenant_id, source, source_id, first_name, last_name, 
-      email, phone, company_name, company_domain, title, linkedin_url, 
-      location, status, priority, stage, tags, custom_fields, notes, 
-      raw_data, created_by_user_id, assigned_user_id, estimated_value, 
-      currency, country_code, base_number, apollo_person_id, 
-      phone_type, phone_confidence
-    ) 
-    VALUES 
-    ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29) 
-    RETURNING *`;
-
-  const values = [
-    data.user_id || null,
-    data.tenant_id,
-    data.source || null,
-    data.source_id || null,
-    data.first_name || null,
-    data.last_name || null,
-    data.email || null,
-    data.phone || null,
-    data.company_name || null,
-    data.company_domain || null,
-    data.title || null,
-    data.linkedin_url || null,
-    data.location || null,
-    data.status || 'active',
-    data.priority || 0,
-    data.stage || 'new',
-    data.tags ? JSON.stringify(data.tags) : '[]',
-    data.custom_fields ? JSON.stringify(data.custom_fields) : '{}',
-    data.notes || null,
-    data.raw_data ? JSON.stringify(data.raw_data) : null,
-    data.created_by_user_id || null,
-    data.assigned_user_id || null,
-    data.estimated_value || 0,
-    data.currency || 'USD',
-    data.country_code || null,
-    data.base_number || null,
-    data.apollo_person_id || null,
-    data.phone_type || null,
-    data.phone_confidence || null
-  ];
-
-  const result = await AppDataSource.query(sql, values);
-  return result[0];
-}
   /**
-   * Fetch all leads for a specific tenant (excluding deleted)
+   * Fetch all leads for a specific tenant with pagination (excluding deleted)
    */
-  async findByTenant(tenantId) {
+  async findByTenant(tenantId, limit = 100, offset = 0) {
     const sql = `
       SELECT * FROM leads 
       WHERE tenant_id = $1 AND is_deleted = false 
       ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3
     `;
-    const result = await AppDataSource.query(sql, [tenantId]);
+    const result = await AppDataSource.query(sql, [tenantId, limit, offset]);
     return result;
   }
 
-  
   /**
-   * Fetch all leads for a specific tenant (excluding deleted)
+   * Fetch all leads for a specific tenant by email (excluding deleted)
    */
   async findByEmailAndTenant(email, tenantId) {
     const sql = `
@@ -111,17 +116,24 @@ class LeadRepository {
   }
 
   /**
-   * Original method updated with tenant protection
+   * Fetch lead via lead requirement ID with tenant protection
    */
-  async findByLeadRequirementId(leadRequirementId) {
-    const sql = `
+  async findByLeadRequirementId(leadRequirementId, tenantId = null) {
+    let sql = `
       SELECT l.*
       FROM lead_requirement lr
       JOIN leads l ON l.id = lr.lead_id
       WHERE lr.id = $1
-      AND l.is_deleted = false;
+      AND l.is_deleted = false
     `;
-    const result = await AppDataSource.query(sql, [leadRequirementId]);
+    const params = [leadRequirementId];
+
+    if (tenantId) {
+      sql += ` AND l.tenant_id = $2`;
+      params.push(tenantId);
+    }
+
+    const result = await AppDataSource.query(sql, params);
     return result[0];
   }
 
@@ -145,7 +157,7 @@ class LeadRepository {
       data.phone,
       data.status,
       data.stage,
-      data.priority,
+      data.priority != null ? parseInt(data.priority, 10) : 0,
       data.tags ? JSON.stringify(data.tags) : '[]',
       data.custom_fields ? JSON.stringify(data.custom_fields) : '{}',
       id,

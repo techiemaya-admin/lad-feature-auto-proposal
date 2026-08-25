@@ -4,10 +4,18 @@ class LeadService {
   /**
    * Create a new lead with validation and business logic
    */
-  async createLead(tenantId, leadData, userId = null) {
+  async createLead(tenantId, leadData = {}, userId = null) {
+    if (!tenantId) {
+      const err = new Error("Tenant ID is required");
+      err.statusCode = 400;
+      throw err;
+    }
+
     // 1. Basic Validation
     if (!leadData.email && !leadData.phone) {
-      throw new Error("Either Email or Phone is required to create a lead.");
+      const err = new Error("Either Email or Phone is required to create a lead.");
+      err.statusCode = 400;
+      throw err;
     }
 
     // 2. Prepare Data (Applying defaults and formatting)
@@ -17,7 +25,7 @@ class LeadService {
       created_by_user_id: userId,
       status: leadData.status || "active",
       stage: leadData.stage || "new",
-      priority: parseInt(leadData.priority) || 0,
+      priority: parseInt(leadData.priority, 10) || 0,
       
       // Ensure JSON fields are objects/arrays if they come as strings from frontend
       tags: Array.isArray(leadData.tags) ? leadData.tags : [],
@@ -34,7 +42,11 @@ class LeadService {
    * Get all leads for a tenant with optional filtering
    */
   async getAllLeads(tenantId) {
-    if (!tenantId) throw new Error("Tenant ID is required");
+    if (!tenantId) {
+      const err = new Error("Tenant ID is required");
+      err.statusCode = 400;
+      throw err;
+    }
     
     const leads = await leadRepository.findByTenant(tenantId);
     return leads;
@@ -44,7 +56,11 @@ class LeadService {
    * List leads for a tenant with pagination
    */
   async listLeads(tenantId, limit = 100, offset = 0) {
-    if (!tenantId) throw new Error("Tenant ID is required");
+    if (!tenantId) {
+      const err = new Error("Tenant ID is required");
+      err.statusCode = 400;
+      throw err;
+    }
     const leads = await leadRepository.findByTenant(tenantId, limit, offset);
     return leads;
   }
@@ -53,9 +69,17 @@ class LeadService {
    * Get a specific lead
    */
   async getLeadById(id, tenantId) {
+    if (!id || !tenantId) {
+      const err = new Error("Lead ID and Tenant ID are required");
+      err.statusCode = 400;
+      throw err;
+    }
+
     const lead = await leadRepository.findById(id, tenantId);
     if (!lead) {
-      throw new Error("Lead not found");
+      const err = new Error("Lead not found");
+      err.statusCode = 404;
+      throw err;
     }
     return lead;
   }
@@ -85,7 +109,9 @@ class LeadService {
   async deleteLead(id, tenantId) {
     const deletedLead = await leadRepository.softDelete(id, tenantId);
     if (!deletedLead) {
-      throw new Error("Lead not found or already deleted");
+      const err = new Error("Lead not found or already deleted");
+      err.statusCode = 404;
+      throw err;
     }
     return deletedLead;
   }
@@ -95,7 +121,11 @@ class LeadService {
    */
   async getLeadByRequirement(requirementId, tenantId) {
     const lead = await leadRepository.findByLeadRequirementId(requirementId, tenantId);
-    if (!lead) throw new Error("No lead associated with this requirement");
+    if (!lead) {
+      const err = new Error("No lead associated with this requirement");
+      err.statusCode = 404;
+      throw err;
+    }
     return lead;
   }
 }

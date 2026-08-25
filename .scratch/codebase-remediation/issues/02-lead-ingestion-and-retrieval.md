@@ -5,11 +5,12 @@ End-to-end working lead creation and retrieval pipelines. When creating a lead v
 
 **Blocked by:** 01: Authentication Signature Verification & Tenant Context Enforcement
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-- [ ] `createLeadDto` retains all valid lead properties including `email`, `phone`, `first_name`, `last_name`, `company_name`, `tags`, `custom_fields`, and `metadata`.
-- [ ] `POST /api/leads` successfully creates a lead when valid `email` or `phone` is provided in the request payload.
-- [ ] `lead.controller.js` `getById` passes parameters in the correct order `(req.params.id, req.tenantId)` to `leadService.getLeadById`.
-- [ ] `GET /api/leads/:id` returns `200 OK` with complete lead details when the lead exists within the authenticated tenant.
-- [ ] `GET /api/leads/:id` returns `404 Not Found` only when the lead does not exist or belongs to a different tenant.
-- [ ] `toLeadResponse` formats the complete lead entity including timestamps and contact details.
+- [x] `createLeadDto` retains all valid lead properties including `email`, `phone`, `first_name`, `last_name`, `company_name`, `tags`, `custom_fields`, and `metadata`.
+- [x] `POST /api/leads` successfully creates a lead when valid `email` or `phone` is provided in the request payload.
+- [x] `lead.controller.js` `getById` passes parameters in the correct order `(req.params.id, req.tenantId)` to `leadService.getLeadById`.
+- [x] `GET /api/leads/:id` returns `200 OK` with complete lead details when the lead exists within the authenticated tenant.
+- [x] `GET /api/leads/:id` returns `404 Not Found` only when the lead does not exist or belongs to a different tenant.
+- [x] `toLeadResponse` formats the complete lead entity including timestamps and contact details.
+

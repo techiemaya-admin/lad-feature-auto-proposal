@@ -4,7 +4,7 @@ const { createLeadDto, toLeadResponse } = require('../dtos/lead.dto');
 async function create(req, res, next) {
   try {
     const dto = createLeadDto(req.body);
-    const lead = await leadService.createLead(req.tenantId, dto);
+    const lead = await leadService.createLead(req.tenantId, dto, req.userId);
     res.status(201).json(toLeadResponse(lead));
   } catch (err) {
     next(err);
@@ -13,7 +13,7 @@ async function create(req, res, next) {
 
 async function getById(req, res, next) {
   try {
-    const lead = await leadService.getLeadById(req.tenantId, req.params.id);
+    const lead = await leadService.getLeadById(req.params.id, req.tenantId);
     res.json(toLeadResponse(lead));
   } catch (err) {
     next(err);
