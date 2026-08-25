@@ -22,7 +22,8 @@ const tenatDetailsRepo = require("../repositories/tenant.repository");
 const leadRepository = require("../repositories/lead.repository");
 const conversationParticipantsRepository = require("../repositories/conversation-participants.repository");
 const gmailSendService = require("./gmail-send-email.service");
-const placeHolderBuilder = require('../../../utils/placeHolderBuilder');
+const PlaceHolderBuilder = require('../../../utils/placeHolderBuilder');
+const tenantProfileRepository = require("../repositories/tenant-profile.repository");
 const conversationService = require("./conversation.service");
 const lead_requirement_configRepository = require("../repositories/lead_requirement_config.repository");
 const proposalDraftItemsRepository = require("../repositories/proposal-draft-items.repository");
@@ -80,8 +81,8 @@ async function createProposalDraft(leadRequirementDetails, leadData, email_conte
 
   if (calculatedPriceDetails.final_price != 0) {
 
-    const tenantDetails = await tenatDetailsRepo.findById(leadRequirementDetails.tenant_id);
-    const tenantProfileDetails = await tenantProfileService.getProfile(leadRequirementDetails.tenant_id);
+    const tenantDetails = (await tenatDetailsRepo.findById(leadRequirementDetails.tenant_id)) || {};
+    const tenantProfileDetails = (await tenantProfileRepository.findByTenantId(leadRequirementDetails.tenant_id)) || {};
     console.log("tenantDetails : " + JSON.stringify(tenantDetails));
     console.log("lead data : " + JSON.stringify(leadData))
     console.log("tenant profile details : " + JSON.stringify(tenantProfileDetails))
@@ -146,7 +147,11 @@ async function createProposalDraft(leadRequirementDetails, leadData, email_conte
       // Log the error but don't stop the process since the email was already sent
       console.error("Archive Error: Failed to save sent email to DB.", dbError);
     }
-  } else { console.log("quotation should not be made due to price valued is ZERO") }
+    return proposalDraft;
+  } else {
+    console.log("quotation should not be made due to price valued is ZERO");
+    return null;
+  }
 
 }
 

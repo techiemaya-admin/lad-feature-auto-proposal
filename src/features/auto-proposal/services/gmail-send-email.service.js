@@ -535,7 +535,7 @@ async function sendGmailRaw({ to, subject, html, global_message_id, threadId, oA
   const replySubject = subject.startsWith("Re:") ? subject : `Re: ${subject}`;
 
   // If your object uses 'content' instead of 'body', extract it safely
-  let rawBody = html;
+  let rawBody = html || "";
 
   // 1. Unify structural formatting by removing any old embedded HTML break tags
   rawBody = rawBody.replace(/<br\s*\/?>/gi, '\n');
@@ -558,44 +558,38 @@ async function sendGmailRaw({ to, subject, html, global_message_id, threadId, oA
     })
     .join('');
 
+  // 3. Build RFC 2822 Message
+  const cleanMessageId = global_message_id
+    ? (global_message_id.startsWith('<') ? global_message_id : `<${global_message_id}>`)
+    : null;
 
-
-  // 5. Build RFC 2822 Message
-
-
-  const cleanMessageId = global_message_id.startsWith('<')
-    ? global_message_id
-    : `<${global_message_id}>`;
-
-  // Headers end with exactly ONE blank line
-  const emailHeaders = [
+  const messageParts = [
     `To: ${to}`,
     `Subject: ${replySubject}`,
-    `In-Reply-To: ${cleanMessageId}`,
-    `References: ${cleanMessageId}`,
+    ...(cleanMessageId ? [`In-Reply-To: ${cleanMessageId}`, `References: ${cleanMessageId}`] : []),
     "MIME-Version: 1.0",
     `Content-Type: multipart/mixed; boundary="${boundary}"`,
     "", // Mandatory blank line
-  ].join(CRLF);
-
-  const bodyPart = [
     `--${boundary}`,
     "Content-Type: text/html; charset=utf-8",
     "Content-Transfer-Encoding: 7bit",
     "", // Blank line before the actual HTML content
     rawBody,
     "" // CRLF after the HTML content
-  ].join(CRLF);
+  ];
 
-  const attachmentPart = (attachmentBase64 && attachmentBase64 !== undefined) ? [
-    `--${boundary}`,
-    `Content-Type: application/pdf; name="${filename}"`,
-    `Content-Disposition: attachment; filename="${filename}"`,
-    "Content-Transfer-Encoding: base64",
-    "", // Blank line before base64 data
-    attachmentBase64,
-    ""
-  ].join(CRLF) : "";
+  if (attachmentBase64) {
+    const attachmentFileName = filename || "Proposal.pdf";
+    messageParts.push(
+      `--${boundary}`,
+      `Content-Type: application/pdf; name="${attachmentFileName}"`,
+      `Content-Disposition: attachment; filename="${attachmentFileName}"`,
+      "Content-Transfer-Encoding: base64",
+      "", // Blank line before base64 data
+      attachmentBase64,
+      ""
+    );
+  }
 
   if (attachments && attachments.length > 0) {
     for (const file of attachments) {
@@ -606,7 +600,7 @@ async function sendGmailRaw({ to, subject, html, global_message_id, threadId, oA
         const arrayBuf = await response.arrayBuffer();
         const base64Content = Buffer.from(arrayBuf).toString('base64');
 
-        attachmentPart.push(
+        messageParts.push(
           `--${boundary}`,
           `Content-Type: ${file.type || 'application/octet-stream'}; name="${file.filename}"`,
           `Content-Disposition: attachment; filename="${file.filename}"`,
@@ -620,24 +614,13 @@ async function sendGmailRaw({ to, subject, html, global_message_id, threadId, oA
         // Continue with other attachments even if one fails
       }
     }
-    attachmentPart.push(`--${boundary}--`);
-
   }
 
+  messageParts.push(`--${boundary}--`);
 
-  // Join them together. Note: No extra CRLF between emailHeaders and bodyPart 
-  // because emailHeaders already includes the blank line via the empty string.
-  const fullMessage =
-    emailHeaders +
-    CRLF + CRLF + // This is the mandatory gap that separates headers from body
-    bodyPart +
-    attachmentPart +
-    `--${boundary}--`;
+  const fullMessage = messageParts.join(CRLF);
 
-  if (attachments && attachments.length > 0) {
-    attachmentPart.join(CRLF);
-  }
-  // 6. Encode and Send via Gmail API
+  // 4. Encode and Send via Gmail API
   const encodedMessage = Buffer.from(fullMessage)
     .toString("base64")
     .replace(/\+/g, "-")
@@ -649,11 +632,11 @@ async function sendGmailRaw({ to, subject, html, global_message_id, threadId, oA
     userId: "me",
     requestBody: {
       raw: encodedMessage,
-      threadId: threadId // Ensure the reply is in the same thread
+      ...(threadId ? { threadId } : {})
     },
   });
-  messageId = response.data.id;
-  console.log("Email successfully sent:", response.data.id);
+  const messageId = response.data.id;
+  console.log("Email successfully sent:", messageId);
 
   return { data: response.data, finalHtml: rawBody, finalSubject: replySubject };
 }

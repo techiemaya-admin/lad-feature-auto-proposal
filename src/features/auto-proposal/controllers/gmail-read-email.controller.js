@@ -55,21 +55,34 @@ async function webhook(req, res) {
 
 
 async function testprompt(req, res) {
+  try {
+    const body = req.body.prompt;
+    const leadData = {
+      id: "7cb0954d-ba2c-4224-969c-a3fa353a68fd",
+      first_name: "Test",
+      last_name: "Lead",
+      email: "usha.dhamija0510@gmail.com",
+      phone: "1234567890"
+    };
+    const tenantId = "e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5";
+    console.log("Testing AI prompt in controller : " + req.body.prompt);
+    const { leadRequirementDetails, values } = await gmailService.createLeadRequirementViaPrompt(body, leadData.id, tenantId);
+    console.log("Lead requirement details:", leadRequirementDetails);
+    console.log("Saved requirement values:", values);
+    const draft = await gmailService.createProposalDraft(leadRequirementDetails, leadData, body);
 
-  const body = req.body.prompt;
-  const leadData = {
-    id: "7cb0954d-ba2c-4224-969c-a3fa353a68fd",
-    first_name: "Test",
-    last_name: "Lead",
-    email: "usha.dhamija0510@gmail.com",
-    phone: "1234567890"
+    return res.status(200).json({
+      success: true,
+      data: {
+        leadRequirementDetails,
+        values,
+        draft
+      }
+    });
+  } catch (error) {
+    console.error("Error in testprompt:", error);
+    return res.status(500).json({ error: error.message });
   }
-  const tenantId = "e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5";
-  console.log("Testing AI prompt in controller : " + req.body.prompt);
-  const { leadRequirementDetails, values } = await gmailService.createLeadRequirementViaPrompt(body, leadData.id, tenantId);
-  console.log("Lead requirement details:", leadRequirementDetails);
-  console.log("Saved requirement values:", values);
-  await gmailService.createProposalDraft(leadRequirementDetails, leadData, body);
 }
 
 module.exports = { startWatch, webhook, testprompt };

@@ -1,7 +1,7 @@
-// controllers/quotationEmail.controller.js
 const service = require('../services/quotation-email-template.service');
 const leadService = require('../services/lead.service');
 const tenantService = require('../services/tenant.service');
+const tenantProfileRepository = require('../repositories/tenant-profile.repository');
 
 exports.create = async (req, res) => {
   try {
@@ -32,24 +32,24 @@ exports.listViaAuth = async (req, res) => {
     const data = await service.getAllTemplates(tenantId);
 
     const [leadData, tenantDetails, tenantProfileDetails] = await Promise.all([
-      leadService.getLeadById(contactId, tenantId), // Replace with your actual Lead service/repo
+      contactId ? leadService.getLeadById(contactId, tenantId) : Promise.resolve({}),
       tenantService.getTenantById(tenantId),
-      tenantProfileService.getProfile(tenantId),
+      tenantProfileRepository.findByTenantId(tenantId),
     ]);
 
     // 3. Setup the Placeholder values
     const placeholders = {
-      lead_name: `${leadData.first_name || ''} ${leadData.last_name || ''}`.trim(),
-      lead_email: leadData.email || '',
-      company_name: tenantDetails.name || '',
-      company_email: tenantProfileDetails.official_email || '',
-      company_phone: tenantDetails.phone || '',
-      company_website: tenantDetails.website || '',
-      company_logo: tenantProfileDetails.company_logo_url || '',
-      company_tagline: tenantProfileDetails.tagline || '',
-      instagram_url: tenantProfileDetails.instagram_url || '',
-      linkedin_url: tenantProfileDetails.linkedin_url || '',
-      whatsapp_url: tenantProfileDetails.whatsapp_url || '',
+      lead_name: `${(leadData && leadData.first_name) || ''} ${(leadData && leadData.last_name) || ''}`.trim(),
+      lead_email: (leadData && leadData.email) || '',
+      company_name: (tenantDetails && tenantDetails.name) || '',
+      company_email: (tenantProfileDetails && tenantProfileDetails.official_email) || '',
+      company_phone: (tenantDetails && tenantDetails.phone) || '',
+      company_website: (tenantDetails && tenantDetails.website) || '',
+      company_logo: (tenantProfileDetails && tenantProfileDetails.company_logo_url) || '',
+      company_tagline: (tenantProfileDetails && tenantProfileDetails.tagline) || '',
+      instagram_url: (tenantProfileDetails && tenantProfileDetails.instagram_url) || '',
+      linkedin_url: (tenantProfileDetails && tenantProfileDetails.linkedin_url) || '',
+      whatsapp_url: (tenantProfileDetails && tenantProfileDetails.whatsapp_url) || '',
       date: new Date().toLocaleDateString()
     };
 
