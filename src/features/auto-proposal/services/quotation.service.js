@@ -1,3 +1,9 @@
+/**
+ * @deprecated Legacy Quotation Service.
+ * Standardized on the Proposal Draft pipeline per ADR-0004.
+ * Refer to `proposal-draft.service.js` for active dynamic quotation, itemization, and pricing workflows.
+ */
+
 const leadRepository = require('../repositories/lead.repository');
 const quotationRepository = require('../repositories/quotation.repository');
 const quotationTemplateMetadataRepository = require('../repositories/quotation-template-metadata.repository');

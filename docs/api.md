@@ -279,27 +279,77 @@ curl -i http://localhost:3000/api/pricing-models/<tenant-id>
 ```
 
 ### `POST /api/pricing-rules`
-Create an evaluation rule attached to a pricing model.
+Create an evaluation rule. Supports both `service` and `package` target types. Requires `X-Tenant-Id` header.
 
+**Service Target Rule:**
 ```bash
 curl -i -X POST http://localhost:3000/api/pricing-rules \
   -H "Content-Type: application/json" \
+  -H "X-Tenant-Id: <tenant-id>" \
   -d '{
-    "tenant_id": "<tenant-id>",
-    "pricing_model_id": "<model-id>",
-    "name": "Volume Discount > 100 units",
-    "rule_type": "percentage_discount",
-    "parameters": { "discount_percentage": 10 },
-    "evaluation_order": 1,
+    "name": "Large Gathering Discount",
+    "target_type": "service",
+    "condition_field": "guest_count",
+    "condition_operator": ">=",
+    "condition_value": 200,
+    "action_type": "discount",
+    "action_mode": "percentage",
+    "action_value": 10,
+    "priority": 1,
     "is_active": true
   }'
 ```
 
-### `GET /api/pricing-rules/:tenant_id`
-List dynamic pricing rules for a tenant.
+**Package Target Rule:**
+```bash
+curl -i -X POST http://localhost:3000/api/pricing-rules \
+  -H "Content-Type: application/json" \
+  -H "X-Tenant-Id: <tenant-id>" \
+  -d '{
+    "name": "Luxury Package Surcharge",
+    "target_type": "package",
+    "concept_id": "<concept-uuid>",
+    "action_type": "surcharge",
+    "action_mode": "fixed",
+    "action_value": 500,
+    "priority": 2,
+    "is_active": true
+  }'
+```
+
+### `GET /api/pricing-rules`
+List dynamic pricing rules for the tenant (requires `X-Tenant-Id` header).
 
 ```bash
-curl -i http://localhost:3000/api/pricing-rules/<tenant-id>
+curl -i -H "X-Tenant-Id: <tenant-id>" http://localhost:3000/api/pricing-rules
+```
+
+### `GET /api/pricing-rules/detail/:id`
+Get a specific pricing rule by ID.
+
+```bash
+curl -i -H "X-Tenant-Id: <tenant-id>" http://localhost:3000/api/pricing-rules/detail/<rule-id>
+```
+
+### `PUT /api/pricing-rules/:id`
+Update an existing pricing rule.
+
+```bash
+curl -i -X PUT http://localhost:3000/api/pricing-rules/<rule-id> \
+  -H "Content-Type: application/json" \
+  -H "X-Tenant-Id: <tenant-id>" \
+  -d '{
+    "name": "Updated Gathering Discount",
+    "action_value": 15
+  }'
+```
+
+### `DELETE /api/pricing-rules/:id`
+Soft-delete a pricing rule.
+
+```bash
+curl -i -X DELETE http://localhost:3000/api/pricing-rules/<rule-id> \
+  -H "X-Tenant-Id: <tenant-id>"
 ```
 
 ---
@@ -307,7 +357,7 @@ curl -i http://localhost:3000/api/pricing-rules/<tenant-id>
 ## 9. Quotations & Proposals
 
 ### `POST /api/quotations`
-Generate a structured quotation.
+Generate a structured quotation (legacy engine; refer to ADR-0004).
 
 ```bash
 curl -i -X POST http://localhost:3000/api/quotations \
@@ -336,7 +386,7 @@ curl -i -H "X-Tenant-Id: <tenant-id>" http://localhost:3000/api/quotations/lead/
 ```
 
 ### `PATCH /api/proposal-draft/approve/:id`
-Approve an AI proposal draft and finalize client quotation.
+Approve an AI proposal draft and finalize client quotation (Active Proposal Draft Pipeline per ADR-0004).
 
 ```bash
 curl -i -X PATCH http://localhost:3000/api/proposal-draft/approve/<proposal-id>
@@ -375,9 +425,116 @@ Get available merge placeholders for document generation.
 curl -i http://localhost:3000/api/template-placeholder/<tenant-id>
 ```
 
+### `POST /api/email-templates/upload/:tenantId`
+Upload an email template `.docx` file for conversion and merge formatting.
+
+```bash
+curl -i -X POST http://localhost:3000/api/email-templates/upload/<tenant-id> \
+  -F "file=@email-template.docx"
+```
+
+### `GET /api/email-templates/:id/preview`
+Generate an HTML preview of an email template.
+
+```bash
+curl -i http://localhost:3000/api/email-templates/<template-id>/preview
+```
+
+### `PATCH /api/email-templates/:tenantId/set-default/:id`
+Mark an email template as default for a tenant.
+
+```bash
+curl -i -X PATCH http://localhost:3000/api/email-templates/<tenant-id>/set-default/<template-id>
+```
+
+### `GET /api/email-templates/:contact_id`
+List email templates available for a given contact thread (requires JWT auth).
+
+```bash
+curl -i http://localhost:3000/api/email-templates/<contact-id> \
+  -H "Authorization: Bearer <jwt-token>"
+```
+
+### `POST /api/quotation-email-template/create`
+Create a structured quotation email template.
+
+```bash
+curl -i -X POST http://localhost:3000/api/quotation-email-template/create \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tenant_id": "<tenant-id>",
+    "name": "Formal Proposal Delivery",
+    "subject": "Proposal for {{company_name}}",
+    "body_html": "<p>Dear {{lead_name}}, please find attached your proposal.</p>",
+    "body_text": "Dear {{lead_name}}, please find attached your proposal."
+  }'
+```
+
+### `GET /api/quotation-email-template/tenant/:tenant_id`
+Fetch all quotation email templates for a tenant.
+
+```bash
+curl -i http://localhost:3000/api/quotation-email-template/tenant/<tenant-id>
+```
+
 ---
 
-## 11. Gmail Integration & Webhooks
+## 11. Tenant Profile
+
+### `GET /api/tenant-profile/:tenantId`
+Retrieve full branding and configuration profile for a tenant.
+
+```bash
+curl -i http://localhost:3000/api/tenant-profile/<tenant-id>
+```
+
+**Response (200 OK):**
+```json
+{
+  "id": "tenant-uuid-v4",
+  "tenant_id": "tenant-uuid-v4",
+  "company_name": "Studio Pro",
+  "official_email": "contact@studiopro.com",
+  "phone_number": "+1-555-0199",
+  "website_url": "https://studiopro.com",
+  "company_logo_url": "https://storage.googleapis.com/.../logo.png",
+  "tagline": "Capturing Timeless Moments",
+  "instagram_url": "https://instagram.com/studiopro",
+  "linkedin_url": "https://linkedin.com/company/studiopro",
+  "whatsapp_url": "https://wa.me/15550199"
+}
+```
+
+### `PATCH /api/tenant-profile/:tenantId/update-field`
+Update a specific field in the tenant profile.
+
+```bash
+curl -i -X PATCH http://localhost:3000/api/tenant-profile/<tenant-id>/update-field \
+  -H "Content-Type: application/json" \
+  -d '{
+    "fieldName": "tagline",
+    "fieldValue": "Excellence in Every Frame"
+  }'
+```
+
+### `POST /api/tenant-profile/:tenantId/logo`
+Upload and update the tenant company logo.
+
+```bash
+curl -i -X POST http://localhost:3000/api/tenant-profile/<tenant-id>/logo \
+  -F "logo=@logo.png"
+```
+
+### `GET /api/tenant-profile/:tenantId/logo/preview`
+Get current company logo preview URL.
+
+```bash
+curl -i http://localhost:3000/api/tenant-profile/<tenant-id>/logo/preview
+```
+
+---
+
+## 12. Gmail Integration & Webhooks
 
 ### `POST /api/gmail/watch`
 Start Gmail push notification watch via Google Cloud Pub/Sub.
@@ -404,7 +561,7 @@ curl -i http://localhost:3000/api/gmail/test-prompt
 
 ---
 
-## 12. Omnichannel Conversations & AI Summaries
+## 13. Omnichannel Conversations & AI Summaries
 
 > All conversation endpoints require `Authorization: Bearer <jwt-token>`.
 
@@ -451,25 +608,61 @@ curl -i http://localhost:3000/api/email-conversations/email-ai-crux/<contact-id>
 
 ---
 
-## 13. AI Response Suggestions
+## 14. AI Response Suggestions
 
 ### `GET /api/ai-response/suggest-concepts/:tenantId`
-Suggest optimal concepts for a given requirement prompt.
+Suggest optimal catalog concepts for a given requirement prompt.
 
 ```bash
-curl -i "http://localhost:3000/api/ai-response/suggest-concepts/<tenant-id>?prompt=office+cleaning+5000+sqft"
+curl -i "http://localhost:3000/api/ai-response/suggest-concepts/<tenant-id>?prompt=luxury+wedding+reception+300+guests"
 ```
 
 ### `GET /api/ai-response/suggest-pricing-rule/:tenantId`
-AI suggestion for applicable pricing rules.
+AI suggestion for applicable pricing rules based on current requirement configuration and concept catalog.
 
 ```bash
-curl -i "http://localhost:3000/api/ai-response/suggest-pricing-rule/<tenant-id>?prompt=rush+weekend+service"
+curl -i "http://localhost:3000/api/ai-response/suggest-pricing-rule/<tenant-id>?prompt=large+gathering+discount"
 ```
 
 ### `GET /api/ai-response/suggest-email-templates/:tenantId`
-AI recommendation for the most relevant email template.
+AI recommendation for the most relevant email template with merge tokens.
 
 ```bash
-curl -i "http://localhost:3000/api/ai-response/suggest-email-templates/<tenant-id>?prompt=enterprise+quote"
+curl -i "http://localhost:3000/api/ai-response/suggest-email-templates/<tenant-id>?prompt=formal+quotation+delivery"
 ```
+
+---
+
+## 15. Social & Google Integration
+
+### `GET /api/social-integration/email/google/callback`
+OAuth2 callback endpoint receiving authorization code from Google OAuth flow.
+
+```bash
+curl -i "http://localhost:3000/api/social-integration/email/google/callback?code=<auth-code>&state=<state>"
+```
+
+### `POST /api/social-integration/email/google/start`
+Initiate Google OAuth flow (requires `Authorization: Bearer <jwt-token>`).
+
+```bash
+curl -i -X POST http://localhost:3000/api/social-integration/email/google/start \
+  -H "Authorization: Bearer <jwt-token>"
+```
+
+### `POST /api/social-integration/email/google/status`
+Check connection status and active email address for Google integration (requires `Authorization: Bearer <jwt-token>`).
+
+```bash
+curl -i -X POST http://localhost:3000/api/social-integration/email/google/status \
+  -H "Authorization: Bearer <jwt-token>"
+```
+
+### `POST /api/social-integration/email/google/disconnect`
+Disconnect active Google OAuth integration (requires `Authorization: Bearer <jwt-token>`).
+
+```bash
+curl -i -X POST http://localhost:3000/api/social-integration/email/google/disconnect \
+  -H "Authorization: Bearer <jwt-token>"
+```
+

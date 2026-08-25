@@ -9,9 +9,7 @@ const ALLOWED_FIELDS = [
   'email',
   'phone',
   'website',
-  'metadata',
-  'logo_url',
-  'settings'
+  'metadata'
 ];
 
 class TenantRepository {
@@ -21,20 +19,41 @@ class TenantRepository {
   // =====================================================
   async create(tenantData) {
     const id = crypto.randomUUID();
-    const { name, slug, logo_url, settings } = tenantData;
+    const {
+      name,
+      slug,
+      status = 'trial',
+      plan_tier = 'free',
+      email = null,
+      phone = null,
+      website = null,
+      logo_url,
+      settings,
+      metadata = {}
+    } = tenantData;
+
+    const mergedMetadata = {
+      ...(typeof metadata === 'object' && metadata !== null ? metadata : {}),
+      ...(logo_url !== undefined ? { logo_url } : {}),
+      ...(settings !== undefined ? { settings } : {})
+    };
 
     const sql = `
-      INSERT INTO tenants (id, name, slug, logo_url, settings,  created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5,  NOW(), NOW())
+      INSERT INTO tenants (id, name, slug, status, plan_tier, email, phone, website, metadata, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
       RETURNING *;
     `;
 
     const result = await AppDataSource.query(sql, [
       id,
       name,
-      slug,
-      logo_url,
-      JSON.stringify(settings || {})
+      slug || null,
+      status,
+      plan_tier,
+      email,
+      phone,
+      website,
+      JSON.stringify(mergedMetadata)
     ]);
 
     return result[0];

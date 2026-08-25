@@ -1,3 +1,9 @@
+/**
+ * @deprecated Legacy Pricing Engine.
+ * Standardized on the Proposal Draft pipeline per ADR-0004.
+ * Refer to `proposal-draft.service.js` and `final-price-calculation.repository.js` for active dynamic pricing calculations.
+ */
+
 const conceptRepository = require('../repositories/concept.repository');
 const conceptLocationRepository = require('../repositories/concept-location.repository');
 const conceptPricingMatrixRepository = require('../repositories/concept-pricing-matrix.repository');

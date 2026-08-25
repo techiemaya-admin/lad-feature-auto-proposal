@@ -12,7 +12,7 @@ Rush Away is a multi-tenant Node.js + Express backend powering dynamic price cal
 
 - **Runtime:** Node.js (CommonJS modules)
 - **Framework:** Express.js 4.x
-- **Database:** PostgreSQL with TypeORM (`EntitySchema` pattern)
+- **Database & Data Access:** PostgreSQL via Node.js CommonJS and Parameterized SQL executed via `AppDataSource.query()` and `pg` (per ADR-0001)
 - **AI Integrations:** Google Generative AI (Gemini) & OpenAI API
 - **Document Processing:** `docxtemplater`, `pizzip`, `mammoth`, `libreoffice-convert`, `pdfkit`, `puppeteer`
 - **Cloud Storage:** Google Cloud Storage (`@google-cloud/storage`)
@@ -29,7 +29,7 @@ Multi-tenancy isolation is enforced at every boundary:
    - Global entities (`Tenant`) do not require tenant scoping; all child entities (`Location`, `Concept`, `Lead`, `Quotation`, etc.) belong strictly to a Tenant.
 
 2. **Query Layer Isolation:**
-   - Every database query executed through a repository must explicitly filter on `tenant_id` (e.g., `WHERE tenant_id = $1` or `{ where: { tenant_id } }`).
+   - Every database query executed through a repository must explicitly filter on `tenant_id` using parameterized SQL placeholders (e.g., `WHERE tenant_id = $1`).
    - Cross-tenant data leakage is prevented at the repository layer.
 
 3. **No Schema Hardcoding:**
@@ -51,7 +51,7 @@ HTTP Request ──► [ Middleware ]
                  [ Service ]     ── Business Logic, Pricing Math, AI Pipelines
                         │
                         ▼
-                 [ Repository ]  ── TypeORM EntitySchema, SQL & Tenant Scoping
+                 [ Repository ]  ── Parameterized SQL & Tenant Scoping (ADR-0001)
                         │
                         ▼
                  [ PostgreSQL ]
@@ -73,8 +73,8 @@ HTTP Request ──► [ Middleware ]
   - *Constraint:* Never handle raw HTTP `req` / `res` objects or return HTTP response objects.
 
 - **Repositories (`src/features/auto-proposal/repositories/`):**
-  - Interface directly with PostgreSQL using TypeORM `DataSource` and `EntitySchema`.
-  - Enforce `tenant_id` filtering in all queries.
+  - Interface directly with PostgreSQL using raw parameterized SQL queries via `AppDataSource.query()` and `pg` (ADR-0001 standard).
+  - Enforce `tenant_id` filtering in all queries to guarantee multi-tenant boundary isolation.
   - *Constraint:* Contain only data access logic, no business rules or external network calls.
 
 - **DTOs & Validators (`dtos/`, `validators/`, `middleware/validate.js`):**
