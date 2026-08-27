@@ -2,8 +2,10 @@
 const proposalRepo = require("../repositories/proposal-draft.repository");
 const leadRepo = require("../repositories/lead.repository");
 const attachmentRepo = require("../repositories/lead-attachment.repository");
+const tenantRepo = require("../repositories/tenant.repository");
 const gmailService = require("./gmail-send-email.service");
-const e = require("express");
+const googleConfig = require("../../../config/google.config");
+const logger = require("../../../utils/logger");
 
 class ProposalDraftService {
 
@@ -306,9 +308,24 @@ class ProposalDraftService {
       }
     });
 
-    // // 5️⃣ Send Email
-    gmailService.sendQuotationEmail(lead.email, proposal.gcs_storage_path, proposal.final_price,oAuth2Client);
+    // 5️⃣ Send Email
+    let client = oAuth2Client;
+    if (!client) {
+      try {
+        const tenant = await tenantRepo.findById(proposal.tenant_id);
+        if (tenant?.email) {
+          client = await googleConfig.getGoogleClientForUser(tenant.email);
+        }
+      } catch (err) {
+        logger.warn(`Could not resolve OAuth client for proposal ${proposalId}: ${err.message}`);
+      }
+    }
 
+    if (client) {
+      await gmailService.sendQuotationEmail(lead.email, proposal.gcs_storage_path, proposal.final_price, client);
+    } else {
+      logger.warn(`Quotation email skipped upon approval: No OAuth2 client available for proposal ${proposalId}`);
+    }
 
     return {
       proposal_id: proposal.id,

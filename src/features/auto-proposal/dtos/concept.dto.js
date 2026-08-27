@@ -16,6 +16,7 @@ function toConceptResponse(entity) {
     name: entity.name,
     code: entity.code,
     description: entity.description,
+    minimum_cost: entity.minimum_cost != null ? Number(entity.minimum_cost) : 0,
     metadata: entity.metadata,
     created_at: entity.created_at,
     updated_at: entity.updated_at,
