@@ -114,8 +114,9 @@ curl -i -X POST http://localhost:3000/api/concepts \
   -H "X-Tenant-Id: <tenant-id>" \
   -d '{
     "name": "IMPACT",
-    "code": "IMP-01",
-    "description": "Full-service impact tier"
+    "description": "Full-service impact tier",
+    "minimum_cost": 5000,
+    "requirement_config_ids": ["<config-id-1>", "<config-id-2>"]
   }'
 ```
 
@@ -619,11 +620,48 @@ Suggest optimal catalog concepts for a given requirement prompt.
 curl -i "http://localhost:3000/api/ai-response/suggest-concepts/<tenant-id>?prompt=luxury+wedding+reception+300+guests"
 ```
 
+**Response Example:**
+```json
+{
+  "suggestions": [
+    {
+      "name": "Luxury Experience",
+      "description": "Full-service luxury production with media and catering",
+      "minimum_cost": 5000,
+      "requirement_configs": [
+        { "id": "cfg-1", "name": "Photography" },
+        { "id": "cfg-2", "name": "Catering" }
+      ]
+    }
+  ]
+}
+```
+
 ### `GET /api/ai-response/suggest-pricing-rule/:tenantId`
 AI suggestion for applicable pricing rules based on current requirement configuration and concept catalog.
 
 ```bash
 curl -i "http://localhost:3000/api/ai-response/suggest-pricing-rule/<tenant-id>?prompt=large+gathering+discount"
+```
+
+**Response Example:**
+```json
+{
+  "suggestions": [
+    {
+      "name": "Large Gathering Discount",
+      "target_type": "service",
+      "condition_field": "guest_count",
+      "condition_name": "Guest Count",
+      "condition_operator": ">=",
+      "condition_value": 200,
+      "action_type": "discount",
+      "action_mode": "percentage",
+      "action_value": 10,
+      "description": "Apply 10% discount when guest count exceeds 200"
+    }
+  ]
+}
 ```
 
 ### `GET /api/ai-response/suggest-email-templates/:tenantId`

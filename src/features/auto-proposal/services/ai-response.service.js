@@ -804,13 +804,20 @@ class AIService {
               properties: {
                 name: { type: 'string' },
                 description: { type: 'string' },
-                estimated_base_price: { type: 'number' },
-                suggested_deliverables: {
+                minimum_cost: { type: 'number' },
+                requirement_configs: {
                   type: 'array',
-                  items: { type: 'string' }
+                  items: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'string' },
+                      name: { type: 'string' }
+                    },
+                    required: ["id", "name"]
+                  }
                 }
               },
-              required: ["name", "description", "estimated_base_price", "suggested_deliverables"]
+              required: ["name", "description", "minimum_cost", "requirement_configs"]
             }
           }
         },
@@ -830,8 +837,8 @@ TASK: Generate 3-5 structured concept tiers (e.g., Lite / Standard / Premium / L
 For each concept tier:
 1. "name": Descriptive name of the package / tier.
 2. "description": A compelling value proposition for this tier.
-3. "estimated_base_price": A reasonable estimated base price (number).
-4. "suggested_deliverables": An array of specific deliverables / included services.
+3. "minimum_cost": A reasonable minimum cost / base price (number).
+4. "requirement_configs": An array of matched service objects from the Available Service Offerings list above, each with "id" (the exact UUID/id from the list) and "name" (the label/name).
 `;
 
     return this.callGenAIWithConfig(prompt, generationConfig);
@@ -860,7 +867,9 @@ For each concept tier:
               type: 'object',
               properties: {
                 name: { type: 'string' },
-                condition_field: { type: 'string', description: "UUID or field_key of service or concept" },
+                target_type: { type: 'string', enum: ["package", "service"] },
+                condition_field: { type: 'string' },
+                condition_name: { type: 'string' },
                 condition_operator: { type: 'string', enum: [">", "<", ">=", "<=", "=="] },
                 condition_value: { type: 'number' },
                 action_type: { type: 'string', enum: ["discount", "surcharge"] },
@@ -870,7 +879,9 @@ For each concept tier:
               },
               required: [
                 "name",
+                "target_type",
                 "condition_field",
+                "condition_name",
                 "condition_operator",
                 "condition_value",
                 "action_type",
@@ -894,7 +905,9 @@ DATA CONTEXT:
 
 SCHEMA REQUIREMENTS:
 - "name": Concise rule title (e.g., "Bulk Guest Discount", "Peak Rush Surcharge")
+- "target_type": "package" or "service"
 - "condition_field": The target service field_key/id or concept id
+- "condition_name": Human readable label or name of the target service or concept
 - "condition_operator": One of ">", "<", ">=", "<=", "=="
 - "condition_value": Numeric condition threshold
 - "action_type": "discount" or "surcharge"

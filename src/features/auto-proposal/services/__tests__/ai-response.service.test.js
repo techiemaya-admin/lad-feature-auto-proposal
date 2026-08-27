@@ -131,8 +131,11 @@ describe('AIService - Initialization & Gemini Suggestions', () => {
           {
             name: 'Luxury Experience',
             description: 'Full-service luxury production with media and catering',
-            estimated_base_price: 5000,
-            suggested_deliverables: ['Full day photography', 'Gourmet catering']
+            minimum_cost: 5000,
+            requirement_configs: [
+              { id: 'cfg-1', name: 'Photography' },
+              { id: 'cfg-2', name: 'Catering' }
+            ]
           }
         ]
       };
@@ -151,8 +154,8 @@ describe('AIService - Initialization & Gemini Suggestions', () => {
       expect(result).toEqual(mockResponse);
       expect(result.suggestions[0]).toHaveProperty('name');
       expect(result.suggestions[0]).toHaveProperty('description');
-      expect(result.suggestions[0]).toHaveProperty('estimated_base_price');
-      expect(result.suggestions[0]).toHaveProperty('suggested_deliverables');
+      expect(result.suggestions[0]).toHaveProperty('minimum_cost');
+      expect(result.suggestions[0]).toHaveProperty('requirement_configs');
     });
 
     it('suggestPricingRules generates schema-compatible dynamic pricing rules', async () => {
@@ -167,7 +170,9 @@ describe('AIService - Initialization & Gemini Suggestions', () => {
         suggestions: [
           {
             name: 'Large Gathering Discount',
+            target_type: 'service',
             condition_field: 'guest_count',
+            condition_name: 'Guest Count',
             condition_operator: '>=',
             condition_value: 200,
             action_type: 'discount',
@@ -189,12 +194,16 @@ describe('AIService - Initialization & Gemini Suggestions', () => {
       expect(leadRequirementConfigRepo.findByTenantAndActive).toHaveBeenCalledWith('tenant-123');
       expect(conceptRepo.findAll).toHaveBeenCalledWith('tenant-123');
       expect(result).toEqual(mockResponse);
+      expect(result.suggestions[0]).toHaveProperty('name');
+      expect(result.suggestions[0]).toHaveProperty('target_type');
       expect(result.suggestions[0]).toHaveProperty('condition_field');
+      expect(result.suggestions[0]).toHaveProperty('condition_name');
       expect(result.suggestions[0]).toHaveProperty('condition_operator');
       expect(result.suggestions[0]).toHaveProperty('condition_value');
       expect(result.suggestions[0]).toHaveProperty('action_type');
       expect(result.suggestions[0]).toHaveProperty('action_mode');
       expect(result.suggestions[0]).toHaveProperty('action_value');
+      expect(result.suggestions[0]).toHaveProperty('description');
     });
 
     it('suggestPricingRules returns empty array when no requirement configs or concepts exist', async () => {

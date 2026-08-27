@@ -64,6 +64,10 @@ export interface CreateConceptDTO {
   name: string;
   code?: string;
   description?: string;
+  minimum_cost?: number;
+  requirement_config_ids?: string[];
+  requirement_configs?: string[];
+  metadata?: Record<string, any>;
 }
 ```
 
