@@ -24,6 +24,8 @@ const aiService = require('../ai-response.service');
 const gmailSendService = require('../gmail-send-email.service');
 const proposalDraftRepository = require('../../repositories/proposal-draft.repository');
 const messageRepository = require('../../repositories/conversation-message.repository');
+const userIdentityRepository = require('../../repositories/user-identity.repository');
+const leadService = require('../lead.service');
 
 jest.mock('../../repositories/final-price-calculation.repository');
 jest.mock('../../repositories/lead_requirement_values.repository');
@@ -40,6 +42,7 @@ jest.mock('../../repositories/lead.repository');
 jest.mock('../../repositories/conversation-participants.repository');
 jest.mock('../../repositories/lead_requirement_config.repository');
 jest.mock('../../repositories/proposal-draft-items.repository');
+jest.mock('../lead.service');
 jest.mock('../../../../config/google.config');
 
 // Require service under test after mocks
@@ -141,3 +144,81 @@ describe('GmailReadEmailService - createProposalDraft', () => {
     );
   });
 });
+
+describe('GmailReadEmailService - fetchNewEmails', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('gracefully drops execution without calling downstream services when email is unmapped', async () => {
+    userIdentityRepository.findTenantContextByProviderUserId.mockResolvedValue(null);
+
+    await gmailReadEmailService.fetchNewEmails('unmapped@example.com', 'hist-123');
+
+    expect(userIdentityRepository.findTenantContextByProviderUserId).toHaveBeenCalledWith(
+      'gmail',
+      'unmapped@example.com'
+    );
+    expect(tenatDetailsRepo.findById).not.toHaveBeenCalled();
+  });
+
+  it('gracefully drops execution when identity exists but tenantId is null', async () => {
+    userIdentityRepository.findTenantContextByProviderUserId.mockResolvedValue({
+      userIdentityId: 'ident-1',
+      userId: 'user-1',
+      tenantId: null
+    });
+
+    await gmailReadEmailService.fetchNewEmails('notenant@example.com', 'hist-123');
+
+    expect(userIdentityRepository.findTenantContextByProviderUserId).toHaveBeenCalledWith(
+      'gmail',
+      'notenant@example.com'
+    );
+    expect(tenatDetailsRepo.findById).not.toHaveBeenCalled();
+  });
+});
+
+describe('GmailReadEmailService - triggerNewLeadAutomation', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('passes dynamic tenantId and userId to leadService.createLead', async () => {
+    leadService.createLead.mockResolvedValue({ id: 'lead-dynamic-001' });
+
+    const result = await gmailReadEmailService.triggerNewLeadAutomation(
+      'tenant-dyn-123',
+      'user-dyn-456',
+      'Jane',
+      'Doe',
+      'jane.doe@example.com'
+    );
+
+    expect(leadService.createLead).toHaveBeenCalledWith(
+      'tenant-dyn-123',
+      {
+        first_name: 'Jane',
+        last_name: 'Doe',
+        email: 'jane.doe@example.com'
+      },
+      'user-dyn-456'
+    );
+    expect(result).toEqual({ id: 'lead-dynamic-001' });
+  });
+
+  it('handles leadService errors gracefully and logs error', async () => {
+    leadService.createLead.mockRejectedValue(new Error('Database write error'));
+
+    const result = await gmailReadEmailService.triggerNewLeadAutomation(
+      'tenant-dyn-123',
+      'user-dyn-456',
+      'Jane',
+      'Doe',
+      'jane.doe@example.com'
+    );
+
+    expect(result).toBeUndefined();
+  });
+});
+

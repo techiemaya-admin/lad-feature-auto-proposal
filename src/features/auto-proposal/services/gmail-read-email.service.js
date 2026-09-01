@@ -38,11 +38,11 @@ async function startWatch(email, tenantId) {
   const response = await gmail.users.watch({
     userId: "me",
     requestBody: {
-      topicName: "projects/phonic-agility-487809-e9/topics/gmail-read-send",
+      topicName: process.env.GOOGLE_PUBSUB_TOPIC || "projects/lad-develop/topics/gmail-read-send",
       labelIds: ["INBOX"],
     },
   });
-  console.log("Watch response:", response.data);
+  logger.info("Watch subscription initialized", { email, tenantId, historyId: response.data.historyId });
 
   // After setting up the watch, we should save the historyId and expiration time in our database so that we can use it later to fetch new emails and also to know when to renew the watch. Here we are using a hardcoded user identity for demonstration, but in a real application, you would associate this with the actual user who authenticated their Gmail account.
   const userIdentityId = await userIdentityRepository.findByProvider(
@@ -288,20 +288,23 @@ async function processIncomingEmail(tenantId, fullMessage, lead_id, messageId) {
 }
 
 async function fetchNewEmails(email, historyIdFromWebhook) {
-  console.log("Fetching new emails for email:", email);
-  const tenantId = "e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5";
+  logger.info("Fetching new emails", { email });
+
+  const identityContext = await userIdentityRepository.findTenantContextByProviderUserId("gmail", email);
+  if (!identityContext || !identityContext.tenantId) {
+    logger.warn("Received Gmail webhook for unmapped email address or missing tenant context", { email });
+    return;
+  }
+
+  const { tenantId, userId, userIdentityId } = identityContext;
   const tenatDetails = await tenatDetailsRepo.findById(tenantId);
-  const userIdentityId = await userIdentityRepository.findByProvider(
-    "gmail",
-    email
-  );
 
   if (userIdentityId != null) {
-    const historyId = await gmailWatchService.getLastHistoryId(userIdentityId);
-    console.log("Last history ID for userIdentityId", userIdentityId, "is", historyId);
+    const historyId = await gmailWatchService.getLastHistoryId(userIdentityId, tenantId);
+    logger.debug("Last history ID lookup", { userIdentityId, historyId });
     if (!historyId) {
-      console.log("No history ID found for userIdentityId", userIdentityId, ". This might be the first time fetching emails for this user. Creating user identity record.");
-      gmailWatchRepository.create({
+      logger.debug("No history ID found for userIdentityId; initializing watch record");
+      await gmailWatchRepository.create({
         tenant_id: tenantId,
         user_identities_id: userIdentityId,
         history_id: historyIdFromWebhook
@@ -341,8 +344,12 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
           console.log("subject: " + subject + " from : " + from + " contact: " + JSON.stringify(contact) + " body : " + body);
           console.log("Checking if email is system generated...");
           if (contact && contact.email != email) {
-            const leadData = await triggerNewLeadAutomation(contact.firstName, contact.lastName, contact.email);
-            console.log("Lead created from email:", leadData.id);
+            const leadData = await triggerNewLeadAutomation(tenantId, userId, contact.firstName, contact.lastName, contact.email);
+            if (!leadData?.id) {
+              logger.warn("Skipping email processing: lead could not be created or resolved", { email: contact.email, messageId });
+              continue;
+            }
+            logger.info("Lead created from email", { leadId: leadData.id });
 
             const result = await processIncomingEmail(tenantId, fullMessage, leadData.id, messageId);
             if (!result) {
@@ -353,7 +360,7 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
             const threadId = result.threadId;
             const global_message_id = result.global_message_id;
             console.log("Email saved to conversation with ID:", conversation_id);
-            if (tenatDetails.email != from && conversation_id != null && conversation_id != undefined) {
+            if (tenatDetails?.email !== from && conversation_id != null) {
               const resultToReturn = await createLeadRequirementViaPrompt(body, leadData, tenantId, conversation_id, global_message_id);
               console.log("Result from createLeadRequirementViaPrompt:", resultToReturn);
               const type = resultToReturn.type;
@@ -404,12 +411,15 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
               console.log("Email is from tenant's own email address, skipping lead creation and proposal drafting.");
             }
           }
-          await gmailWatchService.updateHistoryId(
-            userIdentityId,
-            history.data.historyId
-          );
         }
       }
+    }
+    if (history.data.historyId) {
+      await gmailWatchService.updateHistoryId(
+        userIdentityId,
+        history.data.historyId,
+        tenantId
+      );
     }
   }
 }
@@ -486,12 +496,10 @@ async function formatConceptPricingResponse(results, leadRequirementDetails) {
   return data;
 }
 
-async function triggerNewLeadAutomation(first_name, last_name, email) {
-  console.log("Triggering new lead automation for:", first_name, last_name, email);
-  const dummyTenantId = "e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5";
-  const dummyUserId = "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d"; // Optional
+async function triggerNewLeadAutomation(tenantId, userId, first_name, last_name, email) {
+  logger.info("Triggering new lead automation", { tenantId, userId, first_name, last_name, email });
 
-  const dummyLeadData = {
+  const leadData = {
     // Identity & Contact
     first_name: first_name,
     last_name: last_name,
@@ -500,15 +508,15 @@ async function triggerNewLeadAutomation(first_name, last_name, email) {
 
   try {
     const createdLead = await leadService.createLead(
-      dummyTenantId,
-      dummyLeadData,
-      dummyUserId
+      tenantId,
+      leadData,
+      userId
     );
 
-    console.log("Service call successful! New Lead ID:", createdLead.id);
+    logger.info("Service call successful! New Lead ID:", { leadId: createdLead?.id });
     return createdLead;
   } catch (error) {
-    console.error("Failed to create lead via service:", error.message);
+    logger.error("Failed to create lead via service:", { error: error.message });
   }
 }
 
@@ -578,4 +586,4 @@ async function createLeadRequirementViaPrompt(body, leadData, tenant_id, convers
   }
 }
 
-module.exports = { startWatch, fetchNewEmails, createLeadRequirementViaPrompt, formatConceptPricingResponse, createProposalDraft };
+module.exports = { startWatch, fetchNewEmails, triggerNewLeadAutomation, createLeadRequirementViaPrompt, formatConceptPricingResponse, createProposalDraft };

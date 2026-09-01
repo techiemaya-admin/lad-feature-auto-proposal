@@ -5,7 +5,8 @@ class GmailWatchService {
   async initializeWatch(data) {
   
     const existing = await gmailWatchRepository.findByUserIdentity(
-      data.user_identities_id
+      data.user_identities_id,
+      data.tenant_id
     );
 
     if (existing) {
@@ -16,27 +17,30 @@ class GmailWatchService {
   }
 
 
-  async getLastHistoryId(userIdentityId) {
+  async getLastHistoryId(userIdentityId, tenantId) {
     const record = await gmailWatchRepository.findByUserIdentity(
-      userIdentityId
+      userIdentityId,
+      tenantId
     );
 
     return record?.history_id || null;
   }
 
 
-  async updateHistoryId(userIdentityId, historyId) {
+  async updateHistoryId(userIdentityId, historyId, tenantId) {
     return gmailWatchRepository.updateHistory({
       user_identities_id: userIdentityId,
       history_id: historyId,
-      expiration: null
+      expiration: null,
+      tenant_id: tenantId
     });
   }
 
 
-  async isWatchExpired(userIdentityId) {
+  async isWatchExpired(userIdentityId, tenantId) {
     const record = await gmailWatchRepository.findByUserIdentity(
-      userIdentityId
+      userIdentityId,
+      tenantId
     );
 
     if (!record?.expiration) return true;

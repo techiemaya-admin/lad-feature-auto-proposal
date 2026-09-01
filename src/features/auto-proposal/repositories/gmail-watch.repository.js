@@ -1,4 +1,5 @@
 const AppDataSource = require("../../../config/data-source");
+const logger = require("../../../utils/logger");
 
 class GmailWatchRepository {
 
@@ -27,29 +28,34 @@ class GmailWatchRepository {
   }
 
 
-  async findByUserIdentity(userIdentityId) {
-    const sql = `
+  async findByUserIdentity(userIdentityId, tenantId) {
+    let sql = `
       SELECT *
       FROM gmail_watch
       WHERE user_identities_id = $1
-      LIMIT 1;
     `;
+    const values = [userIdentityId];
 
-    const result = await AppDataSource.query(sql, [userIdentityId]);
-    console.log("Gmail Watch found for userIdentityId", userIdentityId, ":", result[0]);
+    if (tenantId) {
+      sql += ` AND tenant_id = $2`;
+      values.push(tenantId);
+    }
+    sql += ` LIMIT 1;`;
+
+    const result = await AppDataSource.query(sql, values);
+    logger.debug("Gmail Watch lookup for userIdentityId", { userIdentityId, tenantId, found: !!result[0] });
     return result[0] || null;
   }
 
 
   async updateHistory(data) {
-    const sql = `
+    let sql = `
       UPDATE gmail_watch
       SET
         history_id = $2,
         expiration = COALESCE($3, expiration),
         updated_at = CURRENT_TIMESTAMP
       WHERE user_identities_id = $1
-      RETURNING *;
     `;
 
     const values = [
@@ -58,19 +64,31 @@ class GmailWatchRepository {
       data.expiration || null
     ];
 
+    if (data.tenant_id) {
+      sql += ` AND tenant_id = $4`;
+      values.push(data.tenant_id);
+    }
+    sql += ` RETURNING *;`;
+
     const result = await AppDataSource.query(sql, values);
     return result[0] || null;
   }
 
 
-  async deleteByUserIdentity(userIdentityId) {
-    const sql = `
+  async deleteByUserIdentity(userIdentityId, tenantId) {
+    let sql = `
       DELETE FROM gmail_watch
       WHERE user_identities_id = $1
-      RETURNING *;
     `;
+    const values = [userIdentityId];
 
-    const result = await AppDataSource.query(sql, [userIdentityId]);
+    if (tenantId) {
+      sql += ` AND tenant_id = $2`;
+      values.push(tenantId);
+    }
+    sql += ` RETURNING *;`;
+
+    const result = await AppDataSource.query(sql, values);
     return result[0] || null;
   }
 

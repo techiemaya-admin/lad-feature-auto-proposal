@@ -1,14 +1,23 @@
 const { google } = require("googleapis");
 const userIdentityRepository = require("../features/auto-proposal/repositories/user-identity.repository");
+const logger = require("../utils/logger");
 
 /**
  * Creates a configured Google OAuth2 Client for a specific user.
- * @param {string} userId - The unique identifier of the user/tenant
+ * @param {string} [email] - The email address associated with the Gmail identity
+ * @param {string} [userId] - The unique identifier of the user/tenant
  * @returns {Promise<google.auth.OAuth2>} Configured OAuth2 client instance
  */
 async function getGoogleClientForUser(email, userId) {
+  const isValidEmail = typeof email === 'string' && email.trim() !== '' && email !== 'undefined';
+  const isValidUserId = typeof userId === 'string' && userId.trim() !== '' && userId !== 'undefined';
+
+  logger.debug("Fetching Google OAuth2 client", {
+    hasEmail: isValidEmail,
+    hasUserId: isValidUserId
+  });
+
   // 1. Initialize a fresh client structure with your app's core credentials
-  console.log("Fetching Google OAuth2 client for user: " + userId + " and email: " + email);
   const oAuth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
@@ -16,17 +25,16 @@ async function getGoogleClientForUser(email, userId) {
   );
 
   // 2. Fetch the specific user's tokens from the user_identities table
-  let identity;
-  if (email != "undefined" && email != undefined && email != null && email != "") {
-    console.log("Fetching identity using email: " + email);
-    identity = await userIdentityRepository.findByProviderAndProviderUserId("gmail", email);
-  } else {
-    console.log("Fetching identity using userId: " + userId);
-    identity = await userIdentityRepository.findByProviderAndProviderUserIdAndTenantId(userId, "gmail");
+  let identity = null;
+  if (isValidEmail) {
+    identity = await userIdentityRepository.findByProviderAndProviderUserId("gmail", email.trim());
+  } else if (isValidUserId) {
+    identity = await userIdentityRepository.findByUserIdAndProvider(userId.trim(), "gmail");
   }
-  console.log("Fetched identity: ", identity);
+
   if (!identity || !identity.refresh_token) {
-    throw new Error(`No Gmail integration credentials found for user: ${userId}`);
+    const identifier = isValidEmail ? email : (isValidUserId ? userId : 'unknown');
+    throw new Error(`No Gmail integration credentials found for identifier: ${identifier}`);
   }
 
   // 3. Inject the database tokens dynamically into this client instance
@@ -36,22 +44,29 @@ async function getGoogleClientForUser(email, userId) {
     expiry_date: identity.token_expires_at ? new Date(identity.token_expires_at).getTime() : null,
   });
 
-  // 4. Optional: Set up an automated listener to save refreshed tokens
+  // 4. Set up an automated listener to save refreshed tokens
   // If the access token expires, google-auth-library automatically fetches a new one
   // using the refresh token, and fires this 'tokens' event.
   oAuth2Client.on('tokens', async (tokens) => {
     if (tokens.access_token) {
-      console.log(`Automatically refreshing access token for user: ${userId} and email: ${email}`);
-      if (email != "undefined" && email != undefined && email != null && email != "") {
-        await userIdentityRepository.updateAccessTokenByProviderUserId(email, "gmail", {
-          accessToken: tokens.access_token,
-          expiryDate: tokens.expiry_date ? new Date(tokens.expiry_date) : new Date(Date.now() + 3600 * 1000)
-        });
-      } else {
-        await userIdentityRepository.updateAccessTokenByUserId(userId, "gmail", {
-          accessToken: tokens.access_token,
-          expiryDate: tokens.expiry_date ? new Date(tokens.expiry_date) : new Date(Date.now() + 3600 * 1000)
-        });
+      logger.info("Automatically refreshing access token", {
+        target: isValidEmail ? email : (isValidUserId ? userId : 'unknown'),
+        hasRotatedRefreshToken: !!tokens.refresh_token
+      });
+
+      const tokenUpdates = {
+        accessToken: tokens.access_token,
+        expiryDate: tokens.expiry_date ? new Date(tokens.expiry_date) : new Date(Date.now() + 3600 * 1000)
+      };
+
+      if (tokens.refresh_token) {
+        tokenUpdates.refreshToken = tokens.refresh_token;
+      }
+
+      if (isValidEmail) {
+        await userIdentityRepository.updateAccessTokenByProviderUserId(email.trim(), "gmail", tokenUpdates);
+      } else if (isValidUserId) {
+        await userIdentityRepository.updateAccessTokenByUserId(userId.trim(), "gmail", tokenUpdates);
       }
     }
   });

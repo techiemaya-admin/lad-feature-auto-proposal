@@ -50,6 +50,40 @@ class UserIdentityRepository {
     return result[0] || null;
   }
 
+  /**
+   * Resolves user identity, user ID, and tenant ID for incoming external webhooks.
+   * Prioritizes tenant_id from gmail_watch, falling back to users.primary_tenant_id.
+   * @param {string} provider - Provider key (e.g. 'gmail')
+   * @param {string} providerUserId - User provider identity (e.g. email address)
+   * @returns {Promise<{ userIdentityId: string, userId: string, tenantId: string } | null>}
+   */
+  async findTenantContextByProviderUserId(provider, providerUserId) {
+    const sql = `
+      SELECT 
+        ui.id AS user_identities_id,
+        ui.user_id,
+        COALESCE(gw.tenant_id, u.primary_tenant_id) AS tenant_id
+      FROM user_identities ui
+      LEFT JOIN users u ON u.id = ui.user_id
+      LEFT JOIN gmail_watch gw ON gw.user_identities_id = ui.id
+      WHERE ui.provider = $1 AND LOWER(ui.provider_user_id) = LOWER($2)
+      LIMIT 1;
+    `;
+
+    const values = [provider, providerUserId];
+    const result = await AppDataSource.query(sql, values);
+
+    if (!result || result.length === 0) {
+      return null;
+    }
+
+    return {
+      userIdentityId: result[0].user_identities_id,
+      userId: result[0].user_id,
+      tenantId: result[0].tenant_id
+    };
+  }
+
   async findByProviderDetails(provider) {
     const sql = `
       SELECT *
@@ -67,7 +101,7 @@ class UserIdentityRepository {
 
 
 
-  async findByProviderAndProviderUserIdAndTenantId(user_id, provider) {
+  async findByUserIdAndProvider(userId, provider) {
     const sql = `
       SELECT *
       FROM user_identities
@@ -76,11 +110,15 @@ class UserIdentityRepository {
       LIMIT 1;
     `;
 
-
-    const values = [user_id, provider];
+    const values = [userId, provider];
 
     const result = await AppDataSource.query(sql, values);
     return result.length > 0 ? result[0] : null;
+  }
+
+  // Backwards compatibility alias for existing callers
+  async findByProviderAndProviderUserIdAndTenantId(userId, provider) {
+    return this.findByUserIdAndProvider(userId, provider);
   }
 
   async upsertIdentity(data) {
@@ -123,31 +161,39 @@ class UserIdentityRepository {
     await AppDataSource.query(query, values);
   }
 
-
   async updateAccessTokenByUserId(userId, provider, tokenDetails) {
     const query = `
-    UPDATE user_identities 
-    SET access_token = $1, token_expires_at = $2, updated_at = NOW()
-    WHERE user_id = $3 AND provider = $4;
-  `;
+      UPDATE user_identities 
+      SET 
+        access_token = $1, 
+        token_expires_at = $2, 
+        refresh_token = COALESCE($3, refresh_token),
+        updated_at = NOW()
+      WHERE user_id = $4 AND provider = $5;
+    `;
     return await AppDataSource.query(query, [
       tokenDetails.accessToken,
       tokenDetails.expiryDate,
+      tokenDetails.refreshToken || null,
       userId,
       provider
     ]);
   }
 
-
   async updateAccessTokenByProviderUserId(providerUserId, provider, tokenDetails) {
     const query = `
-    UPDATE user_identities 
-    SET access_token = $1, token_expires_at = $2, updated_at = NOW()
-    WHERE provider_user_id = $3 AND provider = $4;
-  `;
+      UPDATE user_identities 
+      SET 
+        access_token = $1, 
+        token_expires_at = $2, 
+        refresh_token = COALESCE($3, refresh_token),
+        updated_at = NOW()
+      WHERE provider_user_id = $4 AND provider = $5;
+    `;
     return await AppDataSource.query(query, [
       tokenDetails.accessToken,
       tokenDetails.expiryDate,
+      tokenDetails.refreshToken || null,
       providerUserId,
       provider
     ]);
