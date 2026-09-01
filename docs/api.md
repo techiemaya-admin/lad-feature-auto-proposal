@@ -675,34 +675,85 @@ curl -i "http://localhost:3000/api/ai-response/suggest-email-templates/<tenant-i
 
 ## 15. Social & Google Integration
 
+Integrations for linking user-scoped OAuth identities (e.g. Gmail) to power automated email ingestion and response drafting.
+
+> **Header Scoping:** Protected management endpoints require `X-Tenant-Id: <tenant-uuid>`.  
+> In production environments without session tokens, pass `X-User-Id: <user-uuid>` to isolate user identities. In development environments (`NODE_ENV !== 'production'`), requests fallback to the default seeded admin user.
+
 ### `GET /api/social-integration/email/google/callback`
-OAuth2 callback endpoint receiving authorization code from Google OAuth flow.
+Public OAuth2 callback endpoint redirected from Google's consent screen. Receives `code`, `state` (base64-encoded `{ tenantId, userId }`), and optional `error` (e.g. `access_denied`).
+Returns a self-closing HTML document that communicates back to the parent window opener via `window.opener.postMessage(payload, targetOrigin)`.
+
+**Query Parameters:**
+* `code` (string): OAuth authorization code from Google (required for success).
+* `state` (string): Base64-encoded JSON `{ tenantId, userId }` or tenant ID string.
+* `error` (string, optional): Error code from Google if consent is cancelled or denied.
+* `error_description` (string, optional): Human-readable error description from Google.
+
+**HTML Bridge Message Events:**
+* **Success:** Dispatches `{ type: 'GOOGLE_AUTH_SUCCESS' }` and invokes `window.close()`.
+* **Error / Cancellation:** Dispatches `{ type: 'GOOGLE_AUTH_ERROR', error: string }` and invokes `window.close()`.
 
 ```bash
-curl -i "http://localhost:3000/api/social-integration/email/google/callback?code=<auth-code>&state=<state>"
+curl -i "http://localhost:3000/api/social-integration/email/google/callback?code=<auth-code>&state=<base64-state>"
 ```
 
 ### `POST /api/social-integration/email/google/start`
-Initiate Google OAuth flow (requires `Authorization: Bearer <jwt-token>`).
+Generates the Google OAuth authorization URL with encoded tenant and user context in the `state` parameter.
 
 ```bash
 curl -i -X POST http://localhost:3000/api/social-integration/email/google/start \
-  -H "Authorization: Bearer <jwt-token>"
+  -H "X-Tenant-Id: <tenant-uuid>" \
+  -H "X-User-Id: <user-uuid>"
 ```
 
-### `POST /api/social-integration/email/google/status`
-Check connection status and active email address for Google integration (requires `Authorization: Bearer <jwt-token>`).
+**Response (200 OK):**
+```json
+{
+  "url": "https://accounts.google.com/o/oauth2/v2/auth?access_type=offline&prompt=consent&scope=...&state=eyJ0ZW5hbnRJZCI6Li4ufQ==&client_id=..."
+}
+```
+
+### `GET /api/social-integration/email/google/status` | `POST /api/social-integration/email/google/status`
+Check connection status and active email address for the user's Google integration. Supports both GET and POST.
 
 ```bash
-curl -i -X POST http://localhost:3000/api/social-integration/email/google/status \
-  -H "Authorization: Bearer <jwt-token>"
+curl -i http://localhost:3000/api/social-integration/email/google/status \
+  -H "X-Tenant-Id: <tenant-uuid>" \
+  -H "X-User-Id: <user-uuid>"
+```
+
+**Response (Connected - 200 OK):**
+```json
+{
+  "success": true,
+  "connected": true,
+  "email": "user@example.com"
+}
+```
+
+**Response (Disconnected - 200 OK):**
+```json
+{
+  "success": true,
+  "connected": false
+}
 ```
 
 ### `POST /api/social-integration/email/google/disconnect`
-Disconnect active Google OAuth integration (requires `Authorization: Bearer <jwt-token>`).
+Revokes Google OAuth tokens via Google's API and deletes the user identity mapping from PostgreSQL. This operation is idempotent.
 
 ```bash
 curl -i -X POST http://localhost:3000/api/social-integration/email/google/disconnect \
-  -H "Authorization: Bearer <jwt-token>"
+  -H "X-Tenant-Id: <tenant-uuid>" \
+  -H "X-User-Id: <user-uuid>"
+```
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Google account disconnected successfully."
+}
 ```
 
