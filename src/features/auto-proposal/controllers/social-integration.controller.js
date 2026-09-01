@@ -4,10 +4,10 @@ const logger = require("../../../utils/logger");
 
 async function getGoogleEmailStatus(req, res) {
     try {
-        logger.info("Checking Google email status", { tenantId: req.tenantId });
-        const userIdentity = await userIdentityRepository.findByProviderDetails(
-            "gmail"
-        );
+        logger.info("Checking Google email status", { tenantId: req.tenantId, userId: req.userId });
+        const userIdentity = req.userId
+            ? await userIdentityRepository.findByUserIdAndProvider(req.userId, "gmail")
+            : await userIdentityRepository.findByProviderDetails("gmail");
 
         logger.debug("Found user identity for Gmail", { connected: !!userIdentity, email: userIdentity?.provider_user_id });
         if (userIdentity) {
@@ -33,10 +33,10 @@ async function getGoogleEmailStatus(req, res) {
 
 async function getGoogleEmailStatusWithOtherDetails(req, res) {
     try {
-        logger.info("Checking Google email status with details", { tenantId: req.tenantId });
-        const userIdentity = await userIdentityRepository.findByProviderDetails(
-            "gmail"
-        );
+        logger.info("Checking Google email status with details", { tenantId: req.tenantId, userId: req.userId });
+        const userIdentity = req.userId
+            ? await userIdentityRepository.findByUserIdAndProvider(req.userId, "gmail")
+            : await userIdentityRepository.findByProviderDetails("gmail");
 
         logger.debug("Found user identity for Gmail details", { connected: !!userIdentity, email: userIdentity?.provider_user_id });
         if (userIdentity) {
@@ -66,8 +66,8 @@ async function getGoogleEmailStatusWithOtherDetails(req, res) {
 
 async function initiateGoogle(req, res) {
     try {
-        logger.info("Initiating Google OAuth flow", { tenantId: req.tenantId });
-        let url = authService.getAuthUrl(req.tenantId);
+        logger.info("Initiating Google OAuth flow", { tenantId: req.tenantId, userId: req.userId });
+        let url = authService.getAuthUrl(req.tenantId, req.userId);
 
         // Return it as JSON so window.location.href = result.url can trigger in the browser.
         return res.json({ url });
@@ -78,19 +78,32 @@ async function initiateGoogle(req, res) {
 }
 
 async function googleCallback(req, res) {
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     try {
         const { code, state } = req.query;
-        const tenantId = state;
+        let tenantId = state;
+        let userId = req.userId || null;
+
+        if (state) {
+            try {
+                const decodedState = JSON.parse(Buffer.from(state, 'base64').toString('utf8'));
+                if (decodedState.tenantId) tenantId = decodedState.tenantId;
+                if (decodedState.userId) userId = decodedState.userId;
+            } catch (err) {
+                logger.debug("State is plain string, not base64 JSON", { state });
+            }
+        }
+
         // Grab user context if available, fallback for testing
-        const userId = req.userId || 'b8c1ffa5-3000-4e85-bf56-237ba478aea2';
+        userId = userId || req.userId || 'b8c1ffa5-3000-4e85-bf56-237ba478aea2';
 
         await authService.handleGoogleCallback(code, userId, tenantId);
 
         // After successfully connecting, redirect the actual window back to frontend settings tab
-        res.redirect('http://localhost:3000/settings?google=connected');
+        res.redirect(`${frontendUrl}/settings?google=connected`);
     } catch (error) {
         logger.error("Error handling Google callback", { error: error.message });
-        res.redirect('http://localhost:3000/settings?error=google_auth_failed');
+        res.redirect(`${frontendUrl}/settings?error=google_auth_failed`);
     }
 }
 

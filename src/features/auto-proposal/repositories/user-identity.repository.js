@@ -132,6 +132,7 @@ class UserIdentityRepository {
             )
             ON CONFLICT (user_id,provider) 
             DO UPDATE SET 
+                provider_user_id = EXCLUDED.provider_user_id,
                 access_token = EXCLUDED.access_token,
                 refresh_token = COALESCE(EXCLUDED.refresh_token, user_identities.refresh_token),
                 token_expires_at = EXCLUDED.token_expires_at,

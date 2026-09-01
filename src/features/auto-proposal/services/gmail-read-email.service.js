@@ -66,20 +66,22 @@ async function createProposalDraft(leadRequirementDetails, leadData, email_conte
   const leadRequirementValues = await leadRequirementValueRepo.findByRequirementId(leadRequirementDetails.id);
   const services_given = leadRequirementValues.map(v => v.label).join(', ');
   logger.debug("Services given to tenant: ", services_given);
-  calculatedPriceDetails.breakdown.sort((a, b) => {
-    const aPrice = a.price || 0;
-    const bPrice = b.price || 0;
+  if (Array.isArray(calculatedPriceDetails?.breakdown)) {
+    calculatedPriceDetails.breakdown.sort((a, b) => {
+      const aPrice = a.price || 0;
+      const bPrice = b.price || 0;
 
-    // Standard "Zero to Bottom" Logic:
-    // If a is 0 and b is > 0, a moves down (returns 1)
-    // If a is > 0 and b is 0, a moves up (returns -1)
-    if (aPrice === 0 && bPrice > 0) return 1;
-    if (aPrice > 0 && bPrice === 0) return -1;
-    return 0; // Keep original order for items with same price status
-  });
+      // Standard "Zero to Bottom" Logic:
+      // If a is 0 and b is > 0, a moves down (returns 1)
+      // If a is > 0 and b is 0, a moves up (returns -1)
+      if (aPrice === 0 && bPrice > 0) return 1;
+      if (aPrice > 0 && bPrice === 0) return -1;
+      return 0; // Keep original order for items with same price status
+    });
+  }
   logger.debug("Final price calculated:", calculatedPriceDetails);
 
-  if (calculatedPriceDetails.final_price != 0) {
+  if (calculatedPriceDetails && calculatedPriceDetails.final_price != 0) {
 
     const tenantDetails = (await tenatDetailsRepo.findById(leadRequirementDetails.tenant_id)) || {};
     const tenantProfileDetails = (await tenantProfileRepository.findByTenantId(leadRequirementDetails.tenant_id)) || {};
@@ -159,7 +161,11 @@ async function createProposalDraft(leadRequirementDetails, leadData, email_conte
 
 function isSystemGenerated(headers) {
   const headerMap = {};
-  headers.forEach(h => { headerMap[h.name.toLowerCase()] = h.value.toLowerCase(); });
+  (headers || []).forEach(h => {
+    if (h.name && h.value) {
+      headerMap[h.name.toLowerCase()] = h.value.toLowerCase();
+    }
+  });
 
   // A. List-Unsubscribe: Real leads don't have "Unsubscribe" buttons in their headers.
   if (headerMap['list-unsubscribe']) return true;
@@ -180,18 +186,18 @@ function isSystemGenerated(headers) {
   return false;
 }
 function extractGmailData(fullMessage) {
-  const headers = fullMessage.data.payload.headers;
-  const payload = fullMessage.data.payload;
-  const globalMsgId = headers.find(h => h.name.toLowerCase() === 'message-id')?.value;
+  const headers = fullMessage.data?.payload?.headers || [];
+  const payload = fullMessage.data?.payload || {};
+  const globalMsgId = headers.find(h => h.name?.toLowerCase() === 'message-id')?.value;
   console.log("Global Message ID from headers:", globalMsgId);
 
   // 1. Extract "From"
-  const fromHeader = headers.find(h => h.name === 'From')?.value || "";
+  const fromHeader = headers.find(h => h.name?.toLowerCase() === 'from')?.value || "";
   const emailMatch = fromHeader.match(/<(.+)>|(\S+@\S+)/);
   const senderEmail = emailMatch ? (emailMatch[1] || emailMatch[2]) : null;
 
   // 2. Extract Subject
-  const subject = headers.find(h => h.name === 'Subject')?.value || "No Subject";
+  const subject = headers.find(h => h.name?.toLowerCase() === 'subject')?.value || "No Subject";
 
   // 3. Extract Full Body Content
   let body = "";
@@ -336,9 +342,9 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
             id: msg.id,
           });
 
-          const headers = fullMessage.data.payload.headers;
-          const subject = headers.find(h => h.name === "Subject")?.value || "";
-          const from = headers.find(h => h.name === "From")?.value || "";
+          const headers = fullMessage.data?.payload?.headers || [];
+          const subject = headers.find(h => h.name?.toLowerCase() === "subject")?.value || "";
+          const from = headers.find(h => h.name?.toLowerCase() === "from")?.value || "";
           const contact = parseContactInfo(from);
           const body = getEmailBody(fullMessage.data.payload);
           console.log("subject: " + subject + " from : " + from + " contact: " + JSON.stringify(contact) + " body : " + body);
@@ -373,7 +379,7 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
                   to: contact.email,
                   subject: reSendSubject,
                   html: content,
-                  messageId: global_message_id,
+                  global_message_id: global_message_id,
                   threadId: threadId,
                   oAuth2Client: oAuth2Client,
                   attachments: [{ filename: "Proposal.pdf", url: resultToReturn.proposalDetails.gcs_storage_path, type: "application/pdf" }], // Optional: handle if passed
@@ -388,7 +394,7 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
                   to: contact.email,
                   subject: reSendSubject,
                   html: content,
-                  messageId: global_message_id,
+                  global_message_id: global_message_id,
                   threadId: threadId,
                   oAuth2Client: oAuth2Client
                 });

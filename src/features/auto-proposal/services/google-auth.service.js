@@ -15,9 +15,12 @@ class GoogleAuthService {
         );
     }
 
-    getAuthUrl(tenantId) {
+    getAuthUrl(tenantId, userId = null) {
         const client = this.createOAuth2Client();
-        logger.info("Generating Google Auth URL", { tenantId });
+        logger.info("Generating Google Auth URL", { tenantId, userId });
+        const statePayload = userId
+            ? Buffer.from(JSON.stringify({ tenantId, userId })).toString('base64')
+            : tenantId;
         return client.generateAuthUrl({
             access_type: 'offline', // Critical for getting the refresh_token
             prompt: 'consent',
@@ -28,7 +31,7 @@ class GoogleAuthService {
                 'https://www.googleapis.com/auth/gmail.readonly', // Read messages, threads, labels, etc.
                 'https://www.googleapis.com/auth/gmail.send'      // Send messages on user's behalf
             ],
-            state: tenantId
+            state: statePayload
         });
     }
 
@@ -57,7 +60,15 @@ class GoogleAuthService {
         await userIdentityRepository.upsertIdentity(identityData);
 
         // 4. Initialize Gmail Pub/Sub push notification subscription
-        await gmailService.startWatch(userInfo.data.email, tenantId);
+        try {
+            await gmailService.startWatch(userInfo.data.email, tenantId);
+        } catch (watchError) {
+            logger.warn("Failed to initialize Gmail watch subscription (Pub/Sub might not be configured):", {
+                email: userInfo.data.email,
+                tenantId,
+                error: watchError.message
+            });
+        }
     }
 
     async revokeGoogleToken(token) {

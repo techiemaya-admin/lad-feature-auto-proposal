@@ -46,6 +46,15 @@ describe('GoogleAuthService', () => {
             expect(url).toContain('gmail.readonly');
             expect(url).toContain('gmail.send');
         });
+
+        it('encodes base64 state payload containing both tenantId and userId when userId is provided', () => {
+            const tenantId = 'tenant-abc-123';
+            const userId = 'user-xyz-456';
+            const url = googleAuthService.getAuthUrl(tenantId, userId);
+
+            const expectedState = Buffer.from(JSON.stringify({ tenantId, userId })).toString('base64');
+            expect(url).toContain(`state=${encodeURIComponent(expectedState)}`);
+        });
     });
 
     describe('handleGoogleCallback', () => {
@@ -98,6 +107,44 @@ describe('GoogleAuthService', () => {
             );
             expect(gmailService.startWatch).toHaveBeenCalledWith('user@example.com', 'tenant-789');
 
+            googleAuthService.createOAuth2Client.mockRestore();
+            google.oauth2.mockRestore();
+        });
+
+        it('still completes successfully if startWatch fails (Pub/Sub unconfigured in dev/demo)', async () => {
+            const mockGetToken = jest.fn().mockResolvedValue({
+                tokens: {
+                    access_token: 'mock-access-token',
+                    refresh_token: 'mock-refresh-token',
+                    expiry_date: Date.now() + 3600 * 1000
+                }
+            });
+            const mockSetCredentials = jest.fn();
+            const mockUserinfoGet = jest.fn().mockResolvedValue({
+                data: {
+                    email: 'user@example.com',
+                    id: 'google-user-123',
+                    name: 'Test User'
+                }
+            });
+
+            jest.spyOn(googleAuthService, 'createOAuth2Client').mockReturnValue({
+                getToken: mockGetToken,
+                setCredentials: mockSetCredentials
+            });
+
+            jest.spyOn(google, 'oauth2').mockReturnValue({
+                userinfo: {
+                    get: mockUserinfoGet
+                }
+            });
+
+            userIdentityRepository.upsertIdentity.mockResolvedValue({ id: 'identity-1' });
+            gmailService.startWatch.mockRejectedValue(new Error('User not authorized on topic'));
+
+            await expect(googleAuthService.handleGoogleCallback('code', 'user-1', 'tenant-1')).resolves.not.toThrow();
+
+            expect(userIdentityRepository.upsertIdentity).toHaveBeenCalled();
             googleAuthService.createOAuth2Client.mockRestore();
             google.oauth2.mockRestore();
         });

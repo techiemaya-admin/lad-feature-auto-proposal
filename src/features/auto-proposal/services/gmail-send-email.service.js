@@ -340,16 +340,15 @@ async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price
       const CRLF = "\r\n";
 
 
-      const cleanMessageId = global_message_id.startsWith('<')
-        ? global_message_id
-        : `<${global_message_id}>`;
+      const cleanMessageId = global_message_id
+        ? (global_message_id.startsWith('<') ? global_message_id : `<${global_message_id}>`)
+        : null;
 
       // Headers end with exactly ONE blank line
       const emailHeaders = [
         `To: ${data.lead_email}`,
         `Subject: ${finalSubject.startsWith('Re:') ? finalSubject : 'Re: ' + finalSubject}`,
-        `In-Reply-To: ${cleanMessageId}`,
-        `References: ${cleanMessageId}`,
+        ...(cleanMessageId ? [`In-Reply-To: ${cleanMessageId}`, `References: ${cleanMessageId}`] : []),
         "MIME-Version: 1.0",
         `Content-Type: multipart/mixed; boundary="${boundary}"`,
         "", // Mandatory blank line
