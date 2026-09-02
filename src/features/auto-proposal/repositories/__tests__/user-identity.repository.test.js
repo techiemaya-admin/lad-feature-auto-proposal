@@ -115,7 +115,8 @@ describe('UserIdentityRepository', () => {
 
       expect(db.query).toHaveBeenCalledTimes(1);
       const [sql, values] = db.query.mock.calls[0];
-      expect(sql).toContain('COALESCE(gw.tenant_id, u.primary_tenant_id) AS tenant_id');
+      expect(sql).toContain('gw.tenant_id');
+      expect(sql).not.toContain('u.primary_tenant_id');
       expect(sql).toContain('WHERE ui.provider = $1 AND LOWER(ui.provider_user_id) = LOWER($2)');
       expect(values).toEqual(['gmail', 'lead@example.com']);
       expect(result).toEqual({

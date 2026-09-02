@@ -62,9 +62,8 @@ class UserIdentityRepository {
       SELECT 
         ui.id AS user_identities_id,
         ui.user_id,
-        COALESCE(gw.tenant_id, u.primary_tenant_id) AS tenant_id
+        gw.tenant_id
       FROM user_identities ui
-      LEFT JOIN users u ON u.id = ui.user_id
       LEFT JOIN gmail_watch gw ON gw.user_identities_id = ui.id
       WHERE ui.provider = $1 AND LOWER(ui.provider_user_id) = LOWER($2)
       LIMIT 1;
