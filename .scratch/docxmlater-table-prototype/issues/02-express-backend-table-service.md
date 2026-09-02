@@ -4,16 +4,23 @@
 
 **Blocked by:** 01: Research and Verify docXMLater Table & Row Capabilities
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Express server running on port 5001 with CORS, JSON body parser, and Multer upload middleware.
-- [ ] In-memory session store mapping `docId` to active `Document` instances.
-- [ ] `POST /api/document/upload` accepts `.docx` file, initializes `docXMLater`, and returns discovered table metadata and `docId`.
-- [ ] `GET /api/document/:docId/tables/:tableIndex` returns table dimensions and full 2D string grid.
-- [ ] `POST /api/document/:docId/tables/search` finds and returns the index of the first table containing query text.
-- [ ] `POST /api/document/:docId/tables/:tableIndex/rows/search` finds and returns the index of the first row containing query text.
-- [ ] `POST /api/document/:docId/tables/:tableIndex/rows/add` inserts a blank row with matching column span below the target row (or at table end).
-- [ ] `DELETE /api/document/:docId/tables/:tableIndex/rows/:rowIndex` removes the specified row from the table.
-- [ ] `POST /api/document/:docId/tables/:tableIndex/rows/:rowIndex/clear` clears text across all cells in the specified row.
-- [ ] `POST /api/document/:docId/tables/:tableIndex/remove-empty-rows` removes all empty rows and returns the count of purged rows.
-- [ ] `GET /api/document/:docId/download` serializes the active `Document` back to a `.docx` buffer and streams it with appropriate MIME type headers.
+- [x] Express server running on port 5001 with CORS, JSON body parser, and Multer upload middleware.
+- [x] In-memory session store mapping `docId` to active `Document` instances.
+- [x] `POST /api/document/upload` accepts `.docx` file, initializes `docXMLater`, and returns discovered table metadata and `docId`.
+- [x] `GET /api/document/:docId/tables/:tableIndex` returns table dimensions and full 2D string grid.
+- [x] `POST /api/document/:docId/tables/search` finds and returns the index of the first table containing query text.
+- [x] `POST /api/document/:docId/tables/:tableIndex/rows/search` finds and returns the index of the first row containing query text.
+- [x] `POST /api/document/:docId/tables/:tableIndex/rows/add` inserts a blank row with matching column span below the target row (or at table end).
+- [x] `DELETE /api/document/:docId/tables/:tableIndex/rows/:rowIndex` removes the specified row from the table.
+- [x] `POST /api/document/:docId/tables/:tableIndex/rows/:rowIndex/clear` clears text across all cells in the specified row.
+- [x] `POST /api/document/:docId/tables/:tableIndex/remove-empty-rows` removes all empty rows and returns the count of purged rows.
+- [x] `GET /api/document/:docId/download` serializes the active `Document` back to a `.docx` buffer and streams it with appropriate MIME type headers.
+
+**Artifacts Produced:**
+- Backend Service: [prototypes/test-docXMLater/backend](../../prototypes/test-docXMLater/backend)
+  - Express Server & Routing: `src/server.ts`, `src/app.ts`, `src/routes/document.ts`
+  - In-Memory Document Session Store: `src/session.ts`
+  - Integration & Contract Test Suite: `src/tests/api.test.ts`
+
