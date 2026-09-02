@@ -136,4 +136,34 @@ describe('ProposalDraftService - approveProposal', () => {
       'Proposal not found or already approved'
     );
   });
+
+  it('scopes draft lookup and approval by tenantId when tenantId is provided', async () => {
+    const mockDraft = {
+      id: 'draft-scoped',
+      tenant_id: 'tenant-999',
+      lead_requirement_id: 'req-999',
+      gcs_storage_path: 'https://storage/doc.pdf',
+      file_name: 'doc.pdf',
+      final_price: 3500,
+    };
+    const mockLead = { id: 'lead-999', email: 'lead@scoped.com' };
+    const mockClient = { auth: true };
+
+    proposalRepo.findDraftById.mockResolvedValue(mockDraft);
+    leadRepo.findByLeadRequirementId.mockResolvedValue(mockLead);
+    proposalRepo.approveProposalDraft.mockResolvedValue(true);
+    attachmentRepo.create.mockResolvedValue({ id: 'att-scoped' });
+    gmailService.sendQuotationEmail.mockResolvedValue({ id: 'msg-scoped' });
+
+    const result = await proposalDraftService.approveProposal('draft-scoped', mockClient, 'tenant-999');
+
+    expect(proposalRepo.findDraftById).toHaveBeenCalledWith('draft-scoped', 'tenant-999');
+    expect(leadRepo.findByLeadRequirementId).toHaveBeenCalledWith('req-999', 'tenant-999');
+    expect(proposalRepo.approveProposalDraft).toHaveBeenCalledWith('draft-scoped', 'tenant-999');
+    expect(result).toEqual({
+      proposal_id: 'draft-scoped',
+      attachment_id: 'att-scoped',
+    });
+  });
 });
+

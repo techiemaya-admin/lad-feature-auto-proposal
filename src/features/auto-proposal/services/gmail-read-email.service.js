@@ -30,6 +30,22 @@ const proposalDraftItemsRepository = require("../repositories/proposal-draft-ite
 
 /* 1️⃣ Start Gmail Watch */
 async function startWatch(email, tenantId) {
+  // Pre-seed the watch record with tenant context so tenant mapping is preserved
+  // even if Google Pub/Sub watch registration fails (e.g. unconfigured in local dev)
+  const userIdentityId = await userIdentityRepository.findByProvider(
+    "gmail",
+    email
+  );
+
+  if (userIdentityId && tenantId) {
+    await gmailWatchService.initializeWatch({
+      tenant_id: tenantId,
+      user_identities_id: userIdentityId,
+      history_id: null,
+      expiration: null
+    });
+  }
+
   const oAuth2Client = await googleConfig.getGoogleClientForUser(email);
   const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
   // the gmail.users.watch() API is used to start Gmail Push Notifications so that Gmail automatically notifies your system when something changes in the mailbox.
@@ -44,13 +60,7 @@ async function startWatch(email, tenantId) {
   });
   logger.info("Watch subscription initialized", { email, tenantId, historyId: response.data.historyId });
 
-  // After setting up the watch, we should save the historyId and expiration time in our database so that we can use it later to fetch new emails and also to know when to renew the watch. Here we are using a hardcoded user identity for demonstration, but in a real application, you would associate this with the actual user who authenticated their Gmail account.
-  const userIdentityId = await userIdentityRepository.findByProvider(
-    "gmail",
-    email
-  );
-
-  // Save the watch details in the database (create or update)
+  // Update active watch details with historyId and expiration
   await gmailWatchService.initializeWatch({
     tenant_id: tenantId,
     user_identities_id: userIdentityId,
@@ -547,7 +557,7 @@ async function createLeadRequirementViaPrompt(body, leadData, tenant_id, convers
       console.log("Found existing proposal draft link:", lastMessageWithDraft.proposal_draft_id);
 
       // Fetch the service config IDs tied to that prior draft configuration
-      const oldItems = await proposalDraftItemsRepository.findItemsByMessageId(lastMessageWithDraft.proposal_draft_id);
+      const oldItems = await proposalDraftItemsRepository.findItemsByMessageId(lastMessageWithDraft.proposal_draft_id, tenant_id);
       const oldConfigIds = oldItems.map(item => item.requirement_config_id);
 
       // Filter out keys that the AI evaluated as active numbers (non-null and greater than 0)
@@ -565,7 +575,7 @@ async function createLeadRequirementViaPrompt(body, leadData, tenant_id, convers
         console.log("Services match exactly! Bypassing generation and returning original asset tracking URLs.");
 
         // Fetch the full original draft metadata records (which contain your existing GCS URL and historical message configurations)
-        const activeDraftDetails = await proposalDraftRepository.findById(lastMessageWithDraft.proposal_draft_id);
+        const activeDraftDetails = await proposalDraftRepository.findById(lastMessageWithDraft.proposal_draft_id, tenant_id);
 
         return {
           type: "EXISTING_PROPOSAL_MATCH",

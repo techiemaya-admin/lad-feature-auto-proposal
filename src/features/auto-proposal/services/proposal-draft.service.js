@@ -272,17 +272,27 @@ class ProposalDraftService {
     </html>
   `;
   }
-  async approveProposal(proposalId,oAuth2Client) {
+  async approveProposal(proposalId, oAuth2Client = null, tenantId = null) {
+    let client = oAuth2Client;
+    let resolvedTenantId = tenantId;
+    if (typeof oAuth2Client === 'string' && !tenantId) {
+      resolvedTenantId = oAuth2Client;
+      client = null;
+    }
 
     // 1️⃣ Get Draft
-    const proposal = await proposalRepo.findDraftById(proposalId);
+    const proposal = resolvedTenantId
+      ? await proposalRepo.findDraftById(proposalId, resolvedTenantId)
+      : await proposalRepo.findDraftById(proposalId);
+
     if (!proposal) {
       throw new Error("Proposal not found or already approved");
     }
 
-    // 2️⃣ Get Lead
+    // 2️⃣ Get Lead (scope to proposal.tenant_id)
     const lead = await leadRepo.findByLeadRequirementId(
-      proposal.lead_requirement_id
+      proposal.lead_requirement_id,
+      proposal.tenant_id
     );
 
     if (!lead) {
@@ -290,7 +300,11 @@ class ProposalDraftService {
     }
 
     // 3️⃣ Update Status
-    await proposalRepo.approveProposalDraft(proposalId);
+    if (resolvedTenantId) {
+      await proposalRepo.approveProposalDraft(proposalId, resolvedTenantId);
+    } else {
+      await proposalRepo.approveProposalDraft(proposalId);
+    }
 
     // 4️⃣ Create Attachment
     const attachment = await attachmentRepo.create({
@@ -309,7 +323,6 @@ class ProposalDraftService {
     });
 
     // 5️⃣ Send Email
-    let client = oAuth2Client;
     if (!client) {
       try {
         const tenant = await tenantRepo.findById(proposal.tenant_id);

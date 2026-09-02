@@ -1,26 +1,27 @@
-const gmailService = require("../services/gmail-send-email.service");
+const logger = require("../../../utils/logger");
 
 async function sendEmail(req, res) {
-  try {
-    const result = await gmailService.sendEmail();
-    res.json({ success: true, result });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  logger.warn("Attempt to access deprecated endpoint: /api/gmail/send-email", {
+    tenantId: req.tenantId,
+    ip: req.ip,
+  });
+  return res.status(410).json({
+    error: "Gone: /api/gmail/send-email has been deprecated. Proposal quotations are dispatched via /api/proposal-draft/approve/:id.",
+  });
 }
 
 async function readEmails(req, res) {
-  try {
-    const emails = await gmailService.readEmails();
-    res.json(emails);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
+  logger.warn("Attempt to access deprecated endpoint: /api/gmail/read-emails", {
+    tenantId: req.tenantId,
+    ip: req.ip,
+  });
+  return res.status(410).json({
+    error: "Gone: /api/gmail/read-emails has been deprecated. Inbound emails are processed asynchronously via Google Pub/Sub push webhook (/api/gmail/webhook).",
+  });
 }
 
 function webhook(req, res) {
-  const response = gmailService.handleWebhook(req.body);
-  res.status(200).json(response);
+  return res.status(200).json({ status: "ok" });
 }
 
 module.exports = {
