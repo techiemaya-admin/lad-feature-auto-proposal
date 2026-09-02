@@ -52,7 +52,7 @@ class UserIdentityRepository {
 
   /**
    * Resolves user identity, user ID, and tenant ID for incoming external webhooks.
-   * Prioritizes tenant_id from gmail_watch, falling back to users.primary_tenant_id.
+   * Scopes tenant context dynamically from active gmail_watch record.
    * @param {string} provider - Provider key (e.g. 'gmail')
    * @param {string} providerUserId - User provider identity (e.g. email address)
    * @returns {Promise<{ userIdentityId: string, userId: string, tenantId: string } | null>}

@@ -199,7 +199,7 @@ function extractGmailData(fullMessage) {
   const headers = fullMessage.data?.payload?.headers || [];
   const payload = fullMessage.data?.payload || {};
   const globalMsgId = headers.find(h => h.name?.toLowerCase() === 'message-id')?.value;
-  console.log("Global Message ID from headers:", globalMsgId);
+  logger.debug("Global Message ID from headers:", { globalMsgId });
 
   // 1. Extract "From"
   const fromHeader = headers.find(h => h.name?.toLowerCase() === 'from')?.value || "";
@@ -252,12 +252,12 @@ function extractGmailData(fullMessage) {
 async function processIncomingEmail(tenantId, fullMessage, lead_id, messageId) {
   const headers = fullMessage.data.payload.headers;
   if (isSystemGenerated(headers)) {
-    console.log("Dropping system notification/marketing email.");
+    logger.debug("Dropping system notification/marketing email.");
     return;
   }
   const emailData = extractGmailData(fullMessage);
 
-  console.log("Processing incoming email for tenant: {} , and emailData: {}", tenantId, emailData);
+  logger.debug("Processing incoming email:", { tenantId, emailData });
 
   // 2. Upsert the Conversation
   // This uses threadId to group messages into a single chat history
@@ -269,7 +269,7 @@ async function processIncomingEmail(tenantId, fullMessage, lead_id, messageId) {
     metadata: { subject: emailData.subject }
   });
 
-  console.log("Conversation upserted with ID:", conversation);
+  logger.debug("Conversation upserted with ID:", { conversationId: conversation?.id });
 
   // 3. Ensure the Lead is a Participant
   // You can check if they exist first, or write the repo to handle conflicts
@@ -293,7 +293,7 @@ async function processIncomingEmail(tenantId, fullMessage, lead_id, messageId) {
     message_id: messageId, // Save the Gmail message ID for reference
     global_message_id: emailData.globalMessageId // Save the Gmail global message ID for reference
   });
-  console.log("Message saved with conversation ID:", conversation.id);
+  logger.debug("Message saved with conversation ID:", { conversationId: conversation.id, messageId: message?.id });
   const result = {
     conversation_id: conversation.id,
     threadId: emailData.threadId,
@@ -334,7 +334,7 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
       startHistoryId: historyId || historyIdFromWebhook,
       historyTypes: ["messageAdded"],
     });
-    console.log("History response:", history.data);
+    logger.debug("History response:", { historyData: history.data });
     const messages = history.data.history || [];
 
     for (const record of messages) {
@@ -343,7 +343,7 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
           const messageId = msg.id;
           const existingMessage = await messageRepository.findByMessageId(messageId);
           if (existingMessage) {
-            console.log("Message with ID", messageId, "already exists in the database. Skipping.");
+            logger.debug("Message already exists in database, skipping:", { messageId });
             continue;
           }
 
@@ -357,8 +357,8 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
           const from = headers.find(h => h.name?.toLowerCase() === "from")?.value || "";
           const contact = parseContactInfo(from);
           const body = getEmailBody(fullMessage.data.payload);
-          console.log("subject: " + subject + " from : " + from + " contact: " + JSON.stringify(contact) + " body : " + body);
-          console.log("Checking if email is system generated...");
+          logger.debug("Email payload parsed:", { subject, from, contact });
+          logger.debug("Checking if email is system generated...");
           if (contact && contact.email != email) {
             const leadData = await triggerNewLeadAutomation(tenantId, userId, contact.firstName, contact.lastName, contact.email);
             if (!leadData?.id) {
@@ -369,16 +369,16 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
 
             const result = await processIncomingEmail(tenantId, fullMessage, leadData.id, messageId);
             if (!result) {
-              console.error("Failed to process incoming email for message ID:", messageId);
+              logger.error("Failed to process incoming email for message ID:", { messageId });
               continue;
             }
             const conversation_id = result.conversation_id;
             const threadId = result.threadId;
             const global_message_id = result.global_message_id;
-            console.log("Email saved to conversation with ID:", conversation_id);
+            logger.debug("Email saved to conversation:", { conversation_id });
             if (tenatDetails?.email !== from && conversation_id != null) {
               const resultToReturn = await createLeadRequirementViaPrompt(body, leadData, tenantId, conversation_id, global_message_id);
-              console.log("Result from createLeadRequirementViaPrompt:", resultToReturn);
+              logger.debug("Result from createLeadRequirementViaPrompt:", { type: resultToReturn?.type });
               const type = resultToReturn.type;
               const leadRequirementDetails = resultToReturn.leadRequirementDetails;
               const values = resultToReturn.values;
@@ -394,11 +394,11 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
                   oAuth2Client: oAuth2Client,
                   attachments: [{ filename: "Proposal.pdf", url: resultToReturn.proposalDetails.gcs_storage_path, type: "application/pdf" }], // Optional: handle if passed
                 });
-                console.log(`Sent AI-generated existing proposal email response to ${contact.email} with Gmail response:`, gmailResponse);
+                logger.info("Sent AI-generated existing proposal email response", { to: contact.email, messageId: gmailResponse?.data?.id });
                 const id = gmailResponse.data.id;
                 await conversationService.createConversationAndConversationMessages(tenantId, contact.email, reSendSubject, content, [], id, global_message_id);
               } else if (type === "DISCOVERY_EMAIL") {
-                console.log("The email was classified as a DISCOVERY_EMAIL. No lead requirement was created. AI's suggested email reply content:", content);
+                logger.info("Email classified as DISCOVERY_EMAIL; sending response", { to: contact.email });
                 const reSendSubject = subject.startsWith("Re:") ? subject : `Re: ${subject}`;
                 const gmailResponse = await gmailSendService.sendGmailRaw({
                   to: contact.email,
@@ -409,22 +409,20 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
                   oAuth2Client: oAuth2Client
                 });
                 const id = gmailResponse.data.id;
-                console.log(`Sent AI-generated discovery email response to ${contact.email} with Gmail response:`, gmailResponse);
+                logger.info("Sent AI-generated discovery email response", { to: contact.email, messageId: id });
                 await conversationService.createConversationAndConversationMessages(tenantId, contact.email, reSendSubject, content, [], id, global_message_id);
               } else if (type === "BUDGET_REQUEST" || type === "RETURNING_CLIENT_QUOTE") {
-                console.log("Lead requirement details:", leadRequirementDetails);
-                console.log("Saved requirement values:", values);
+                logger.debug("Lead requirement details resolved for draft:", { type, leadRequirementId: leadRequirementDetails?.id });
 
                 await createProposalDraft(leadRequirementDetails, leadData, body, conversation_id, global_message_id, threadId, subject, oAuth2Client, content);
               } else {
-                console.log("Lead requirement details:", leadRequirementDetails);
-                console.log("Saved requirement values:", values);
+                logger.debug("Creating default proposal draft for lead requirement:", { leadRequirementId: leadRequirementDetails?.id });
 
                 await createProposalDraft(leadRequirementDetails, leadData, body, conversation_id, global_message_id, threadId, subject, oAuth2Client);
                 // // process emails...
               }
             } else {
-              console.log("Email is from tenant's own email address, skipping lead creation and proposal drafting.");
+              logger.debug("Email is from tenant's own email address, skipping lead creation and proposal drafting.");
             }
           }
         }
@@ -537,24 +535,24 @@ async function triggerNewLeadAutomation(tenantId, userId, first_name, last_name,
 }
 
 async function createLeadRequirementViaPrompt(body, leadData, tenant_id, conversation_id, global_message_id) {
-  console.log(leadData.id)
+  const leadId = typeof leadData === 'object' ? leadData?.id : leadData;
+  logger.debug("Processing lead requirement prompt", { leadId, tenant_id });
   try {
-
-    console.log("Testing AI prompt :", body);
+    logger.debug("Testing AI prompt:", { prompt: body });
     // Extract newly requested service config keys from the active custom configurations
     const activeConfigs = await lead_requirement_configRepository.findByTenantAndActive(tenant_id);
 
     const response = await aiService.generateAIResponse(body, tenant_id, conversation_id, leadData, global_message_id, activeConfigs);
 
-    console.log("Generated AI response:", response);
+    logger.debug("Generated AI response:", { type: response?.type });
     if (response.type === "DISCOVERY_EMAIL") {
-      console.log("Received a general inquiry. No lead requirement will be created. AI's suggested email reply:", response.content);
+      logger.info("Received a general inquiry; returning discovery reply without creating requirement");
       return response;
     }
 
     const lastMessageWithDraft = response.lastMessageWithDraft;
     if (lastMessageWithDraft && lastMessageWithDraft.proposal_draft_id != null) {
-      console.log("Found existing proposal draft link:", lastMessageWithDraft.proposal_draft_id);
+      logger.debug("Found existing proposal draft link:", { proposalDraftId: lastMessageWithDraft.proposal_draft_id });
 
       // Fetch the service config IDs tied to that prior draft configuration
       const oldItems = await proposalDraftItemsRepository.findItemsByMessageId(lastMessageWithDraft.proposal_draft_id, tenant_id);
@@ -572,7 +570,7 @@ async function createLeadRequirementViaPrompt(body, leadData, tenant_id, convers
         oldSorted.every((val, index) => val === newSorted[index]);
 
       if (isSameServicesPattern) {
-        console.log("Services match exactly! Bypassing generation and returning original asset tracking URLs.");
+        logger.info("Services match exactly! Bypassing generation and returning original asset tracking URLs.");
 
         // Fetch the full original draft metadata records (which contain your existing GCS URL and historical message configurations)
         const activeDraftDetails = await proposalDraftRepository.findById(lastMessageWithDraft.proposal_draft_id, tenant_id);
@@ -585,19 +583,19 @@ async function createLeadRequirementViaPrompt(body, leadData, tenant_id, convers
         };
       }
 
-      console.log("New services detected in the quote request. Proceeding with new proposal configuration generation.");
+      logger.debug("New services detected in the quote request. Proceeding with new proposal configuration generation.");
     }
     const data = response.data;
-    data.lead_id = leadData.id;
+    data.lead_id = leadId;
     data.tenant_id = tenant_id;
     const leadRequirementDetails = await leadRequirementRepository.create(data);
-    console.log("Lead requirement created with :", leadRequirementDetails);
+    logger.debug("Lead requirement created successfully:", { leadRequirementDetailsId: leadRequirementDetails?.id });
 
     const results = await leadRequirementValueRepo.saveRequirementValues(tenant_id, leadRequirementDetails.id, data.dynamic_requirements);
     const resultToReturn = { type: response.type, leadRequirementDetails: leadRequirementDetails, values: results, content: response.data.text_reply }
     return resultToReturn;
   } catch (err) {
-    console.error("Error in createLeadRequirementViaPrompt:", err);
+    logger.error("Error in createLeadRequirementViaPrompt:", err);
     throw err;
   }
 }

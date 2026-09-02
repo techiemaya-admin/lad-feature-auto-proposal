@@ -95,6 +95,11 @@ class ProposalDraftItemsRepository {
     const result = await AppDataSource.query(sql, params);
     return Array.isArray(result) ? result : result.rows || [];
   }
+
+  // Clear domain-aligned alias for findItemsByMessageId
+  async findConfigIdsByProposalDraftId(proposalDraftId, tenantId = null) {
+    return this.findItemsByMessageId(proposalDraftId, tenantId);
+  }
 }
 
 module.exports = new ProposalDraftItemsRepository();

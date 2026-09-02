@@ -1,5 +1,5 @@
-//  Import service that talks to Gmail and processes messages
 const gmailService = require("../services/gmail-read-email.service");
+const leadRepo = require("../repositories/lead.repository");
 const logger = require('../../../utils/logger');
 
 async function startWatch(req, res) {
@@ -75,13 +75,46 @@ async function testprompt(req, res) {
       return res.status(400).json({ error: "Prompt is required in request body or query" });
     }
 
-    const leadData = {
-      id: req.leadId || req.body?.leadId || req.body?.leadData?.id || "7cb0954d-ba2c-4224-969c-a3fa353a68fd",
-      first_name: req.body?.first_name || req.body?.leadData?.first_name || "Test",
-      last_name: req.body?.last_name || req.body?.leadData?.last_name || "Lead",
-      email: req.body?.email || req.body?.leadData?.email || "test.lead@example.com",
-      phone: req.body?.phone || req.body?.leadData?.phone || "1234567890",
-    };
+    let leadData = null;
+    const explicitLeadId = req.leadId || req.body?.leadId || req.query?.leadId || req.body?.leadData?.id;
+
+    if (explicitLeadId) {
+      leadData = {
+        id: explicitLeadId,
+        first_name: req.body?.first_name || req.body?.leadData?.first_name || "Test",
+        last_name: req.body?.last_name || req.body?.leadData?.last_name || "Lead",
+        email: req.body?.email || req.body?.leadData?.email || "test.lead@example.com",
+        phone: req.body?.phone || req.body?.leadData?.phone || "1234567890",
+      };
+    } else {
+      // Dynamically resolve or create a test lead for this tenant in DB to guarantee foreign key validity
+      try {
+        const testEmail = req.body?.email || req.query?.email || req.body?.leadData?.email || "test.lead@example.com";
+        const created = await leadRepo.create({
+          tenant_id: tenantId,
+          first_name: req.body?.first_name || req.body?.leadData?.first_name || "Test",
+          last_name: req.body?.last_name || req.body?.leadData?.last_name || "Lead",
+          email: testEmail,
+          phone: req.body?.phone || req.body?.leadData?.phone || "1234567890",
+          source: "ai_test_prompt",
+        });
+        if (created && created.id) {
+          leadData = created;
+        }
+      } catch (err) {
+        logger.debug("Dynamic test lead creation fallback:", err.message);
+      }
+
+      if (!leadData) {
+        leadData = {
+          id: "7cb0954d-ba2c-4224-969c-a3fa353a68fd",
+          first_name: req.body?.first_name || req.body?.leadData?.first_name || "Test",
+          last_name: req.body?.last_name || req.body?.leadData?.last_name || "Lead",
+          email: req.body?.email || req.body?.leadData?.email || "test.lead@example.com",
+          phone: req.body?.phone || req.body?.leadData?.phone || "1234567890",
+        };
+      }
+    }
 
     logger.debug("Testing AI prompt in controller:", { prompt: body, tenantId, leadId: leadData.id });
     const { leadRequirementDetails, values } = await gmailService.createLeadRequirementViaPrompt(body, leadData.id, tenantId);
