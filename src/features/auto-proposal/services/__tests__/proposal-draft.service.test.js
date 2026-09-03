@@ -17,11 +17,13 @@ const attachmentRepo = require('../../repositories/lead-attachment.repository');
 const tenantRepo = require('../../repositories/tenant.repository');
 const gmailService = require('../gmail-send-email.service');
 const googleConfig = require('../../../../config/google.config');
+const userIdentityRepository = require('../../repositories/user-identity.repository');
 
 jest.mock('../../repositories/proposal-draft.repository');
 jest.mock('../../repositories/lead.repository');
 jest.mock('../../repositories/lead-attachment.repository');
 jest.mock('../../repositories/tenant.repository');
+jest.mock('../../repositories/user-identity.repository');
 jest.mock('../gmail-send-email.service');
 jest.mock('../../../../config/google.config');
 
@@ -163,6 +165,86 @@ describe('ProposalDraftService - approveProposal', () => {
     expect(result).toEqual({
       proposal_id: 'draft-scoped',
       attachment_id: 'att-scoped',
+    });
+  });
+
+  it('falls back to userIdentityRepository.findByTenantId when tenant email is missing', async () => {
+    const mockDraft = {
+      id: 'draft-fallback-1',
+      tenant_id: 'tenant-fb-1',
+      lead_requirement_id: 'req-fb-1',
+      quotation_template_metadata_id: 'tmpl-fb-1',
+      gcs_storage_path: 'https://storage/fb1.pdf',
+      file_name: 'fb1.pdf',
+      final_price: 1800,
+    };
+    const mockLead = { id: 'lead-fb-1', email: 'client@example.com' };
+    const mockIdentity = { provider_user_id: 'tenant-admin@gmail.com' };
+    const mockResolvedClient = { auth: 'via-identity' };
+
+    proposalRepo.findDraftById.mockResolvedValue(mockDraft);
+    leadRepo.findByLeadRequirementId.mockResolvedValue(mockLead);
+    proposalRepo.approveProposalDraft.mockResolvedValue(true);
+    attachmentRepo.create.mockResolvedValue({ id: 'att-fb-1' });
+    tenantRepo.findById.mockResolvedValue({ id: 'tenant-fb-1', email: null });
+    userIdentityRepository.findByTenantId.mockResolvedValue(mockIdentity);
+    googleConfig.getGoogleClientForUser.mockResolvedValue(mockResolvedClient);
+    gmailService.sendQuotationEmail.mockResolvedValue({ id: 'msg-fb-1' });
+
+    const result = await proposalDraftService.approveProposal('draft-fallback-1');
+
+    expect(userIdentityRepository.findByTenantId).toHaveBeenCalledWith('tenant-fb-1', 'gmail');
+    expect(googleConfig.getGoogleClientForUser).toHaveBeenCalledWith('tenant-admin@gmail.com');
+    expect(gmailService.sendQuotationEmail).toHaveBeenCalledWith(
+      'client@example.com',
+      'https://storage/fb1.pdf',
+      1800,
+      mockResolvedClient
+    );
+    expect(result).toEqual({
+      proposal_id: 'draft-fallback-1',
+      attachment_id: 'att-fb-1',
+    });
+  });
+
+  it('falls back to userIdentityRepository.findByTenantId when tenant email lookup fails', async () => {
+    const mockDraft = {
+      id: 'draft-fallback-2',
+      tenant_id: 'tenant-fb-2',
+      lead_requirement_id: 'req-fb-2',
+      quotation_template_metadata_id: 'tmpl-fb-2',
+      gcs_storage_path: 'https://storage/fb2.pdf',
+      file_name: 'fb2.pdf',
+      final_price: 2500,
+    };
+    const mockLead = { id: 'lead-fb-2', email: 'client2@example.com' };
+    const mockIdentity = { provider_user_id: 'backup@gmail.com' };
+    const mockResolvedClient = { auth: 'via-backup' };
+
+    proposalRepo.findDraftById.mockResolvedValue(mockDraft);
+    leadRepo.findByLeadRequirementId.mockResolvedValue(mockLead);
+    proposalRepo.approveProposalDraft.mockResolvedValue(true);
+    attachmentRepo.create.mockResolvedValue({ id: 'att-fb-2' });
+    tenantRepo.findById.mockResolvedValue({ id: 'tenant-fb-2', email: 'broken@tenant.com' });
+    googleConfig.getGoogleClientForUser
+      .mockRejectedValueOnce(new Error('No token for broken@tenant.com'))
+      .mockResolvedValueOnce(mockResolvedClient);
+    userIdentityRepository.findByTenantId.mockResolvedValue(mockIdentity);
+    gmailService.sendQuotationEmail.mockResolvedValue({ id: 'msg-fb-2' });
+
+    const result = await proposalDraftService.approveProposal('draft-fallback-2');
+
+    expect(userIdentityRepository.findByTenantId).toHaveBeenCalledWith('tenant-fb-2', 'gmail');
+    expect(googleConfig.getGoogleClientForUser).toHaveBeenLastCalledWith('backup@gmail.com');
+    expect(gmailService.sendQuotationEmail).toHaveBeenCalledWith(
+      'client2@example.com',
+      'https://storage/fb2.pdf',
+      2500,
+      mockResolvedClient
+    );
+    expect(result).toEqual({
+      proposal_id: 'draft-fallback-2',
+      attachment_id: 'att-fb-2',
     });
   });
 });

@@ -135,5 +135,49 @@ describe('UserIdentityRepository', () => {
       expect(result).toBeNull();
     });
   });
+
+  describe('findByTenantId', () => {
+    it('returns identity record joined with gmail_watch for given tenant_id and provider', async () => {
+      const mockIdentity = {
+        id: 'ident-1',
+        user_id: 'user-1',
+        provider: 'gmail',
+        provider_user_id: 'user@tenant.com'
+      };
+      db.query.mockResolvedValue([mockIdentity]);
+
+      const result = await userIdentityRepository.findByTenantId('tenant-123', 'gmail');
+
+      expect(db.query).toHaveBeenCalledTimes(1);
+      const [sql, values] = db.query.mock.calls[0];
+      expect(sql).toContain('JOIN gmail_watch gw ON gw.user_identities_id = ui.id');
+      expect(sql).toContain('WHERE gw.tenant_id = $1 AND ui.provider = $2');
+      expect(values).toEqual(['tenant-123', 'gmail']);
+      expect(result).toEqual(mockIdentity);
+    });
+
+    it('defaults provider to gmail if not specified', async () => {
+      db.query.mockResolvedValue([]);
+
+      await userIdentityRepository.findByTenantId('tenant-123');
+
+      const [, values] = db.query.mock.calls[0];
+      expect(values).toEqual(['tenant-123', 'gmail']);
+    });
+
+    it('returns null if tenantId is falsy without querying database', async () => {
+      const result = await userIdentityRepository.findByTenantId(null);
+      expect(db.query).not.toHaveBeenCalled();
+      expect(result).toBeNull();
+    });
+
+    it('returns null when query returns empty array', async () => {
+      db.query.mockResolvedValue([]);
+
+      const result = await userIdentityRepository.findByTenantId('tenant-999');
+
+      expect(result).toBeNull();
+    });
+  });
 });
 

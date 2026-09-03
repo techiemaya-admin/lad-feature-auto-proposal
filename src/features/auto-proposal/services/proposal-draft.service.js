@@ -3,6 +3,7 @@ const proposalRepo = require("../repositories/proposal-draft.repository");
 const leadRepo = require("../repositories/lead.repository");
 const attachmentRepo = require("../repositories/lead-attachment.repository");
 const tenantRepo = require("../repositories/tenant.repository");
+const userIdentityRepository = require("../repositories/user-identity.repository");
 const gmailService = require("./gmail-send-email.service");
 const googleConfig = require("../../../config/google.config");
 const logger = require("../../../utils/logger");
@@ -327,7 +328,18 @@ class ProposalDraftService {
       try {
         const tenant = await tenantRepo.findById(proposal.tenant_id);
         if (tenant?.email) {
-          client = await googleConfig.getGoogleClientForUser(tenant.email);
+          try {
+            client = await googleConfig.getGoogleClientForUser(tenant.email);
+          } catch (tenantEmailErr) {
+            logger.debug(`Could not resolve OAuth client via tenant email: ${tenantEmailErr.message}`);
+          }
+        }
+
+        if (!client) {
+          const identity = await userIdentityRepository.findByTenantId(proposal.tenant_id, "gmail");
+          if (identity?.provider_user_id) {
+            client = await googleConfig.getGoogleClientForUser(identity.provider_user_id);
+          }
         }
       } catch (err) {
         logger.warn(`Could not resolve OAuth client for proposal ${proposalId}: ${err.message}`);

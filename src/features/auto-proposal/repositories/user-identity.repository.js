@@ -100,6 +100,21 @@ class UserIdentityRepository {
 
 
 
+  async findByTenantId(tenantId, provider = 'gmail') {
+    if (!tenantId) return null;
+    const sql = `
+      SELECT ui.*
+      FROM user_identities ui
+      JOIN gmail_watch gw ON gw.user_identities_id = ui.id
+      WHERE gw.tenant_id = $1 AND ui.provider = $2
+      ORDER BY gw.updated_at DESC
+      LIMIT 1;
+    `;
+    const values = [tenantId, provider];
+    const result = await AppDataSource.query(sql, values);
+    return result.length > 0 ? result[0] : null;
+  }
+
   async findByUserIdAndProvider(userId, provider) {
     const sql = `
       SELECT *
