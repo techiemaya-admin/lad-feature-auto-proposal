@@ -347,7 +347,11 @@ class ProposalDraftService {
     }
 
     if (client) {
-      await gmailService.sendQuotationEmail(lead.email, proposal.gcs_storage_path, proposal.final_price, client);
+      try {
+        await gmailService.sendQuotationEmail(lead.email, proposal.gcs_storage_path, proposal.final_price, client);
+      } catch (sendErr) {
+        logger.error(`Failed to dispatch quotation email upon approval for proposal ${proposalId}:`, sendErr.message);
+      }
     } else {
       logger.warn(`Quotation email skipped upon approval: No OAuth2 client available for proposal ${proposalId}`);
     }

@@ -247,5 +247,71 @@ describe('ProposalDraftService - approveProposal', () => {
       attachment_id: 'att-fb-2',
     });
   });
+
+  it('completes approval successfully even if gmailService.sendQuotationEmail fails', async () => {
+    const mockDraft = {
+      id: 'draft-resilient-1',
+      tenant_id: 'tenant-res-1',
+      lead_requirement_id: 'req-res-1',
+      quotation_template_metadata_id: 'tmpl-res-1',
+      gcs_storage_path: 'https://storage/res1.pdf',
+      file_name: 'res1.pdf',
+      final_price: 3000,
+    };
+    const mockLead = { id: 'lead-res-1', email: 'client@resilient.com' };
+    const mockClient = { auth: 'valid-client' };
+
+    proposalRepo.findDraftById.mockResolvedValue(mockDraft);
+    leadRepo.findByLeadRequirementId.mockResolvedValue(mockLead);
+    proposalRepo.approveProposalDraft.mockResolvedValue(true);
+    attachmentRepo.create.mockResolvedValue({ id: 'att-res-1' });
+    gmailService.sendQuotationEmail.mockRejectedValue(new Error('Gmail API rate limit exceeded'));
+
+    const result = await proposalDraftService.approveProposal('draft-resilient-1', mockClient);
+
+    expect(proposalRepo.approveProposalDraft).toHaveBeenCalledWith('draft-resilient-1');
+    expect(attachmentRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenant_id: 'tenant-res-1',
+        lead_id: 'lead-res-1',
+        file_url: 'https://storage/res1.pdf',
+      })
+    );
+    expect(gmailService.sendQuotationEmail).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({
+      proposal_id: 'draft-resilient-1',
+      attachment_id: 'att-res-1',
+    });
+  });
+
+  it('completes approval successfully and skips email when no OAuth client can be resolved', async () => {
+    const mockDraft = {
+      id: 'draft-no-oauth',
+      tenant_id: 'tenant-no-oauth',
+      lead_requirement_id: 'req-no-oauth',
+      quotation_template_metadata_id: 'tmpl-no-oauth',
+      gcs_storage_path: 'https://storage/no-oauth.pdf',
+      file_name: 'no-oauth.pdf',
+      final_price: 1200,
+    };
+    const mockLead = { id: 'lead-no-oauth', email: 'client@no-oauth.com' };
+
+    proposalRepo.findDraftById.mockResolvedValue(mockDraft);
+    leadRepo.findByLeadRequirementId.mockResolvedValue(mockLead);
+    proposalRepo.approveProposalDraft.mockResolvedValue(true);
+    attachmentRepo.create.mockResolvedValue({ id: 'att-no-oauth' });
+    tenantRepo.findById.mockResolvedValue(null);
+    userIdentityRepository.findByTenantId.mockResolvedValue(null);
+
+    const result = await proposalDraftService.approveProposal('draft-no-oauth');
+
+    expect(proposalRepo.approveProposalDraft).toHaveBeenCalledWith('draft-no-oauth');
+    expect(gmailService.sendQuotationEmail).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      proposal_id: 'draft-no-oauth',
+      attachment_id: 'att-no-oauth',
+    });
+  });
 });
+
 

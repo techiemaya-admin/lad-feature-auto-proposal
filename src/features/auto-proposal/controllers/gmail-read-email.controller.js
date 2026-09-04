@@ -46,11 +46,13 @@ async function webhook(req, res) {
     // Log the historyId for debugging
     logger.debug("History ID:", historyId);
 
-    // Call the service function to fetch new email details from Gmail API using the email address and historyId. The service function will use the Gmail API to fetch the new email details based on the historyId and process it accordingly (e.g. save to DB, trigger AI processing, lead requirement cretaed, calculated price, create quatotion, send to gcs,then create proposal draft .)
-    await gmailService.fetchNewEmails(data.emailAddress, historyId);
-
-    // Return a 200 response to acknowledge successful processing of the webhook. Google expects a 200 response to consider the webhook successful. We can also include a message in the response body for debugging purposes.
+    // Acknowledge webhook immediately so Pub/Sub does not timeout and retry
     res.status(200).send("Processed");
+    setImmediate(() => {
+      gmailService.fetchNewEmails(data.emailAddress, historyId).catch((err) => {
+        logger.error("Error in background email processing:", err);
+      });
+    });
 
     // If there is any error during processing, catch it and log the error for debugging. We can return a 200 response with an error message in the body to acknowledge the webhook but indicate that there was an error during processing. This way, Google will not retry the webhook since we are returning a 200 status, but we can still log and monitor the errors in our system.
   } catch (err) {

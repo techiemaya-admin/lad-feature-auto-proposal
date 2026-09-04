@@ -98,35 +98,64 @@ async function createProposalDraft(leadRequirementDetails, leadData, email_conte
     logger.debug("tenantDetails : " + JSON.stringify(tenantDetails));
     logger.debug("lead data : " + JSON.stringify(leadData));
     logger.debug("tenant profile details : " + JSON.stringify(tenantProfileDetails));
-    const items = calculatedPriceDetails.breakdown.map(item => ({
-      qty: item.count,
-      description: item.label,
-      unit_price: item.base_unit_price,
-      line_total: item.price
-    }));
+    const items = calculatedPriceDetails.breakdown.map(item => {
+      const grossTotal = (item.count != null && item.base_unit_price != null)
+        ? (Number(item.count) * Number(item.base_unit_price))
+        : (item.price || 0);
+
+      return {
+        item_name: item.label || item.key,
+        item_description: item.label || '',
+        item_quantity: item.count || 1,
+        item_price: item.base_unit_price || 0,
+        item_total: grossTotal,
+        currency: "INR",
+        qty: item.count || 1,
+        description: item.label || '',
+        unit_price: item.base_unit_price || 0,
+        line_total: grossTotal
+      };
+    });
+
+    const quotationDate = new Date().toLocaleDateString('en-GB');
+    const validTill = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB');
+    const quotationId = `QT-${Date.now().toString().slice(-6)}`;
+
     const placeholderBuilderForEmail = new PlaceHolderBuilder()
       .setBulk({
-        lead_name: leadData.first_name + " " + leadData.last_name,
+        lead_name: ((leadData.first_name || '') + " " + (leadData.last_name || '')).trim(),
         lead_email: leadData.email || '',
+        lead_phone: leadData.phone || '',
+        lead_company: leadData.company_name || '',
+        lead_address: leadData.address || '',
         company_name: tenantDetails.name || '',
-        company_email: tenantProfileDetails.official_email || '',
-        company_phone: tenantDetails.phone,
-        company_website: tenantDetails.website || '',
+        company_email: tenantProfileDetails.official_email || tenantDetails.email || '',
+        company_phone: tenantProfileDetails.phone_number || tenantDetails.phone || '',
+        company_website: tenantProfileDetails.website_url || tenantDetails.website || '',
+        company_address: tenantProfileDetails.address || '',
         company_logo: tenantProfileDetails.company_logo_url || '',
         company_tagline: tenantProfileDetails.tagline || '',
         instagram_url: tenantProfileDetails.instagram_url || '',
         linkedin_url: tenantProfileDetails.linkedin_url || '',
         whatsapp_url: tenantProfileDetails.whatsapp_url || '',
+        facebook_url: tenantProfileDetails.facebook_url || '',
+        quotation_id: quotationId,
+        quotation_date: quotationDate,
+        valid_till: validTill,
+        currency: "INR",
         total_base_price: calculatedPriceDetails.total_base_price,
         total_discount: calculatedPriceDetails.total_concept_discount,
         total_surcharge: calculatedPriceDetails.total_concept_surcharge,
         final_price: calculatedPriceDetails.final_price,
         items: items,
-        date: Date.now(),
-        event_category: leadRequirementDetails.event_category,
+        date: quotationDate,
+        event_category: leadRequirementDetails.event_category || '',
         services_given: services_given,
         discount_percentage: ' (' + calculatedPriceDetails.total_discount_percentage + '%)',
         surcharge_percentage: ' (' + calculatedPriceDetails.total_surcharge_percentage + '%)',
+        notes: 'Thank you for your business. We look forward to working with you.',
+        terms_conditions: 'Validity: 7 days. All services subject to contract and availability.',
+        prepared_by: tenantDetails.name || 'Sales Team'
       })
       .build();
     const prosalPathDetails = await aiService.generateProposalFromTemplate(placeholderBuilderForEmail, leadRequirementDetails.tenant_id);
