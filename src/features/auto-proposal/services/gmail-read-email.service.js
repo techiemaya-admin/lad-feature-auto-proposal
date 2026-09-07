@@ -345,24 +345,71 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
   const tenatDetails = await tenatDetailsRepo.findById(tenantId);
 
   if (userIdentityId != null) {
-    const historyId = await gmailWatchService.getLastHistoryId(userIdentityId, tenantId);
+    let historyId = await gmailWatchService.getLastHistoryId(userIdentityId, tenantId);
     logger.debug("Last history ID lookup", { userIdentityId, historyId });
-    if (!historyId) {
-      logger.debug("No history ID found for userIdentityId; initializing watch record");
-      await gmailWatchRepository.create({
+
+    if (!historyId && historyIdFromWebhook) {
+      logger.debug("No history ID found in DB, updating watch record with webhook history ID", { historyIdFromWebhook });
+      await gmailWatchService.initializeWatch({
         tenant_id: tenantId,
         user_identities_id: userIdentityId,
         history_id: historyIdFromWebhook
       });
+      historyId = historyIdFromWebhook;
     }
+
     const oAuth2Client = await googleConfig.getGoogleClientForUser(email);
     const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
 
-    const history = await gmail.users.history.list({
-      userId: "me",
-      startHistoryId: historyId || historyIdFromWebhook,
-      historyTypes: ["messageAdded"],
-    });
+    let startHistoryId = historyId || historyIdFromWebhook;
+
+    if (!startHistoryId) {
+      logger.warn("No startHistoryId found in DB or webhook; attempting to sync current mailbox historyId", { email });
+      try {
+        const profile = await gmail.users.getProfile({ userId: "me" });
+        if (profile?.data?.historyId) {
+          startHistoryId = profile.data.historyId;
+          await gmailWatchService.initializeWatch({
+            tenant_id: tenantId,
+            user_identities_id: userIdentityId,
+            history_id: startHistoryId
+          });
+          logger.info("Initialized watch record with baseline mailbox historyId", { startHistoryId });
+        }
+      } catch (profileErr) {
+        logger.warn("Unable to fetch current Gmail profile historyId", { error: profileErr.message });
+      }
+
+      if (!startHistoryId) {
+        logger.warn("Cannot query Gmail history without a valid startHistoryId; skipping history processing", { email });
+        return;
+      }
+    }
+
+    let history;
+    try {
+      history = await gmail.users.history.list({
+        userId: "me",
+        startHistoryId,
+        historyTypes: ["messageAdded"],
+      });
+    } catch (historyErr) {
+      logger.warn("Failed to fetch Gmail history with startHistoryId; attempting to reset baseline", {
+        startHistoryId,
+        error: historyErr.message,
+      });
+      try {
+        const profile = await gmail.users.getProfile({ userId: "me" });
+        if (profile?.data?.historyId) {
+          await gmailWatchService.updateHistoryId(userIdentityId, profile.data.historyId, tenantId);
+          logger.info("Reset watch record to current mailbox historyId", { historyId: profile.data.historyId });
+        }
+      } catch (profileErr) {
+        logger.error("Failed to reset baseline historyId from Gmail profile", { error: profileErr.message });
+      }
+      return;
+    }
+
     logger.debug("History response:", { historyData: history.data });
     const messages = history.data.history || [];
 

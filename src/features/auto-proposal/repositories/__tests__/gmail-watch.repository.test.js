@@ -34,6 +34,19 @@ describe('GmailWatchRepository', () => {
       ]);
       expect(result).toEqual({ id: 'watch-1', tenant_id: 'tenant-100' });
     });
+
+    it('includes ON CONFLICT clause for idempotency and duplicate key prevention', async () => {
+      db.query.mockResolvedValue([{ id: 'watch-1', tenant_id: 'tenant-100' }]);
+
+      await gmailWatchRepository.create({
+        tenant_id: 'tenant-100',
+        user_identities_id: 'identity-200',
+        history_id: 'hist-300'
+      });
+
+      const [sql] = db.query.mock.calls[0];
+      expect(sql).toContain('ON CONFLICT (user_identities_id) DO UPDATE');
+    });
   });
 
   describe('findByUserIdentity', () => {
