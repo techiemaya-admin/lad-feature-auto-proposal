@@ -1,0 +1,184 @@
+{
+  "dataset_meta": {
+    "purpose": "Synthetic onboarding profiles for testing the auto-proposal rule engine and document generator. All companies, contacts, and figures are fictional.",
+    "note_on_asymmetry": "Fields are intentionally uneven in depth/completeness, reflecting real onboarding forms filled out under time pressure by different people."
+  },
+  "companies": [
+    {
+      "company_id": "co1_seo",
+      "company_basics": {
+        "company_name": "Northstar Digital",
+        "location": "Austin, TX",
+        "timings": "Mon–Fri, 9:00 AM – 6:00 PM CT",
+        "email": "hello@northstardigital.io",
+        "website": "www.northstardigital.io",
+        "phone": "(512) 555-0148"
+      },
+      "company_details": {
+        "industry": "Digital Marketing / SEO Agency",
+        "value_proposition": "We get local and multi-location service businesses found on Google before their competitors — without the agency jargon.",
+        "products_and_services": [
+          "Local SEO (Google Business Profile, citations, review strategy)",
+          "On-page & technical SEO",
+          "Content writing & blog strategy",
+          "Monthly performance reporting",
+          "Light social media posting (add-on for Growth+ tiers)"
+        ],
+        "target_customers": "Local and regional service businesses (dental, legal, home services, multi-location retail) with 1–10 physical locations who rank poorly against competitors on Google."
+      },
+      "ideal_customer": {
+        "description": "An owner-operator or ops manager at a 1–10 location service business who knows they're invisible on Google but has no in-house marketing person to fix it.",
+        "pain_points": "Not showing up in Google Maps/local pack. Competitors outranking them despite being a worse business. No time to manage this in-house."
+      },
+      "offer": {
+        "buyer_segments": [
+          "Single-location owner-operators (dental, legal, home services)",
+          "Multi-location regional chains (2–10 locations)",
+          "Franchise groups needing consistent local presence across locations"
+        ],
+        "cost_of_doing_nothing": "Every month without ranking, competitors who ARE investing in local SEO capture the searches you're missing — and those are compounding losses, not one-time ones, since rankings take 3-6 months to build once you start.",
+        "discovery_questions": [
+          "How many locations do you currently have, and are you planning to open more in the next 12 months?",
+          "Where do you currently rank for your top 3-5 target search terms?",
+          "Have you worked with an SEO agency before — what worked or didn't?",
+          "What does a new customer/patient/client acquisition mean in dollar terms for you?"
+        ],
+        "what_happens_after_they_sign": "Kickoff call within 3 business days → Google Business Profile + site audit (week 1) → keyword & competitor strategy delivered (week 2) → execution begins, first monthly report at day 30.",
+        "evidenced_results": "Multi-location dental client went from page 3 to top-3 local pack rankings in 4 of 6 target cities within 5 months.",
+        "who_is_not_a_good_fit": [
+          "Businesses expecting first-page rankings within 30 days",
+          "Businesses unwilling to publish any new content or get on a monthly call",
+          "National e-commerce brands with no physical/local service area (different channel mix needed)"
+        ],
+        "common_objections": [
+          { "objection": "SEO takes too long, we need leads now.", "response": "That's why most clients pair Growth+ with paid ads short-term while SEO compounds in the background — SEO is the channel that gets cheaper over time, not more expensive." },
+          { "objection": "We tried SEO before and it didn't work.", "response": "In our audits, that's almost always inconsistent execution, not a channel problem — we show you the audit findings before you sign so there's no guessing." },
+          { "objection": "Can't we just do this ourselves?", "response": "You can — most clients that come to us already tried and found it's a full-time job on top of their full-time job." }
+        ],
+        "why_buyers_pick_you": "Plain-language monthly reporting (no vanity metrics), a dedicated strategist per account instead of a call-center account manager, and transparent tiered pricing with no long-term lock-in.",
+        "guarantee_risk_reversal": "Month-to-month after the initial 3-month minimum — no annual lock-in required (though annual prepay gets a discount). If you don't see ranking movement on agreed keywords by month 4, we do a free strategy reset call."
+      },
+      "pricing_engine_spec": {
+        "pricing_context": "We have 3 packages. Local is $1000/mo, for one location - GBP cleanup, on page stuff, one blog post a month. Growth is $3000/mo, up to 3 locations, more content (4 posts/mo), citations. Authority is $8000/mo, unlimited locations, dedicated strategist, weekly content - mostly our franchise clients end up here. For Austin/Texas clients we add sales tax, around 8.25%, bookkeeper has the exact number. Also do 10% off if someone pays annually upfront instead of monthly, always forget to put that down but we do offer it."
+      }
+    },
+    {
+      "company_id": "co2_msp",
+      "company_basics": {
+        "company_name": "Fortress IT Group",
+        "location": "Columbus, OH",
+        "timings": "Mon–Fri, 7:00 AM – 7:00 PM ET (24/7 emergency line for Premium clients)",
+        "email": "sales@fortressitgroup.com",
+        "website": "www.fortressitgroup.com",
+        "phone": "(614) 555-0193"
+      },
+      "company_details": {
+        "industry": "IT Managed Service Provider (MSP)",
+        "value_proposition": "Flat-rate, predictable IT support for 10-250 employee businesses that can't afford downtime and don't have an internal IT department.",
+        "products_and_services": [
+          "Managed helpdesk & endpoint support",
+          "Network & server monitoring",
+          "Patch management & security updates",
+          "Managed backup & disaster recovery",
+          "Cybersecurity baseline (MFA, endpoint protection, phishing training)",
+          "vCIO / quarterly IT roadmap reviews (Premium tier)"
+        ],
+        "target_customers": "Professional services firms (law, accounting, healthcare admin), and small manufacturers/distributors with 10-250 employees and no in-house IT team."
+      },
+      "ideal_customer": {
+        "description": "Office manager, COO, or managing partner at a 10-250 employee professional services or light-industrial business who currently either has no IT support or relies on a single overloaded 'IT guy'.",
+        "pain_points": "Recurring downtime and slow ticket response from current provider or internal IT. No real backup/disaster recovery plan. Compliance pressure (HIPAA, client data) with no documented security baseline. Unpredictable IT spend — surprise invoices for 'emergency' work."
+      },
+      "offer": {
+        "buyer_segments": [
+          "Law firms & professional services (10-75 seats)",
+          "Healthcare admin / medical practice back-office (compliance-sensitive)",
+          "Light manufacturing & distribution (device-heavy environments)"
+        ],
+        "cost_of_doing_nothing": "The average unplanned outage for a firm this size costs more in a single afternoon of lost billable/production time than a year of managed support — and that's before counting a real breach or ransomware event, where the cost is existential, not incremental.",
+        "discovery_questions": [
+          "How many total employees need IT support, and across how many office locations?",
+          "What's your current setup — internal IT, a solo contractor, or nothing formal?",
+          "Do you have any compliance requirements (HIPAA, client data handling, cyber insurance requirements)?",
+          "Roughly how many servers, and any specialty/shared devices beyond one computer per employee?",
+          "Have you had a security incident or major outage in the last 12 months?"
+        ],
+        "what_happens_after_they_sign": "Signed agreement triggers a network & security assessment within 5 business days, onboarding of all devices into our monitoring stack over week 1-2, staff introduced to the helpdesk portal, and a 30-day check-in call to confirm SLA response times are being met.",
+        "evidenced_results": "Reduced average ticket resolution time from 14 hours to under 2 hours for a 60-seat accounting firm client after onboarding; zero unplanned data-loss incidents across current client base since 2022 (internal tracking, not third-party audited).",
+        "who_is_not_a_good_fit": [
+          "Businesses under 10 employees (better served by a lighter break-fix arrangement, not full managed services)",
+          "Businesses wanting only occasional break-fix support with no ongoing monitoring relationship",
+          "Businesses unwilling to standardize on our security baseline (non-negotiable for liability reasons)"
+        ],
+        "common_objections": [
+          { "objection": "Our current guy is cheaper.", "response": "A single contractor is cheaper until they're on vacation during an outage — you're not just buying hours, you're buying coverage and a documented process." },
+          { "objection": "We don't have the budget for full managed services.", "response": "The Essential tier is built for exactly this — most clients starting there upgrade to Standard within a year as headcount grows." },
+          { "objection": "Switching providers sounds disruptive.", "response": "Migration happens in the first two weeks with zero end-user downtime in the vast majority of onboardings — we've done this dozens of times." }
+        ],
+        "why_buyers_pick_you": "Transparent per-seat pricing with no surprise invoices, documented SLA response times by tier, and a named account engineer instead of a rotating help-desk queue.",
+        "guarantee_risk_reversal": "90-day satisfaction guarantee — if you're not satisfied in the first 90 days, we'll refund the difference between what you paid and a prorated month-to-month rate, no long-term contract penalty."
+      },
+      "pricing_engine_spec": {
+        "pricing_context": "Pricing is per seat per month based on support tier. Essential $45/seat/mo - basic helpdesk, patching, monitoring, business hours only. Standard $65/seat/mo - faster SLA, backup management, after hours emergency line. Premium $85/seat/mo - vCIO quarterly review, 24/7 support, priority response under 1hr. Once a client crosses 25 total seats it's $5/seat off whatever tier rate, and past 50 seats it's $10/seat off instead (not stacked, just whichever band they're in). Devices beyond a 1:1 ratio with seats - servers, shared workstations, kiosks - billed separately at $12/device/mo regardless of tier. One time onboarding fee of $75 per seat. 10 seat minimum commit (billed for 10 even if fewer, though we don't really take on anyone smaller than that anyway). Tax is flat 6% Ohio rate for home state clients, applied to the recurring monthly total, not the setup fee."
+      }
+    },
+    {
+      "company_id": "co3_dev",
+      "company_basics": {
+        "company_name": "Fieldstone Studio",
+        "location": "Remote (US-based, EST hours)",
+        "timings": "Mon–Fri, 10:00 AM – 6:00 PM ET",
+        "email": "studio@fieldstonestudio.com",
+        "website": "www.fieldstonestudio.com",
+        "phone": null
+      },
+      "company_details": {
+        "industry": "Web / Software Development Agency",
+        "value_proposition": "Fixed-price, fixed-timeline websites and e-commerce builds for small businesses who are tired of open-ended dev quotes.",
+        "products_and_services": [
+          "Landing pages",
+          "Business/marketing websites",
+          "E-commerce builds (Shopify & custom)",
+          "Custom web application development",
+          "Ongoing hosting & maintenance retainers (post-launch, sold separately)"
+        ],
+        "target_customers": "Small business owners and startups needing a new website or e-commerce store, generally 1-3 projects/year buyers, not enterprise procurement."
+      },
+      "ideal_customer": {
+        "description": "A small business owner or solo founder who needs a professional website/store live within weeks, not months, and wants one clear price instead of an hourly estimate that could run anywhere.",
+        "pain_points": "Got burned by an open-ended freelancer quote before. Doesn't know what a website 'should' cost. Needs it live before a specific date (launch, season, event)."
+      },
+      "offer": {
+        "buyer_segments": [
+          "Local/small business owners needing a first real website",
+          "Retailers/product brands moving into e-commerce",
+          "Startups needing a custom web app MVP"
+        ],
+        "cost_of_doing_nothing": "Every week without a real site is a week of losing customers to whichever competitor they find first on Google or Instagram — for e-commerce specifically, it's also revenue that's just not being captured at all.",
+        "discovery_questions": [
+          "What's the main goal of the site — informational, lead capture, or direct sales?",
+          "Do you have a target launch date tied to an event, season, or campaign?",
+          "Roughly how many pages/products, and do you have existing content (copy, photos) ready?",
+          "Any must-have features — booking, custom checkout, membership/login?"
+        ],
+        "what_happens_after_they_sign": "50% deposit invoiced on signing → kickoff call within 2 business days → phase-by-phase build with review checkpoints → remaining balance due at delivery/launch.",
+        "evidenced_results": "Launched 40+ small business sites in the last 2 years, typical landing page delivered in 2 weeks, e-commerce builds in 4-6 weeks.",
+        "who_is_not_a_good_fit": [
+          "Projects requiring unbounded custom scope with no fixed feature list (needs a discovery/scoping engagement first, not a template quote)",
+          "Clients wanting hourly, open-ended engagement rather than a fixed price",
+          "Enterprise procurement processes requiring RFP/legal review cycles"
+        ],
+        "common_objections": [
+          { "objection": "Why is this more than a $200 template site?", "response": "Templates are the raw material — the price covers strategy, custom content integration, SEO setup, and testing, not just theme installation." },
+          { "objection": "Can we pay all at the end instead of a deposit?", "response": "The 50/50 split protects both sides — it's standard across every project we run, no exceptions." },
+          { "objection": "Can you do it cheaper if we cut some pages?", "response": "Yes — happy to scope down to the core pages you actually need and re-quote, that's a quick adjustment, not a renegotiation." }
+        ],
+        "why_buyers_pick_you": "One fixed price agreed before work starts, a real delivery date, and a phase-by-phase review process so there are no surprise revisions at the end.",
+        "guarantee_risk_reversal": "If we miss the agreed delivery date for reasons on our side, the final payment milestone drops by 10% per week late, up to 30%."
+      },
+      "pricing_engine_spec": {
+        "pricing_context": "Fixed templates. Landing Page $2,500, single page, one revision round, ~2 weeks - phases Design then Build/Launch. Business Website $6,000, up to 8 pages, phases Discovery/Design/Build/Launch. E-commerce $9,500, up to 100 products, Shopify or custom cart, phases Discovery/Design/Build/QA/Launch. Custom Web App starts at $22,000 - always needs a scoping call so that's a starting price only, not final. Payment split is usually 50% deposit / 50% at delivery, sometimes thirds for Business Website and E-commerce if the client wants that. Add-ons: CMS integration +$800, copywriting +$600, basic SEO setup +$450, extra revision round +$300, rush delivery (~30% faster) +20% of base price. 2+ add-ons bundled = 10% off the add-on subtotal, started that last year. Tax - honestly not sure, ask accounting, don't think we charge sales tax on services in our state but not 100% on that."
+      }
+    }
+  ]
+}

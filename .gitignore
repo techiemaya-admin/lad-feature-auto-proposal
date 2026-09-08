@@ -9,7 +9,6 @@ service-account.json
 graphify-out
 .agents
 skills-lock.json
-AGENTS.md
 coverage
 oauth2.keys.json
 client_secret_*.json
