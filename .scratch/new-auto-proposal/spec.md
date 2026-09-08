@@ -9,40 +9,41 @@ This manual quoting workflow is slow (taking hours or days), error-prone, and in
 
 ## Solution
 
-A zero-configuration, AI-assisted auto-proposal prototype that enables an agency tenant to onboard their quoting process in three simple steps:
-1. Import their basic company information and type their pricing guidelines in everyday natural language.
-2. Upload an existing, real Word (`.docx`) proposal they have previously sent to a client.
-3. Review an automatically extracted variable table and visual pricing rule cards.
-
-The system automatically converts the uploaded Word document into an XML-safe dynamic template using `@firecrawl/anydoc` and `docxmlater`, compiles natural pricing notes into visual rule cards and deterministic JSON calculation logic, and provides an end-to-end simulation harness where inbound emails immediately produce finished, mathematically verified `.docx` proposals previewable in the browser.
+A zero-configuration, AI-assisted auto-proposal prototype that enables an agency tenant to onboard their quoting process in an intuitive, agentic workflow:
+1. **Compound Briefing Capsule:** Type pricing guidelines in natural language into a clean prompt area, with a docked quotation dropzone directly beneath it (prompt + quotation submitted together with `[Send ➔]`).
+2. **Categorized Variable Review Chip-Deck:** Review extracted dynamic variables organized into three clear buckets (`Customer Inputs`, `Pricing Placeholders`, and `Narrative Paragraphs`) as modular interactive chips rather than a dense administrative table.
+3. **Minimal Template Checkpoint:** Confirm XML-safe dynamic template tags and repeating line-item loops with an inline status card and optional quick preview before moving to pricing.
+4. **Interactive Pricing Engine:** Review and fine-tune compiled visual rule cards powered by a 100% deterministic JavaScript math engine.
+5. **Lead Simulator & Verification:** Simulate inbound lead emails to produce mathematically verified `.docx` proposals previewable directly in the browser.
+6. **Ambient Controls:** Persistent slide-over drawer for tone/email configurations, and a bottom developer dock for raw Markdown, JSON schemas, and pipeline logs.
 
 ## User Stories
 
 1. As a tenant configuring auto-proposal, I want to switch between different company testing profiles, so that I can validate how the system handles different service business models (SEO, MSP, Web Dev).
 2. As a tenant configuring auto-proposal, I want to click an "Import Settings" button, so that my company profile, contact details, and value proposition are pre-filled without manual typing.
-3. As a tenant configuring auto-proposal, I want to enter and edit my pricing logic in an open natural-language text box, so that I can describe my packages, discounts, and taxes using plain English just as I would explain them to a new salesperson.
-4. As a tenant configuring auto-proposal, I want to upload a real Microsoft Word (`.docx`) quotation previously sent to a client, so that I don't have to redesign a new proposal template from scratch.
-5. As a reviewer inspecting document parsing, I want to expand a collapsible dropdown to view the Markdown extracted from my Word document, so that I can confirm headings, tables, and paragraphs were captured accurately.
-6. As a tenant reviewing detected variables, I want to see a clean table displaying each variable's natural name, system variable name, category, description, and sample snippet from the quotation, so that I understand exactly what parts of my document will become dynamic.
-7. As a tenant reviewing detected variables, I want to edit the natural name, change the variable identifier, or delete unnecessary detected variables, so that the final template only contains accurate placeholders.
-8. As a tenant reviewing paragraph variables, I want to toggle between "Fixed" and "AI-Generated" modes, so that static clauses remain verbatim while personalized sections are tailored for each deal.
-9. As a tenant configuring an AI-generated paragraph, I want to provide an optional prompt tip, so that the AI knows what key sales points or tone to emphasize when drafting that section.
-10. As a tenant configuring a fixed paragraph, I want to view and edit the prefilled quotation text, so that the static boilerplate text in the proposal matches my exact desired wording.
-11. As a tenant reviewing detected variables, I want to add a custom variable by highlighting or typing a quotation text snippet, so that any missed placeholders can be categorized and bound by AI.
-12. As a tenant ready to build a template, I want to click a button to generate the Word template, so that the system replaces target text with placeholder tags without breaking Word fonts, styling, or formatting.
-13. As a tenant with itemized line items in my proposal, I want the system to preserve table headers and summary rows (subtotal, tax, total) while collapsing repeating item rows into a dynamic loop, so that future proposals can have any number of line items without breaking table layout.
-14. As a tenant reviewing the generated template, I want to preview the rendered `.docx` layout directly in my browser using `docx-preview`, so that I can verify its appearance without opening Microsoft Word.
-15. As a tenant reviewing the generated template, I want to download the templated `.docx` file to my computer, so that I can inspect its XML tags or store it locally.
-16. As a tenant configuring pricing, I want to view my pricing rules displayed as visual cards (packages, volume breakpoints, add-ons, taxes), so that I can understand how my natural-language notes were interpreted.
+3. As a tenant configuring auto-proposal, I want to enter and edit my pricing logic in a spacious natural-language prompt area with realistic placeholders and natural multi-line Enter support, so that I can describe my packages, discounts, and taxes calmly without accidental submission.
+4. As a tenant configuring auto-proposal, I want to attach a real Microsoft Word (`.docx`) quotation via a docked dropzone directly beneath the prompt, so that my prompt and document are coupled in a single unified briefing capsule.
+5. As a tenant submitting my briefing, I want the "Send" button to be enabled only when both prompt text and quotation file are present, so that I cannot initiate an incomplete pipeline.
+6. As a tenant who has submitted my briefing, I want the briefing capsule to transition into a clean read-only locked state, so that I do not accidentally modify my prompt or lose my place while reviewing downstream stages.
+7. As a tenant wanting to revise my pricing prompt or quotation, I want an explicit "Edit / Reset" action with a confirmation warning that downstream stages will be reset, while preserving my typed prompt text in the input box.
+8. As a reviewer inspecting document parsing, I want to open the bottom developer dock to view the Markdown extracted from my Word document, so that I can confirm headings, tables, and paragraphs were captured accurately without cluttering the primary tenant view.
+9. As a tenant reviewing detected variables, I want to see modular, categorized chips grouped into three buckets (Customer Inputs, Pricing Placeholders, Narrative Paragraphs), so that I understand what parts of my document become dynamic without scrolling through a dense table.
+10. As a tenant reviewing detected variables, I want to edit a chip's natural name, change its category bucket via a dropdown, or delete false positives, so that the final template only contains accurate placeholders.
+11. As a tenant deleting a variable chip, I want the underlying Word template to keep the original text as static Word content, so that removing a chip never breaks document layout or wording.
+12. As a tenant reviewing narrative paragraph variables, I want to toggle between "Fixed Boilerplate" (editable quote text) and "AI-Generated" (with a prompt tip input), so that static clauses remain verbatim while personalized sections are tailored for each deal.
+13. As a tenant reviewing detected variables, I want to add a custom variable chip by providing an exact text snippet from the quotation, verified against the document AST, so that any missed placeholders can be bound accurately.
+14. As a tenant ready to build a template, I want to click "Confirm Variables & Generate Template", so that docxmlater replaces target text with placeholder tags and collapses repeating line-item rows into a dynamic loop.
+15. As a tenant reviewing the generated template, I want to see a minimal, inline confirmation checkpoint with tag counts and an optional "Quick Preview" modal using docx-preview, so that I can verify its appearance without an onerous multi-step detour.
+16. As a tenant configuring pricing, I want to view my pricing rules displayed as visual cards (packages, volume breakpoints, add-ons, taxes) compiled from my prompt, variables, and sample quotation values.
 17. As a tenant tuning pricing, I want to edit prices, adjust volume multipliers, and add or remove conditional rules directly on the visual cards, so that I can refine my pricing logic without rewriting prompts.
-18. As a reviewer inspecting pricing rules, I want to expand a collapsible dropdown to inspect the compiled JSON rule schema, so that I can verify the mathematical structure and debug edge cases.
-19. As a tenant testing the system, I want to paste an unstructured lead inquiry email into a text area, so that I can simulate how an inbound lead is handled in real life.
-20. As a tenant testing the system, I want to click a "Load Sample Lead Message" button, so that I can immediately run a test inquiry matched to the active company without copying and pasting manually.
+18. As a reviewer inspecting pricing rules, I want to inspect and edit the compiled JSON rule schema in the bottom developer dock, so that I can verify mathematical structures and debug edge cases.
+19. As a tenant adjusting peripheral settings, I want a slide-over configuration sheet for AI tone/style, customer clarification triggers, and email integration settings, so that secondary options remain easily accessible without cluttering the generative workflow.
+20. As a tenant testing the system, I want to paste an unstructured lead inquiry email or click "Load Sample Lead Message" in the simulation stage, so that I can simulate how an inbound lead is handled in real life.
 21. As a tenant generating a proposal, I want the AI to extract key requirements (seat count, location count, requested add-ons, state) from the lead email, so that pricing inputs are populated accurately.
-22. As an agency owner, I want all proposal calculations (subtotals, volume discounts, taxes, setup fees, payment splits) to be executed by a deterministic math engine rather than an LLM, so that dollar figures are mathematically exact with zero rounding or arithmetic hallucinations.
+22. As an agency owner, I want all proposal calculations to be executed by a deterministic JavaScript math engine rather than an LLM, so that dollar figures are mathematically exact with zero rounding or arithmetic hallucinations.
 23. As a tenant generating a proposal, I want the AI to draft customized narrative sections based on the lead's unique pain points and my prompt tips, so that the generated proposal feels personal and persuasive.
-24. As a tenant generating a proposal, I want to download the completed, personalized `.docx` proposal, so that I can inspect the final deliverable.
-25. As a reviewer verifying system accuracy, I want to compare the calculated figures against established ground-truth benchmarks, so that I can be certain the math is 100% correct before considering the concept proven.
+24. As a tenant generating a proposal, I want to download the completed, personalized `.docx` proposal and preview it in-browser, so that I can inspect the final deliverable.
+25. As a reviewer verifying system accuracy, I want to compare calculated figures against established ground-truth benchmarks, so that I can be certain the math is 100% correct before considering the concept proven.
 
 ## Implementation Decisions
 
@@ -60,7 +61,7 @@ The system automatically converts the uploaded Word document into an XML-safe dy
 - Handles dynamic table row replication, conditional block rendering, and scalar variable substitution in-memory.
 
 ### 4. Pricing Engine Architecture: Rule Schema & Deterministic Execution
-- The LLM parses natural language text into a declarative JSON schema.
+- The LLM parses natural language text, confirmed variables, and sample quotation values into a declarative JSON schema.
 - The prototype uses a shared rule schema shape:
 
 ```typescript
@@ -79,15 +80,22 @@ interface PricingRuleSchema {
 
 - A deterministic JavaScript calculation module accepts lead parameters and executes the rule schema, returning exact numerical subtotals, discounts, taxes, and totals.
 
-### 5. UI Architecture: Two-Tier Information Disclosure
-- Frontend built with React, Vite, TailwindCSS, and Shadcn UI.
-- Primary visual interface displays customer-friendly controls: company tabs, clean variable tables, interactive pricing cards, and document preview via `docx-preview`.
-- Secondary reviewer dropdowns (collapsible accordions) expose low-level technical state: AnyDoc Markdown preview, raw JSON rule editor, and replacement logs.
+### 5. UI Architecture: Agentic Briefing & Ambient Controls
+- **Compound Briefing Capsule:** Unified prompt area + docked dropzone. `Enter` creates new lines; submission via explicit `[Send ➔]` button when both inputs are present. Transitions to read-only locked state with edit/reset modal.
+- **Categorized Variable Review Chip-Deck:** Replaces dense tables with 3 modular card buckets (`Customer Inputs`, `Pricing Placeholders`, `Narrative Paragraphs`). Supports AST-verified custom chips, dropdown bucket movement, and paragraph mode toggling.
+- **Minimal Template Checkpoint:** Low-profile status banner with tag stats and optional `docx-preview` modal, acting as a lightweight confirmation step before pricing.
+- **Slide-Over Configuration Drawer:** Persistent sheet for AI tone sliders, clarification thresholds, and email toggles.
+- **Bottom Developer Dock (HUD):** Collapsible drawer housing AnyDoc Markdown, raw Variables JSON, Rule Schema JSON, and pipeline logs.
 
-### 6. Storage & State Isolation
+### 6. State Lifecycle & Unidirectional Hard Reset Policy
+- Workflow progresses strictly unidirectionally: Briefing Capsule ➔ Variable Review ➔ Template Checkpoint ➔ Pricing Engine ➔ Lead Simulation.
+- Editing an earlier stage safely rewinds downstream progress with an explicit confirmation dialog, clearing downstream database records to prevent bidirectional synchronization bugs.
+- User input text in the prompt box and uploaded files are preserved during rewinds.
+
+### 7. Storage & State Isolation
 - Three mock companies (`co1_seo`, `co2_msp`, `co3_dev`).
 - Binary files stored per company under `backend/storage/<company_id>/`.
-- Working state (variable tables, pricing specs, extracted rules) persisted in SQLite so switching company tabs maintains progress.
+- Working state (variable tables, pricing specs, extracted rules, configurations) persisted in SQLite so switching company tabs maintains progress.
 - An explicit "Reset to Mock Default" action re-initializes a company's state from the baseline dataset.
 
 ## Testing Decisions

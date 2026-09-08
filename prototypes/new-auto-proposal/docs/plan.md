@@ -18,77 +18,67 @@ This prototype (`prototypes/new-auto-proposal`) builds and proves an end-to-end 
 
 ## 2. System Architecture & Component Flow
 
+The system runs a **5-stage sequential pipeline** anchored by an **ambient shell** (Slide-Over Configuration Drawer and Bottom Dev Dock). For full interaction and visual specifications, consult [docs/design.md](file:///c:/Users/syedm/Desktop/Muneer%20Work/TechieMaya%20AI%20Fullstack%20Developer%20Intern/lad-feature-auto-proposal/prototypes/new-auto-proposal/docs/design.md).
+
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                                SYSTEM PIPELINE FLOW                                    │
+│                              SYSTEM PIPELINE FLOW (5 STAGES)                           │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 
-[Inbound Quotation (.docx)]           [Natural Pricing Spec (Text)]
-            │                                       │
-            ▼                                       ▼
-  @firecrawl/anydoc                         Gemini Rule Compiler
-  (Local Rust Markdown Parser)                      │
-            │                                       ▼
-            ▼                              Structured JSON Rules
-  Markdown Structure Representation                 │
-            │                                       ▼
-            ▼                             Interactive Rule Cards UI
-  Gemini Variable Detector                 (Adjust prices, multipliers,
-  (Entity, Pricing, Loops, Narrative)       conditions + Reviewer JSON)
+[STAGE 1: BRIEFING CAPSULE]
+  Prompt Spec Textarea + Docked Quotation Dropzone (.docx)
+  └── [Send ➔] executes Stage 1 backend & locks capsule into read-only summary
+            │
+            ├── @firecrawl/anydoc converts .docx to Markdown
+            └── Gemini extracts dynamic variables
             │
             ▼
-  Variable Review Table UI
-  (Edit, rename, categorize,
-   fixed vs AI paragraph toggle)
+[STAGE 2: CATEGORIZED VARIABLE CHIP-DECK]
+  Interactive cards in 3 buckets: [Customer Inputs] [Pricing Placeholders] [Paragraphs]
+  ├── Inline rename, type/bucket dropdown, AST-verified custom chip injection
+  ├── Paragraph mode toggle: [Fixed Boilerplate] vs [AI-Generated + Prompt Tip]
+  └── [Confirm Variables & Generate Template ➔]
             │
             ▼
-  docxmlater Engine
-  (Anchor text replacement +
-   smart table row collapse)
+[STAGE 3: MINIMAL TEMPLATE CHECKPOINT]
+  docxmlater performs AST text-run replacements & line-item loop collapsing
+  ├── Inline status card: tag replacement count + loop collapse verification
+  ├── Optional "Quick Preview (.docx)" modal via docx-preview
+  └── [Proceed to Pricing Engine ➔]
             │
             ▼
-  [Templated .docx Output]
-  (Preview via docx-preview)
-            │
-            ├──────────────────────────────────────┐
-            ▼                                      ▼
-  [Inbound Lead Message (Email)]          [Templated .docx]
-            │                                      │
-            ▼                                      │
-  Gemini Parameter Extractor                       │
-  (Seats, locations, addons, state)                │
-            │                                      │
-            ▼                                      │
-  Deterministic Math Engine                        │
-  (Pure JS execution of JSON rules)                │
-            │                                      │
-            ▼                                      │
-  Gemini Narrative Generator                       │
-  (Tailored executive summary / copy)              │
-            │                                      │
-            ▼                                      │
-  Hydrated Data Payload ───────────────────────────┘
+[STAGE 4: PRICING ENGINE & RULE CARDS]
+  Gemini compiles rules from: Prompt Spec + Confirmed Variables + Sample Quote Values
+  ├── Interactive visual cards for Tiers, Breakpoints, Add-ons, and Taxes
+  ├── Pure JavaScript deterministic math execution engine (100% calculation precision)
+  └── [Proceed to Lead Simulation ➔]
             │
             ▼
-  easy-template-x Rendering Engine
-            │
-            ▼
-  [Client-Ready Proposal (.docx)]
-  (Rendered in browser via docx-preview + instant download)
+[STAGE 5: LEAD SIMULATION & VERIFICATION]
+  Inbound lead message (email) + "Load Sample Lead Message"
+  ├── Gemini extracts lead deal parameters (seats, locations, addons, state)
+  ├── Deterministic math computes exact subtotal, discounts, taxes, and total
+  ├── Gemini drafts tailored narrative copy using prompt tips
+  ├── easy-template-x renders finalized proposal .docx
+  └── In-browser proposal preview via docx-preview + one-click download
+
+AMBIENT SHELL COMPONENTS:
+├── Slide-Over Configuration Drawer: AI Tone & Style, Clarification Triggers, Email settings
+└── Bottom Dev Dock (HUD): Collapsible tray for AnyDoc MD, Variables JSON, Rule Schema JSON, Logs
 ```
 
 ---
 
-## 3. The 4-Tier Variable Taxonomy
+## 3. The 4-Tier Taxonomy & 3-Bucket Visual Mapping
 
-A generic variable system breaks when applied to complex Word proposals containing tables and conditional statements. The engine structures variables into four distinct functional tiers:
+The underlying engine classifies variables into four architectural tiers, mapped to three intuitive visual buckets in the frontend Chip-Deck:
 
-| Tier | Class | Extracted From | Purpose & Handling | Examples |
+| Backend Architectural Tier | Class | Front-End Visual Bucket | Purpose & Handling | Examples |
 | :--- | :--- | :--- | :--- | :--- |
-| **1** | **Scalar Entity** | Inbound message & tenant profile | Fixed string facts. Replaced directly in text runs. | `client_name`, `client_state`, `contact_email`, `rep_name`, `date` |
-| **2** | **Deterministic Pricing** | Rule engine calculations | Computed numeric totals and rates. Handled strictly by math code; never generated by LLM arithmetic. | `seat_count`, `rate_per_seat`, `subtotal`, `tax_amount`, `grand_total` |
-| **3** | **Repeating Table Rows** | Rule line items & milestones | Dynamic array of objects. Rendered into table loops (`{#items}...{/items}`). | `line_items[]`, `payment_milestones[]`, `addon_list[]` |
-| **4** | **Dynamic Narrative & Logic** | Gemini generation & boolean toggles | Tailored sales copy or conditional clauses. Controlled via [Fixed \| AI-Generated] toggle with prompt hints. | `executive_summary`, `has_tax_disclaimer`, `annual_discount_clause` |
+| **Tier 1: Scalar Entity** | Inbound message & tenant profile | **Customer Inputs** | Fixed string facts. Replaced directly in text runs. | `client_name`, `client_state`, `contact_email`, `rep_name`, `date` |
+| **Tier 2: Deterministic Pricing** | Rule engine calculations | **Pricing Placeholders** | Computed numeric totals and rates. Handled strictly by JS math; never generated by LLM arithmetic. | `seat_count`, `rate_per_seat`, `subtotal`, `tax_amount`, `grand_total` |
+| **Tier 3: Repeating Table Rows** | Rule line items & milestones | **Pricing Placeholders** | Dynamic array of objects rendered into table loops (`{#items}...{/items}`). | `line_items[]`, `payment_milestones[]`, `addon_list[]` |
+| **Tier 4: Dynamic Narrative & Logic** | Gemini generation & boolean toggles | **Narrative Paragraphs** | Tailored sales copy or static legal clauses. Controlled via [Fixed \| AI-Generated] toggle with prompt tips. | `scope_of_work`, `deliverables`, `sla_terms`, `payment_terms` |
 
 ---
 
@@ -161,8 +151,10 @@ A generic variable system breaks when applied to complex Word proposals containi
 | Phase | Title | Core Objective | Key Deliverables |
 | :--- | :--- | :--- | :--- |
 | **Phase 0** | **Infrastructure & Shell** | Establish decoupled backend & frontend | Express + TypeScript server, SQLite database, storage directory structure, Vite + Shadcn shell. |
-| **Phase 1** | **Company Harness & Mock Ingestion** | Enable multi-company switching & profile review | 3 Company tabs, "Import Settings" button prefilling data, editable pricing spec textarea, collapsible JSON inspector. |
-| **Phase 2** | **AnyDoc Parsing & Variable Table** | Ingest quotation & review variables | `.docx` upload, AnyDoc Markdown converter, Gemini variable detection, interactive variable table with [Fixed \| AI] toggle and custom variable modal. |
-| **Phase 3** | **Template Generation Engine** | Convert static `.docx` to dynamic template | `docxmlater` replacement pipeline, smart table row collapse, in-browser preview via `docx-preview`, template download. |
-| **Phase 4** | **Rule Compiler & Pricing Cards** | Natural spec to visual & executable rules | Gemini rule compiler, interactive rule cards UI, collapsible JSON editor, deterministic JS math engine. |
-| **Phase 5** | **Lead Simulator & End-to-End Verification** | Generate proposal from lead message & verify math | Inbound email textarea + sample load button, lead parameter extraction, narrative copy generator, `easy-template-x` proposal generation, math verification against benchmarks. |
+| **Phase 1** | **Company Harness & Mock Ingestion** | Multi-company switching & profile review | 3 Company tabs, "Import Settings" button prefilling data, editable pricing spec textarea, collapsible JSON inspector. |
+| **Phase 2** | **Compound Briefing Capsule & Ingestion** | Ingest quotation & lock briefing capsule | Fused Prompt textarea + docked dropzone, Enter=newline, Send validation, AnyDoc Markdown converter, locked state with reset warning modal. |
+| **Phase 3** | **Categorized Variable Review Chip-Deck** | Review dynamic variables in 3 buckets | Gemini variable extraction, 3-bucket chip-deck (Customer Inputs, Pricing Placeholders, Paragraphs), AST-verified custom chip modal, dropdown bucket switcher, [Fixed \| AI] paragraph toggle. |
+| **Phase 4** | **docxmlater Mutation & Minimal Checkpoint** | Mutate .docx AST & confirm template | `docxmlater` replacement pipeline, smart table row collapse, compact inline checkpoint card with tag stats and optional `docx-preview` modal. |
+| **Phase 5** | **Pricing Compiler & Rule Cards** | Compile spec to visual & executable rules | Gemini rule compiler using Prompt + Variables + Sample Quote Values, interactive rule cards UI, collapsible JSON editor, deterministic JS math engine. |
+| **Phase 6** | **Lead Simulator & Proposal Verification** | Generate proposal from lead message & verify math | Inbound email textarea + sample load button, lead parameter extraction, narrative copy generator, `easy-template-x` proposal generation, math verification against benchmarks. |
+| **Auxiliary** | **Ambient Shell Enhancements** | Independent settings & developer tools | Slide-Over Configuration Drawer (AI tone slider, clarification thresholds, email toggles) and Bottom Developer Dock (AnyDoc MD, Variables JSON, Rule Schema JSON, logs). |

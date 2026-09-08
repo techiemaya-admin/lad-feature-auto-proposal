@@ -133,3 +133,49 @@
     font-size: 18px; /* Default browser is 16px. Try 17px (~6% larger) or 18px (~12% larger) */
     }
 }
+
+@keyframes ambient-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@layer utilities {
+  /* Subtle glassmorphism */
+  .glass-panel {
+    background: color-mix(in oklch, var(--card) 85%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  /* Micro-tactile buttons and interactive elements */
+  .btn-tactile {
+    transition: transform 100ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 100ms ease;
+  }
+  .btn-tactile:hover {
+    transform: translateY(-1px);
+  }
+  .btn-tactile:active {
+    transform: scale(0.98) translateY(0);
+  }
+
+  /* Ambient AI Glow */
+  .glow-primary {
+    box-shadow: 0 0 20px -5px oklch(0.457 0.24 277.023 / 35%);
+  }
+
+  /* Ambient thinking shimmer line across container headers */
+  .shimmer-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--primary), transparent);
+    animation: ambient-shimmer 1.8s infinite;
+  }
+
+  /* Tabular numbers for clean financial alignment without jitter */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
