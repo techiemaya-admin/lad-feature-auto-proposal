@@ -42,16 +42,6 @@ export function App() {
     }
   }, [notification]);
 
-  useEffect(() => {
-    loadCompanies();
-  }, []);
-
-  useEffect(() => {
-    if (activeCompanyId) {
-      loadCompanyDetails(activeCompanyId);
-    }
-  }, [activeCompanyId]);
-
   const loadCompanies = async () => {
     try {
       setIsLoading(true);
@@ -68,18 +58,49 @@ export function App() {
     }
   };
 
-  const loadCompanyDetails = async (id: string) => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const data = await fetchCompany(id);
-      setCurrentCompany(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : `Failed to load details for ${id}`);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  useEffect(() => {
+    let ignore = false;
+    fetchCompanies()
+      .then((list) => {
+        if (!ignore) {
+          setCompanies(list);
+          if (list.length > 0 && !list.some((c) => c.company_id === activeCompanyId)) {
+            setActiveCompanyId(list[0].company_id);
+          }
+          setIsLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!ignore) {
+          setError(err instanceof Error ? err.message : "Failed to connect to backend server");
+          setIsLoading(false);
+        }
+      });
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!activeCompanyId) return;
+    let ignore = false;
+    fetchCompany(activeCompanyId)
+      .then((data) => {
+        if (!ignore) {
+          setCurrentCompany(data);
+          setIsLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!ignore) {
+          setError(err instanceof Error ? err.message : `Failed to load details for ${activeCompanyId}`);
+          setIsLoading(false);
+        }
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [activeCompanyId]);
 
   const handleSaveSpec = async (newSpec: string) => {
     if (!currentCompany) return;
@@ -197,7 +218,7 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-50/70 dark:bg-zinc-950 text-foreground antialiased selection:bg-primary/20">
+    <div className="min-h-screen bg-zinc-100/70 dark:bg-zinc-950 text-foreground antialiased selection:bg-primary/20">
       {/* Sleek Minimalist Header */}
       <header className="sticky top-0 z-40 border-b border-border/40 bg-background/80 backdrop-blur-md">
         <div className="mx-auto max-w-4xl px-4 sm:px-6">

@@ -9,6 +9,7 @@ service-account.json
 graphify-out
 .agents
 skills-lock.json
+prototypes/new-auto-proposal/backend/storage/
 coverage
 oauth2.keys.json
 client_secret_*.json

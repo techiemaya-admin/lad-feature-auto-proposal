@@ -5,9 +5,11 @@
 The Rush Away Auto-Proposal onboarding workflow is an **agentic configuration workspace**. Rather than forcing the agency owner to endure a multi-step enterprise setup wizard with heavy forms, dense tables, and disconnected tabs, this experience is designed as an **intuitive, conversational briefing**:
 
 1. **Minimal, Fluid, and Fast:** Elevate what is critical for the current decision, keeping secondary metadata low-profile.
-2. **Anti "Box-in-Box" Aesthetic:** Avoid nested borders and card-in-card visual noise. Use harmonious tonal shifts (subtle darker shades for input regions, borderless inner fields, sleek dark/light mode transitions) to indicate depth.
-3. **Linear Predictability (Unidirectional State Discipline):** Prevent the chaos of bidirectional synchronization. Moving forward locks previous stages. Editing an earlier stage safely rewinds downstream progress with explicit warning, ensuring backend and AI states remain 100% deterministic.
-4. **Separation of Concerns:** Keep peripheral settings (tone, email triggers, sample testing) ambient in a slide-over sheet, and technical inspection tools in a bottom developer dock, leaving the primary viewport dedicated to the generative proposal pipeline.
+2. **Elevated Surface Hierarchy (Light Cards on Neutral Canvas):** In light mode, the canvas is a soft neutral light gray (`zinc-100/80` / `#f4f4f5`), while cards are crisp, elevated white surfaces (`#ffffff` / `bg-card`) with delicate borders and subtle micro-shadows. Never invert this by applying darker cards on a white canvas. In dark mode, an obsidian canvas (`zinc-950`) holds elevated dark cards (`zinc-900/80`).
+3. **Conversational, Human Language (Anti-AI-Slop):** Strip away developer-centric implementation details, library name drops (e.g. `@firecrawl/anydoc`), and sci-fi jargon (e.g. "Compound Briefing Capsule"). Use clear, natural words that business owners understand: e.g. **"Pricing Briefing"**, "Drop your sample quotation here (.docx)".
+4. **Standardized Component Primitives:** Build with consistent UI components (`Card`, `CardHeader`, `CardTitle`, `CardContent`, `Button`, `Badge`, `Textarea`) from `@/components/ui`, avoiding ad-hoc div soup.
+5. **Linear Predictability (Unidirectional State Discipline):** Prevent the chaos of bidirectional synchronization. Moving forward locks previous stages. Editing an earlier stage safely rewinds downstream progress with explicit warning, ensuring backend and AI states remain 100% deterministic.
+6. **Separation of Concerns:** Keep technical inspection tools in the theme-matching bottom Dev Inspector, leaving the primary viewport dedicated exclusively to the business proposal workflow.
 
 ---
 
@@ -15,11 +17,11 @@ The Rush Away Auto-Proposal onboarding workflow is an **agentic configuration wo
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────┐
-│  STAGE 1: BRIEFING CAPSULE (Prompt + Docked Dropzone)                     │
-│  - Prompt textarea (Enter = newline, realistic company placeholder)      │
+│  STAGE 1: PRICING BRIEFING (Prompt + Docked Dropzone)                     │
+│  - Multiline prompt box (Enter = newline, realistic company placeholder)  │
+│  - Compact [Send] button integrated in prompt box bottom-right            │
 │  - Docked dropzone directly beneath ([+] Drop .docx or click to browse)   │
-│  - Send button (disabled until both prompt & document are present)        │
-│  - On Send: Locks into read-only summary card with [Edit / Reset ✎]       │
+│  - On Send: Locks into elevated read-only summary card with [Edit / Reset]│
 │  - Reset Dialog: Warns that modifying prompt re-runs extraction           │
 └───────────────────────────────────────────────────────────────────────────┘
                                       │
@@ -71,43 +73,44 @@ The Rush Away Auto-Proposal onboarding workflow is an **agentic configuration wo
 
 AMBIENT SHELL COMPONENTS:
 ├── Slide-Over Configuration Drawer (Sheet): Tone slider, clarification triggers, email switches
-└── Bottom Dev Dock (HUD): Collapsible tray with AnyDoc MD, Variables JSON, Rule Schema JSON, Logs
+└── Bottom Dev Inspector (HUD): Theme-adaptive tray with Profile JSON, AnyDoc MD, Variables JSON, Rule Schema, Logs
 ```
 
 ---
 
 ## 3. Detailed Component Specifications
 
-### 3.1 Stage 1: The Compound Briefing Capsule (`PromptDocCapsule.tsx`)
+### 3.1 Stage 1: Pricing Briefing (`PromptDocCapsule.tsx`)
 
-#### Wireframe & Visual Anatomy
-A single unified container divided into a top prompt area and an attached bottom dropzone tray:
+#### Wireframe & Visual Anatomy (Wireframe 2)
+A top prompt container with all rounded edges and an integrated blue Send button (with zero divider lines), accompanied by a slightly narrower, darker-shaded docked dropzone with rounded corners:
 
 ```
-┌───────────────────────────────────────────────────────────────────────────┐
-│ Describe your pricing model, tiers, volume rules, and taxes...           │
-│ (Prefilled with company pricing notes or realistic AI placeholder)        │
-│                                                                           │
-│                                                                           │
-│                                                          [ Send ➔ ]       │
-├───────────────────────────────────────────────────────────────────────────┤
-│                         [+] Attach Proposal (.docx)                       │
-│             Drop your quotation here, or click to browse                  │
-└───────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────┐
+│ Describe your pricing model, tiers, volume rules, taxes... │
+│ (Auto-resizing, no manual resize handle, no dividers)      │
+│                                                            │
+│                                                   [ Send ] │
+└────────────────────────────────────────────────────────────┘
+        ┌────────────────────────────────────────────┐
+        │                    [+]                     │
+        │   Drop your sample quotation here (DOCX)   │
+        └────────────────────────────────────────────┘
 ```
 
 #### Interaction Rules
-1. **Multi-line Editing:** The `Enter` key inserts a natural line break. It never triggers form submission.
-2. **Send Action:** Submission is triggered exclusively by clicking the **`[Send ➔]`** button.
-3. **Button Validation State:**
-   - Disabled with tooltip/caption if either the prompt is empty or no `.docx` file has been provided.
-   - Example helper text: *"Please provide your pricing details and attach a sample quotation to continue."*
-4. **Realistic AI Placeholders:** When switching companies, the prompt area pre-fills with that company’s active `pricing_spec`, or shows a contextual placeholder demonstrating the expected format (packages, per-unit rates, discounts, taxes).
+1. **Seamless Container:** The prompt container has rounded edges all around (`rounded-2xl`). There is NO divider line between the prompt text and the Send button.
+2. **Auto-Resizing with Scroll Ceiling:** The prompt textarea automatically expands to fit text content dynamically (`resize-none`), combined with `overflow-y-auto max-h-72` and comfortable padding (`p-1`) so text is never vertically cut off and scrolls gracefully if exceptionally long.
+3. **Send Action:** Submission is triggered exclusively by clicking the compact blue **`[Send]`** button in the bottom-right of the prompt container.
+4. **No Clutter:** Character counts and persistent nagging banners are excluded.
+5. **Connected Slid-Down Dropzone:** The file attachment dropzone sits directly beneath the prompt with negative top margin (`-mt-3.5`), matching drop shadow (`shadow-xs`), rounded bottom corners (`rounded-b-2xl`), and a darker distinguishing shade (`zinc-200/50` / `zinc-900/70`). It features a simple `[+]` icon and `"Drop your sample quotation here (.docx)"` / `"or click to browse from your device"` text. Upon file attachment, it displays a concise file badge with a removal action.
+6. **State & Height Synchronization on Reset:** Parent components pass composite keys (e.g. `key={`${company.company_id}_${company.updated_at || ""}`}`) and mirror prop updates, ensuring that resetting defaults or importing settings immediately re-initializes text state and recalculates auto-resize heights without layout freezing.
 
 #### Locked State Presentation
-Upon clicking **`[Send ➔]`**, the briefing capsule transitions into a compact read-only state:
-- Background subtly mutes; textarea becomes non-editable.
-- Shows document status chip: `📄 Proposal_Northstar.docx (142 KB) • Parsed`.
+Upon clicking **`[Send]`**, the briefing card transitions into an elevated read-only state:
+- Clean card with subtle borders.
+- Shows green check badge: `Pricing Briefing • Locked & Active`.
+- Shows document status chip: `📄 quotation.docx (142 KB)`.
 - Displays an **`[Edit / Reset ✎]`** button in the top right.
 
 #### Hard Reset & Warning Modal
@@ -117,7 +120,7 @@ If the user clicks **`[Edit / Reset ✎]`**:
   > Editing your pricing prompt or quotation will re-extract variables and regenerate downstream templates and pricing rules. Your current text will be preserved in the prompt box.
   > `[Cancel]`  `[Unlock & Reset Pipeline]`
 - Upon confirmation:
-  - The capsule returns to the editable state.
+  - The card returns to the editable state.
   - Text is preserved.
   - Downstream stages (Variables, Template, Rules) are cleared in UI and database.
 
@@ -231,27 +234,32 @@ Accessible via a `[ Settings & Tone ⚙️ ]` button in the top navigation bar.
 - **Email Integration Settings:** Inbound reply webhook triggers, test recipient email.
 - **Persistence:** Saved in SQLite per company independently of prompt resets.
 
-### 4.2 Bottom Developer Dock / HUD (`DevDock.tsx`)
-A minimal, docked tray at the bottom of the screen (collapsible down to a corner pill `[ </> Dev Inspector ]`):
-- **Tab 1: AnyDoc Markdown:** Semantic markdown output from the uploaded quotation.
-- **Tab 2: Variables JSON:** Raw taxonomy payload with anchors and categories.
-- **Tab 3: Pricing Schema JSON:** Formatted `PricingRuleSchema` with copy and direct-edit capabilities.
-- **Tab 4: Pipeline Logs:** Timestamps, token usage, and AST replacement records.
+### 4.2 Bottom Dev Inspector (`DevDock.tsx`)
+A minimal, docked tray at the bottom of the screen (collapsible down to a corner pill `[ <Code2 /> Dev Inspector ]` with a single clean icon):
+- **Full-Width Header & Constrained Content:** The top controls and tabs bar spans full width (`w-full`), while content previews are centered within a comfortable scanning boundary (`max-w-6xl mx-auto w-full`) to prevent horizontal fatigue on ultrawide monitors.
+- **Theme Adaptive:** Renders using active theme variables (`bg-card/95 text-foreground border-border`) in both light and dark mode.
+- **Readable & Wrapped:** Enforces `text-xs` / `text-sm` typography with `whitespace-pre-wrap break-words break-all` (no horizontal scrollbars).
+- **Expanded Coverage:** Expands up to 90% screen height (`h-[90vh]`) for clear inspection.
+- **Tab 1: Profile JSON:** Raw company profile JSON relocated from the main workspace for cleaner presentation.
+- **Tab 2: AnyDoc Markdown:** Semantic markdown output from the uploaded quotation.
+- **Tab 3: Variables JSON:** Raw taxonomy payload with anchors and categories.
+- **Tab 4: Pricing Schema JSON:** Formatted `PricingRuleSchema` with copy capabilities.
+- **Tab 5: Pipeline Logs:** Timestamps, token usage, and AST replacement records.
 
 ---
 
 ## 5. Visual Aesthetics, Color Tokens & Micro-Interactions
 
-### 5.1 Tonal Elevation & Surface Hierarchy (Anti "Box-in-Box")
+### 5.1 Tonal Elevation & Surface Hierarchy (Cards Elevated on Canvas)
 - **Canvas Base:**
+  - Light Mode: Neutral Soft Gray (`#f4f4f5` / `zinc-100/80` or `oklch(0.97 0.003 286)`).
   - Dark Mode: Deep Obsidian (`#09090b` / `zinc-950`).
-  - Light Mode: Slate Canvas (`#f8fafc` / `slate-50`).
-- **Pipeline Stage Containers (`PromptDocCapsule`, `VariableReviewDeck`, etc.):**
-  - Dark Mode: `#121215` / `zinc-900/70` with subtle 1px border `zinc-800/60`.
-  - Light Mode: `#ffffff` with crisp border `slate-200/80` and subtle shadow (`shadow-xs`).
-- **Inner Recessed Wells (Prompt Textarea & Docked Dropzone):**
-  - Dark Mode: `#18181b` / `zinc-900/90` with inset border/shadow to eliminate nested border noise and establish focused input hierarchy.
-  - Light Mode: `slate-100/70` with borderless interior and comfortable inner padding.
+- **Cards & Stage Containers (`PromptDocCapsule`, `CompanyProfileCard`, etc.):**
+  - Light Mode: Pure elevated white (`#ffffff` / `bg-card`), crisp border (`border-border` / `border-zinc-200/80`), subtle micro-shadow (`shadow-xs` or `shadow-sm`).
+  - Dark Mode: Elevated obsidian (`#18181b` / `zinc-900/80`), subtle border (`border-zinc-800/80`).
+- **Inner Recessed Wells (Prompt Box & Docked Dropzone):**
+  - Light Mode: Clean bordered container with soft tint (`bg-zinc-50/70` or `bg-white` with `border-zinc-200`). Never render dirty darker cards on lighter canvas.
+  - Dark Mode: `#121215` / `zinc-950/70` with clean border (`border-zinc-800/80`).
 
 ### 5.2 Deterministic Semantic Color Palette
 Dynamic variables and UI states follow strict semantic color mappings for instant human scannability:

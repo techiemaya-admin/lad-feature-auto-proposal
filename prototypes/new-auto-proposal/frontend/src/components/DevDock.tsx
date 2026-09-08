@@ -10,6 +10,7 @@ import {
   Activity,
   Maximize2,
   Minimize2,
+  Building2,
 } from "lucide-react";
 import type { Company } from "../types/company";
 import { Button } from "./ui/button";
@@ -18,12 +19,12 @@ interface DevDockProps {
   company: Company | null;
 }
 
-type TabKey = "anydoc" | "variables" | "rules" | "logs";
+type TabKey = "profile" | "anydoc" | "variables" | "rules" | "logs";
 
 export const DevDock: React.FC<DevDockProps> = ({ company }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabKey>("anydoc");
+  const [activeTab, setActiveTab] = useState<TabKey>("profile");
   const [viewMode, setViewMode] = useState<"raw" | "preview">("raw");
   const [copied, setCopied] = useState(false);
 
@@ -32,7 +33,9 @@ export const DevDock: React.FC<DevDockProps> = ({ company }) => {
 
   const handleCopy = () => {
     let content = "";
-    if (activeTab === "anydoc") {
+    if (activeTab === "profile") {
+      content = JSON.stringify(company?.data || {}, null, 2);
+    } else if (activeTab === "anydoc") {
       content = markdown;
     } else if (activeTab === "variables") {
       content = JSON.stringify(company?.working_state || {}, null, 2);
@@ -66,10 +69,10 @@ export const DevDock: React.FC<DevDockProps> = ({ company }) => {
         <div className="fixed bottom-4 right-4 z-40">
           <button
             onClick={() => setIsOpen(true)}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-full bg-zinc-900 text-zinc-100 dark:bg-zinc-100 dark:text-zinc-900 shadow-lg hover:shadow-xl transition-all duration-150 text-xs font-mono font-medium hover:scale-105 active:scale-95 btn-tactile border border-border/40"
+            className="flex items-center gap-2 px-3.5 py-2 rounded-full bg-card text-foreground shadow-lg hover:shadow-xl transition-all duration-150 text-xs font-mono font-medium hover:scale-105 active:scale-95 btn-tactile border border-border"
           >
-            <Code2 className="size-3.5 text-indigo-400 dark:text-indigo-600" />
-            <span>&lt;/&gt; Dev Inspector</span>
+            <Code2 className="size-3.5 text-primary shrink-0" />
+            <span>Dev Inspector</span>
             {markdown ? (
               <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
             ) : null}
@@ -77,82 +80,96 @@ export const DevDock: React.FC<DevDockProps> = ({ company }) => {
         </div>
       )}
 
-      {/* Docked HUD Tray when open */}
+      {/* Docked Inspector Tray when open */}
       {isOpen && (
         <div
-          className={`fixed bottom-0 left-0 right-0 z-40 bg-zinc-950/95 dark:bg-black/95 text-zinc-200 border-t border-zinc-800/80 shadow-2xl backdrop-blur-md transition-all duration-200 flex flex-col ${
-            isExpanded ? "h-[75vh]" : "h-72 sm:h-80"
+          className={`fixed bottom-0 left-0 right-0 z-40 bg-card/95 text-foreground border-t border-border shadow-2xl backdrop-blur-md transition-all duration-200 flex flex-col ${
+            isExpanded ? "h-[90vh]" : "h-72 sm:h-80"
           }`}
         >
-          {/* HUD Top Bar */}
-          <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800/80 bg-zinc-900/60 shrink-0 select-none">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5 text-xs font-mono font-medium text-zinc-300">
-                <Code2 className="size-4 text-indigo-400" />
-                <span>Dev HUD</span>
-                <span className="text-zinc-600">•</span>
-                <span className="text-zinc-400 text-[11px]">{company?.company_name}</span>
+          {/* Top Bar */}
+          <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-muted/40 shrink-0 select-none">
+            <div className="flex items-center gap-3 overflow-x-auto">
+              <div className="flex items-center gap-1.5 text-xs font-mono font-medium text-foreground shrink-0">
+                <Code2 className="size-3.5 text-primary" />
+                <span>Dev Inspector</span>
+                <span className="text-muted-foreground/60">•</span>
+                <span className="text-muted-foreground text-xs font-normal">
+                  {company?.company_name}
+                </span>
               </div>
 
               {/* Tabs */}
-              <nav className="flex items-center rounded-lg bg-zinc-900 p-0.5 border border-zinc-800 text-xs">
+              <nav className="flex items-center rounded-lg bg-muted p-0.5 border border-border/70 text-xs">
                 <button
-                  onClick={() => setActiveTab("anydoc")}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
-                    activeTab === "anydoc"
-                      ? "bg-zinc-800 text-white shadow-xs"
-                      : "text-zinc-400 hover:text-zinc-200"
+                  onClick={() => setActiveTab("profile")}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                    activeTab === "profile"
+                      ? "bg-card text-foreground shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  <FileText className="size-3 text-indigo-400" />
-                  <span>AnyDoc Markdown</span>
+                  <Building2 className="size-3 text-indigo-500" />
+                  <span>Profile JSON</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab("anydoc")}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
+                    activeTab === "anydoc"
+                      ? "bg-card text-foreground shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <FileText className="size-3 text-primary" />
+                  <span>Quotation Markdown</span>
                   {markdown && (
-                    <span className="size-1.5 rounded-full bg-emerald-400 inline-block" />
+                    <span className="size-1.5 rounded-full bg-emerald-500 inline-block" />
                   )}
                 </button>
 
                 <button
                   onClick={() => setActiveTab("variables")}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
                     activeTab === "variables"
-                      ? "bg-zinc-800 text-white shadow-xs"
-                      : "text-zinc-400 hover:text-zinc-200"
+                      ? "bg-card text-foreground shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  <Braces className="size-3 text-sky-400" />
+                  <Braces className="size-3 text-sky-500" />
                   <span>Variables JSON</span>
                 </button>
 
                 <button
                   onClick={() => setActiveTab("rules")}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
                     activeTab === "rules"
-                      ? "bg-zinc-800 text-white shadow-xs"
-                      : "text-zinc-400 hover:text-zinc-200"
+                      ? "bg-card text-foreground shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  <Calculator className="size-3 text-emerald-400" />
+                  <Calculator className="size-3 text-emerald-500" />
                   <span>Rule Schema</span>
                 </button>
 
                 <button
                   onClick={() => setActiveTab("logs")}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
                     activeTab === "logs"
-                      ? "bg-zinc-800 text-white shadow-xs"
-                      : "text-zinc-400 hover:text-zinc-200"
+                      ? "bg-card text-foreground shadow-xs"
+                      : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  <Activity className="size-3 text-amber-400" />
-                  <span>Pipeline Logs</span>
+                  <Activity className="size-3 text-amber-500" />
+                  <span>Pipeline State</span>
                 </button>
               </nav>
             </div>
 
             {/* Right Controls */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 shrink-0 ml-2">
               {activeTab === "anydoc" && markdown && (
-                <div className="hidden sm:flex items-center gap-1 text-[10px] font-mono text-zinc-400 mr-2 bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">
+                <div className="hidden sm:flex items-center gap-1 text-xs font-mono text-muted-foreground mr-2 bg-muted/60 px-2 py-0.5 rounded border border-border/60">
                   <span>{lineCount} lines</span>
                   <span>•</span>
                   <span>{wordCount} words</span>
@@ -162,11 +179,11 @@ export const DevDock: React.FC<DevDockProps> = ({ company }) => {
               )}
 
               {activeTab === "anydoc" && markdown && (
-                <div className="flex items-center rounded-md bg-zinc-900 p-0.5 border border-zinc-800 text-[10px] font-mono mr-1">
+                <div className="flex items-center rounded-md bg-muted p-0.5 border border-border/60 text-xs font-mono mr-1">
                   <button
                     onClick={() => setViewMode("raw")}
                     className={`px-2 py-0.5 rounded ${
-                      viewMode === "raw" ? "bg-zinc-800 text-white" : "text-zinc-400"
+                      viewMode === "raw" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground"
                     }`}
                   >
                     Raw
@@ -174,10 +191,10 @@ export const DevDock: React.FC<DevDockProps> = ({ company }) => {
                   <button
                     onClick={() => setViewMode("preview")}
                     className={`px-2 py-0.5 rounded ${
-                      viewMode === "preview" ? "bg-zinc-800 text-white" : "text-zinc-400"
+                      viewMode === "preview" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground"
                     }`}
                   >
-                    Formatted
+                    Preview
                   </button>
                 </div>
               )}
@@ -186,13 +203,13 @@ export const DevDock: React.FC<DevDockProps> = ({ company }) => {
                 variant="ghost"
                 size="icon"
                 onClick={handleCopy}
-                className="size-6 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded"
+                className="size-7 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md"
                 title="Copy contents"
               >
                 {copied ? (
-                  <Check className="size-3 text-emerald-400" />
+                  <Check className="size-3.5 text-emerald-500" />
                 ) : (
-                  <Copy className="size-3" />
+                  <Copy className="size-3.5" />
                 )}
               </Button>
 
@@ -200,13 +217,13 @@ export const DevDock: React.FC<DevDockProps> = ({ company }) => {
                 variant="ghost"
                 size="icon"
                 onClick={() => setIsExpanded(!isExpanded)}
-                className="size-6 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded"
-                title={isExpanded ? "Collapse height" : "Expand height"}
+                className="size-7 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md"
+                title={isExpanded ? "Collapse height" : "Expand to 80% height"}
               >
                 {isExpanded ? (
-                  <Minimize2 className="size-3" />
+                  <Minimize2 className="size-3.5" />
                 ) : (
-                  <Maximize2 className="size-3" />
+                  <Maximize2 className="size-3.5" />
                 )}
               </Button>
 
@@ -214,38 +231,53 @@ export const DevDock: React.FC<DevDockProps> = ({ company }) => {
                 variant="ghost"
                 size="icon"
                 onClick={() => setIsOpen(false)}
-                className="size-6 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded"
-                title="Close Dev Dock"
+                className="size-7 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md"
+                title="Close Inspector"
               >
-                <ChevronDown className="size-3.5" />
+                <ChevronDown className="size-4" />
               </Button>
             </div>
           </div>
 
-          {/* Content Body */}
-          <div className="flex-1 overflow-auto p-4 font-mono text-xs leading-relaxed">
+          {/* Content Body: Constrained readable width, auto wrap, no horizontal scroll */}
+          <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 font-mono text-xs leading-relaxed">
+            <div className="max-w-6xl mx-auto w-full">
+            {activeTab === "profile" && (
+              <div>
+                <div className="text-xs font-sans text-muted-foreground mb-2 flex items-center justify-between">
+                  <span>Raw Company Profile JSON:</span>
+                  <span className="font-mono text-[11px] bg-muted px-2 py-0.5 rounded border border-border/60">
+                    {company?.company_id}
+                  </span>
+                </div>
+                <pre className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap break-words break-all">
+                  <code>{JSON.stringify(company?.data || {}, null, 2)}</code>
+                </pre>
+              </div>
+            )}
+
             {activeTab === "anydoc" && (
               <div>
                 {markdown ? (
                   viewMode === "raw" ? (
-                    <pre className="text-zinc-300 font-mono text-[11px] whitespace-pre-wrap select-text">
+                    <pre className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap break-words break-all select-text">
                       <code>{markdown}</code>
                     </pre>
                   ) : (
-                    <div className="prose prose-invert prose-xs max-w-none space-y-2 text-zinc-200">
-                      <pre className="p-3 rounded-lg bg-zinc-900 border border-zinc-800 text-[11px] whitespace-pre-wrap">
+                    <div className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap break-words break-all">
+                      <pre className="whitespace-pre-wrap break-words break-all">
                         {markdown}
                       </pre>
                     </div>
                   )
                 ) : (
-                  <div className="py-12 text-center text-zinc-500 space-y-2 font-sans">
-                    <FileText className="size-8 mx-auto opacity-30 text-indigo-400" />
-                    <p className="text-xs text-zinc-400">
+                  <div className="py-12 text-center text-muted-foreground space-y-2 font-sans">
+                    <FileText className="size-8 mx-auto opacity-30 text-primary" />
+                    <p className="text-xs font-medium text-foreground">
                       No quotation document parsed yet for this company.
                     </p>
-                    <p className="text-[11px] text-zinc-600">
-                      Attach a Microsoft Word quotation (.docx) in Stage 1 and click Send to inspect the extracted AnyDoc Markdown.
+                    <p className="text-xs text-muted-foreground">
+                      Attach a Microsoft Word quotation (.docx) in Stage 1 and click Send to inspect the extracted Markdown.
                     </p>
                   </div>
                 )}
@@ -254,15 +286,15 @@ export const DevDock: React.FC<DevDockProps> = ({ company }) => {
 
             {activeTab === "variables" && (
               <div>
-                <div className="text-[11px] text-zinc-400 mb-2 font-sans">
+                <div className="text-xs font-sans text-muted-foreground mb-2">
                   Taxonomy and variable anchors (Stage 2 preview):
                 </div>
-                <pre className="p-3 rounded-lg bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-300">
+                <pre className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap break-words break-all">
                   <code>
                     {JSON.stringify(
                       company?.working_state?.extracted_variables || {
                         status: "awaiting_stage_2",
-                        info: "Gemini variable extraction runs in Issue 03 upon briefing confirmation.",
+                        info: "Gemini variable extraction runs in Stage 2 upon briefing confirmation.",
                         working_state: company?.working_state,
                       },
                       null,
@@ -275,15 +307,15 @@ export const DevDock: React.FC<DevDockProps> = ({ company }) => {
 
             {activeTab === "rules" && (
               <div>
-                <div className="text-[11px] text-zinc-400 mb-2 font-sans">
+                <div className="text-xs font-sans text-muted-foreground mb-2">
                   Pricing Rule Schema (Stage 4 preview):
                 </div>
-                <pre className="p-3 rounded-lg bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-300">
+                <pre className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap break-words break-all">
                   <code>
                     {JSON.stringify(
                       company?.data?.pricing_engine_spec || {
                         status: "awaiting_stage_4",
-                        info: "Pricing rule schema compiles in Issue 05.",
+                        info: "Pricing rule schema compiles in Stage 4.",
                       },
                       null,
                       2
@@ -295,10 +327,10 @@ export const DevDock: React.FC<DevDockProps> = ({ company }) => {
 
             {activeTab === "logs" && (
               <div>
-                <div className="text-[11px] text-zinc-400 mb-2 font-sans">
+                <div className="text-xs font-sans text-muted-foreground mb-2">
                   Pipeline execution telemetry & session state:
                 </div>
-                <pre className="p-3 rounded-lg bg-zinc-900 border border-zinc-800 text-[11px] text-zinc-300">
+                <pre className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap break-words break-all">
                   <code>
                     {JSON.stringify(
                       {
@@ -306,10 +338,9 @@ export const DevDock: React.FC<DevDockProps> = ({ company }) => {
                         briefing_locked: company?.briefing_locked,
                         document_metadata: company?.document_metadata,
                         updated_at: company?.updated_at,
-                        parser: "@firecrawl/anydoc (native Rust binding)",
                         pipeline_stage: company?.briefing_locked
                           ? "Stage 2: Variable Review"
-                          : "Stage 1: Briefing Capsule",
+                          : "Stage 1: Pricing Briefing",
                       },
                       null,
                       2
@@ -320,6 +351,7 @@ export const DevDock: React.FC<DevDockProps> = ({ company }) => {
             )}
           </div>
         </div>
+      </div>
       )}
     </>
   );
