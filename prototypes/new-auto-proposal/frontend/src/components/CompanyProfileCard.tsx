@@ -12,9 +12,6 @@ import {
 } from "lucide-react";
 import type { Company } from "../types/company";
 import { Button } from "./ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
-import { Badge } from "./ui/badge";
-import { Textarea } from "./ui/textarea";
 
 interface CompanyProfileCardProps {
   company: Company;
@@ -138,72 +135,72 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
         </div>
       </div>
 
-      {/* Primary Focus: Pricing Engine Spec Editor */}
-      <Card className="border-border/60 shadow-2xs">
-        <CardHeader className="py-3 px-4 border-b border-border/40">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Sparkles className="size-3.5 text-primary" />
+      {/* Primary Focus: Pricing Engine Spec Editor (Darker Shaded Surface, No Nested Boxes) */}
+      <div className="rounded-2xl bg-zinc-200/60 dark:bg-zinc-900/80 p-5 space-y-3 transition-colors">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Sparkles className="size-4 text-primary" />
+            <h3 className="text-sm font-semibold tracking-tight text-foreground">
               Pricing Engine Specification
-            </CardTitle>
-
-            <div className="flex items-center gap-2">
-              {saveStatus === "unsaved" && (
-                <span className="text-[11px] text-amber-500 font-medium flex items-center gap-1">
-                  <span className="size-1.5 rounded-full bg-amber-500" />
-                  Unsaved
-                </span>
-              )}
-              {saveStatus === "saved" && (
-                <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
-                  <Check className="size-3" />
-                  Saved
-                </span>
-              )}
-
-              <Button
-                size="sm"
-                onClick={handleSave}
-                disabled={isSaving || !hasUnsavedChanges}
-                className="text-xs h-7 px-3"
-              >
-                <Save className="size-3 mr-1" />
-                {isSaving ? "Saving..." : "Save"}
-              </Button>
-            </div>
+            </h3>
           </div>
-        </CardHeader>
 
-        <CardContent className="p-4 space-y-2">
-          <Textarea
-            value={specText}
-            onChange={handleSpecChange}
-            rows={8}
-            className="font-sans text-sm leading-relaxed p-3.5 bg-muted/20 border-border/60 focus-visible:ring-primary resize-y"
-            placeholder="Describe your packages, rates, volume discounts, taxes, and add-ons in natural language..."
-          />
-          <div className="flex justify-end text-[11px] text-muted-foreground/70 pr-1">
-            {specText.length} characters
+          <div className="flex items-center gap-2.5">
+            {saveStatus === "unsaved" && (
+              <span className="text-[11px] text-amber-500 font-medium flex items-center gap-1">
+                <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
+                Unsaved
+              </span>
+            )}
+            {saveStatus === "saved" && (
+              <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                <Check className="size-3" />
+                Saved
+              </span>
+            )}
+
+            <Button
+              size="sm"
+              onClick={handleSave}
+              disabled={isSaving || !hasUnsavedChanges}
+              className="text-xs h-7 px-3 shadow-xs"
+            >
+              <Save className="size-3 mr-1" />
+              {isSaving ? "Saving..." : "Save"}
+            </Button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Reviewer Dropdown: Collapsible Raw JSON */}
-      <div className="rounded-lg border border-border/40 bg-muted/10 overflow-hidden transition-all">
+        {/* Seamless Textarea: directly on the shaded surface, no inner border box */}
+        <textarea
+          value={specText}
+          onChange={handleSpecChange}
+          rows={8}
+          className="w-full bg-transparent border-0 outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:ring-0 p-0 font-sans text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/60 resize-y"
+          placeholder="Describe your packages, rates, volume discounts, taxes, and add-ons in natural language..."
+        />
+
+        <div className="flex justify-end text-[11px] text-muted-foreground/70 pt-1">
+          {specText.length} characters
+        </div>
+      </div>
+
+      {/* Reviewer Dropdown: Raw Profile JSON on subtle darker surface */}
+      <div className="rounded-xl bg-zinc-200/40 dark:bg-zinc-900/50 overflow-hidden transition-colors">
         <button
           type="button"
           onClick={() => setIsJsonExpanded(!isJsonExpanded)}
-          className="w-full flex items-center justify-between py-2.5 px-3.5 hover:bg-muted/30 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors select-none"
+          className="w-full flex items-center justify-between py-3 px-4 hover:bg-zinc-200/70 dark:hover:bg-zinc-800/40 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors select-none"
         >
           <div className="flex items-center gap-2">
-            <Code2 className="size-3.5" />
+            <Code2 className="size-3.5 text-primary/70" />
             <span>Reviewer Dropdown: Raw Profile JSON</span>
-            <Badge variant="outline" className="font-mono text-[10px] py-0 px-1.5 h-4">
+            <span className="font-mono text-[10px] text-muted-foreground/80 bg-zinc-300/60 dark:bg-zinc-800/80 px-1.5 py-0.5 rounded-sm">
               {company.company_id}
-            </Badge>
+            </span>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 text-muted-foreground">
             <span className="text-[11px]">{isJsonExpanded ? "Hide" : "Show"}</span>
             {isJsonExpanded ? (
               <ChevronUp className="size-3.5" />
@@ -214,12 +211,12 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
         </button>
 
         {isJsonExpanded && (
-          <div className="p-3 border-t border-border/30 relative">
+          <div className="p-4 pt-1 relative">
             <Button
               size="xs"
               variant="outline"
               onClick={handleCopyJson}
-              className="absolute right-5 top-5 z-10 text-[11px] h-6 bg-card/80 backdrop-blur-xs"
+              className="absolute right-6 top-3 z-10 text-[11px] h-6 bg-background/90 backdrop-blur-xs"
             >
               {copied ? (
                 <>
@@ -231,7 +228,7 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
                 </>
               )}
             </Button>
-            <pre className="p-3.5 rounded-md bg-zinc-950 text-zinc-200 dark:bg-black font-mono text-[11px] leading-relaxed overflow-x-auto max-h-80 border border-border/20">
+            <pre className="p-4 rounded-xl bg-zinc-950 text-zinc-200 dark:bg-black font-mono text-[11px] leading-relaxed overflow-x-auto max-h-80 border-0">
               <code>{JSON.stringify(company.data, null, 2)}</code>
             </pre>
           </div>

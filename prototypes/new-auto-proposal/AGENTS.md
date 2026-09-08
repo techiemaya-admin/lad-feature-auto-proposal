@@ -38,6 +38,11 @@ Self-contained proof of concept demonstrating zero-configuration proposal genera
 - Persist variable tables and rule schemas in SQLite so switching company tabs maintains progress.
 - Provide an explicit "Reset to Mock Default" action to re-seed from `companies_dataset.json`.
 
+### 5. Surface Hierarchy & Anti-"Box-in-Box" Guardrail
+- **Strictly Avoid "Boxing a Box":** Never nest bordered containers inside bordered containers (e.g. no card inside a card, no bordered input inside a bordered card, no bordered code block inside a bordered drawer).
+- **Tonal Hierarchy via Darker Shades:** Use darker/different background shades to communicate visual hierarchy against the page background, rather than drawing nested outlines. Input areas and editors should blend seamlessly into their tonal surface without heavy outer strokes.
+
+
 ---
 
 ## Development & Execution Sequence

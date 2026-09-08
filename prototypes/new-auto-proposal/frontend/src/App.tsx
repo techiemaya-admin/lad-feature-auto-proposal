@@ -136,10 +136,10 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground antialiased selection:bg-primary/20">
+    <div className="min-h-screen bg-zinc-50/70 dark:bg-zinc-950 text-foreground antialiased selection:bg-primary/20">
       {/* Sleek Minimalist Header */}
-      <header className="sticky top-0 z-40 border-b border-border/50 bg-background/80 backdrop-blur-md">
-        <div className="mx-auto max-w-5xl px-4 sm:px-6">
+      <header className="sticky top-0 z-40 border-b border-border/40 bg-background/80 backdrop-blur-md">
+        <div className="mx-auto max-w-4xl px-4 sm:px-6">
           <div className="flex h-14 items-center justify-between gap-4">
             {/* Logo */}
             <div className="flex items-center gap-2.5">
@@ -195,7 +195,7 @@ export function App() {
       </header>
 
       {/* Main Workspace */}
-      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 space-y-6">
+      <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6 space-y-6">
         {/* Floating Notification */}
         {notification && (
           <div
