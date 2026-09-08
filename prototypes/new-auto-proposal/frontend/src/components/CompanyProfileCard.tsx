@@ -179,7 +179,7 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
             value={specText}
             onChange={handleSpecChange}
             rows={8}
-            className="font-mono text-xs leading-relaxed p-3.5 bg-muted/20 border-border/60 focus-visible:ring-primary resize-y"
+            className="font-sans text-sm leading-relaxed p-3.5 bg-muted/20 border-border/60 focus-visible:ring-primary resize-y"
             placeholder="Describe your packages, rates, volume discounts, taxes, and add-ons in natural language..."
           />
           <div className="flex justify-end text-[11px] text-muted-foreground/70 pr-1">
