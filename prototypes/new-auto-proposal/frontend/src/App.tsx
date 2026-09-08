@@ -5,9 +5,12 @@ import {
   updateCompanyProfile,
   importCompanySettings,
   resetCompany,
+  submitBriefing,
+  unlockBriefing,
 } from "./services/api";
 import type { Company, CompanySummary } from "./types/company";
 import { CompanyProfileCard } from "./components/CompanyProfileCard";
+import { DevDock } from "./components/DevDock";
 import { Button } from "./components/ui/button";
 import { useTheme } from "./components/theme-provider";
 import {
@@ -25,6 +28,7 @@ export function App() {
   const [activeCompanyId, setActiveCompanyId] = useState<string>("co1_seo");
   const [currentCompany, setCurrentCompany] = useState<Company | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isSubmittingBriefing, setIsSubmittingBriefing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [notification, setNotification] = useState<{
     type: "success" | "error" | "info";
@@ -97,6 +101,63 @@ export function App() {
     }
   };
 
+  const handleBriefingSubmit = async (prompt: string, file: File | null) => {
+    if (!currentCompany) return;
+    setIsSubmittingBriefing(true);
+    try {
+      const result = await submitBriefing(currentCompany.company_id, prompt, file);
+      setCurrentCompany(result.company);
+      setNotification({
+        type: "success",
+        message: `Quotation parsed via AnyDoc and briefing locked for ${result.company.company_name}.`,
+      });
+      setCompanies((prev: CompanySummary[]) =>
+        prev.map((c: CompanySummary) =>
+          c.company_id === result.company.company_id
+            ? {
+                ...c,
+                pricing_spec: result.company.pricing_spec,
+                briefing_locked: result.company.briefing_locked,
+                quotation_filename: result.company.document_metadata?.filename,
+              }
+            : c
+        )
+      );
+    } catch (err) {
+      setNotification({
+        type: "error",
+        message: err instanceof Error ? err.message : "Failed to submit briefing",
+      });
+      throw err;
+    } finally {
+      setIsSubmittingBriefing(false);
+    }
+  };
+
+  const handleBriefingUnlock = async () => {
+    if (!currentCompany) return;
+    try {
+      const updated = await unlockBriefing(currentCompany.company_id);
+      setCurrentCompany(updated);
+      setNotification({
+        type: "info",
+        message: `Briefing unlocked for ${updated.company_name}. Downstream state reset.`,
+      });
+      setCompanies((prev: CompanySummary[]) =>
+        prev.map((c: CompanySummary) =>
+          c.company_id === updated.company_id
+            ? { ...c, briefing_locked: false }
+            : c
+        )
+      );
+    } catch (err) {
+      setNotification({
+        type: "error",
+        message: err instanceof Error ? err.message : "Failed to unlock briefing",
+      });
+    }
+  };
+
   const handleImportSettings = async () => {
     if (!currentCompany) return;
     try {
@@ -151,7 +212,7 @@ export function App() {
 
             {/* Centered Segmented Tab Switcher */}
             <nav className="flex items-center rounded-lg bg-muted/60 p-0.5 border border-border/40 text-xs">
-              {companies.map((c) => {
+              {companies.map((c: CompanySummary) => {
                 const isActive = c.company_id === activeCompanyId;
                 return (
                   <button
@@ -242,12 +303,18 @@ export function App() {
           <CompanyProfileCard
             company={currentCompany}
             isLoading={isLoading}
+            isSubmittingBriefing={isSubmittingBriefing}
             onSaveSpec={handleSaveSpec}
             onImportSettings={handleImportSettings}
             onResetDefault={handleResetDefault}
+            onSubmitBriefing={handleBriefingSubmit}
+            onUnlockBriefing={handleBriefingUnlock}
           />
         ) : null}
       </main>
+
+      {/* Bottom Developer Dock HUD */}
+      <DevDock company={currentCompany} />
     </div>
   );
 }

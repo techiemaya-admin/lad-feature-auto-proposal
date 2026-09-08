@@ -44,6 +44,13 @@ export interface CompanyData {
   pricing_engine_spec: PricingEngineSpec;
 }
 
+export interface DocumentMetadata {
+  filename: string;
+  filesize: number;
+  extracted_markdown: string;
+  parsed_at: string;
+}
+
 export interface CompanySummary {
   company_id: string;
   company_name: string;
@@ -53,6 +60,8 @@ export interface CompanySummary {
   website: string | null;
   phone: string | null;
   pricing_spec: string;
+  briefing_locked?: boolean;
+  quotation_filename?: string | null;
   updated_at: string;
   created_at: string;
 }
@@ -68,6 +77,8 @@ export interface Company {
   data: CompanyData;
   pricing_spec: string;
   working_state: Record<string, unknown> | null;
+  briefing_locked?: boolean;
+  document_metadata?: DocumentMetadata | null;
   created_at: string;
   updated_at: string;
 }

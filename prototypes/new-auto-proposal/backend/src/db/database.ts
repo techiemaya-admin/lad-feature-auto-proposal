@@ -65,10 +65,35 @@ export function initDatabase(dbPath?: string): DatabaseSync {
       data_json TEXT NOT NULL,
       pricing_spec TEXT NOT NULL,
       working_state_json TEXT,
+      quotation_filename TEXT,
+      quotation_filesize INTEGER,
+      quotation_markdown TEXT,
+      quotation_parsed_at TEXT,
+      briefing_locked INTEGER DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
   `);
+
+  // Non-destructive column migrations for existing databases
+  const tableInfo = db.prepare("PRAGMA table_info(company_sessions)").all() as Array<{ name: string }>;
+  const columnNames = new Set(tableInfo.map((col) => col.name));
+
+  if (!columnNames.has("quotation_filename")) {
+    db.exec("ALTER TABLE company_sessions ADD COLUMN quotation_filename TEXT;");
+  }
+  if (!columnNames.has("quotation_filesize")) {
+    db.exec("ALTER TABLE company_sessions ADD COLUMN quotation_filesize INTEGER;");
+  }
+  if (!columnNames.has("quotation_markdown")) {
+    db.exec("ALTER TABLE company_sessions ADD COLUMN quotation_markdown TEXT;");
+  }
+  if (!columnNames.has("quotation_parsed_at")) {
+    db.exec("ALTER TABLE company_sessions ADD COLUMN quotation_parsed_at TEXT;");
+  }
+  if (!columnNames.has("briefing_locked")) {
+    db.exec("ALTER TABLE company_sessions ADD COLUMN briefing_locked INTEGER DEFAULT 0;");
+  }
 
   // Auto-seed if table is empty
   const countStmt = db.prepare("SELECT count(*) as count FROM company_sessions");

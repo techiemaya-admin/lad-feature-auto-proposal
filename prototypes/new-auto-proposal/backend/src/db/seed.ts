@@ -93,6 +93,12 @@ export function upsertCompany(db: DatabaseSync, company: CompanyRecord): void {
       phone = excluded.phone,
       data_json = excluded.data_json,
       pricing_spec = excluded.pricing_spec,
+      quotation_filename = NULL,
+      quotation_filesize = NULL,
+      quotation_markdown = NULL,
+      quotation_parsed_at = NULL,
+      briefing_locked = 0,
+      working_state_json = NULL,
       updated_at = excluded.updated_at
   `);
 

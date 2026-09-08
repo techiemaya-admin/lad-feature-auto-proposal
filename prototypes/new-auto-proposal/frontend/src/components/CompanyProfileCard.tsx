@@ -1,69 +1,46 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   RotateCcw,
   DownloadCloud,
-  Save,
   Check,
   Copy,
   ChevronDown,
   ChevronUp,
   Code2,
-  Sparkles,
 } from "lucide-react";
 import type { Company } from "../types/company";
 import { Button } from "./ui/button";
+import { PromptDocCapsule } from "./PromptDocCapsule";
 
 interface CompanyProfileCardProps {
   company: Company;
   isLoading: boolean;
+  isSubmittingBriefing?: boolean;
   onSaveSpec: (newSpec: string) => Promise<void>;
   onImportSettings: () => Promise<void>;
   onResetDefault: () => Promise<void>;
+  onSubmitBriefing: (prompt: string, file: File | null) => Promise<void>;
+  onUnlockBriefing: () => Promise<void>;
 }
 
 export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
   company,
   isLoading,
-  onSaveSpec,
+  isSubmittingBriefing,
   onImportSettings,
   onResetDefault,
+  onSubmitBriefing,
+  onUnlockBriefing,
 }) => {
-  const [specText, setSpecText] = useState(company.pricing_spec || "");
-  const [isSaving, setIsSaving] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [isJsonExpanded, setIsJsonExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "unsaved">("idle");
-
-  useEffect(() => {
-    setSpecText(company.pricing_spec || "");
-    setSaveStatus("idle");
-  }, [company.company_id, company.pricing_spec]);
-
-  const hasUnsavedChanges = specText !== (company.pricing_spec || "");
-
-  const handleSpecChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setSpecText(e.target.value);
-    setSaveStatus(e.target.value !== company.pricing_spec ? "unsaved" : "idle");
-  };
-
-  const handleSave = async () => {
-    setIsSaving(true);
-    try {
-      await onSaveSpec(specText);
-      setSaveStatus("saved");
-      setTimeout(() => setSaveStatus("idle"), 2500);
-    } finally {
-      setIsSaving(false);
-    }
-  };
 
   const handleImport = async () => {
     setIsImporting(true);
     try {
       await onImportSettings();
-      setSaveStatus("idle");
     } finally {
       setIsImporting(false);
     }
@@ -78,7 +55,6 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
       setIsResetting(true);
       try {
         await onResetDefault();
-        setSaveStatus("idle");
       } finally {
         setIsResetting(false);
       }
@@ -98,7 +74,7 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
   const industry = company.industry || company.data?.company_details?.industry;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {/* Sleek Company Info & Top Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-2 border-b border-border/40">
         <div>
@@ -116,7 +92,7 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
             size="sm"
             onClick={handleImport}
             disabled={isImporting || isLoading}
-            className="text-xs h-8"
+            className="text-xs h-8 btn-tactile"
           >
             <DownloadCloud className={`size-3.5 mr-1.5 ${isImporting ? "animate-bounce" : ""}`} />
             {isImporting ? "Importing..." : "Import Settings"}
@@ -127,7 +103,7 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
             size="sm"
             onClick={handleReset}
             disabled={isResetting || isLoading}
-            className="text-xs h-8 text-muted-foreground hover:text-destructive"
+            className="text-xs h-8 text-muted-foreground hover:text-destructive btn-tactile"
           >
             <RotateCcw className={`size-3.5 mr-1.5 ${isResetting ? "animate-spin" : ""}`} />
             {isResetting ? "Resetting..." : "Reset"}
@@ -135,55 +111,13 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
         </div>
       </div>
 
-      {/* Primary Focus: Pricing Engine Spec Editor (Darker Shaded Surface, No Nested Boxes) */}
-      <div className="rounded-2xl bg-zinc-200/60 dark:bg-zinc-900/80 p-5 space-y-3 transition-colors">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Sparkles className="size-4 text-primary" />
-            <h3 className="text-sm font-semibold tracking-tight text-foreground">
-              Pricing Engine Specification
-            </h3>
-          </div>
-
-          <div className="flex items-center gap-2.5">
-            {saveStatus === "unsaved" && (
-              <span className="text-[11px] text-amber-500 font-medium flex items-center gap-1">
-                <span className="size-1.5 rounded-full bg-amber-500 animate-pulse" />
-                Unsaved
-              </span>
-            )}
-            {saveStatus === "saved" && (
-              <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
-                <Check className="size-3" />
-                Saved
-              </span>
-            )}
-
-            <Button
-              size="sm"
-              onClick={handleSave}
-              disabled={isSaving || !hasUnsavedChanges}
-              className="text-xs h-7 px-3 shadow-xs"
-            >
-              <Save className="size-3 mr-1" />
-              {isSaving ? "Saving..." : "Save"}
-            </Button>
-          </div>
-        </div>
-
-        {/* Seamless Textarea: directly on the shaded surface, no inner border box */}
-        <textarea
-          value={specText}
-          onChange={handleSpecChange}
-          rows={8}
-          className="w-full bg-transparent border-0 outline-none ring-0 focus:outline-none focus:ring-0 focus-visible:ring-0 p-0 font-sans text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/60 resize-y"
-          placeholder="Describe your packages, rates, volume discounts, taxes, and add-ons in natural language..."
-        />
-
-        <div className="flex justify-end text-[11px] text-muted-foreground/70 pt-1">
-          {specText.length} characters
-        </div>
-      </div>
+      {/* Stage 1: Compound Briefing Capsule (Prompt + Docked Dropzone) */}
+      <PromptDocCapsule
+        company={company}
+        isSubmitting={isSubmittingBriefing}
+        onSubmit={onSubmitBriefing}
+        onUnlock={onUnlockBriefing}
+      />
 
       {/* Reviewer Dropdown: Raw Profile JSON on subtle darker surface */}
       <div className="rounded-xl bg-zinc-200/40 dark:bg-zinc-900/50 overflow-hidden transition-colors">

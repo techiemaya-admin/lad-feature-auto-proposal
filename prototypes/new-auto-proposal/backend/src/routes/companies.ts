@@ -4,7 +4,7 @@ import { resetCompanyById } from "../db/seed.js";
 
 const router = Router();
 
-interface CompanyRow {
+export interface CompanyRow {
   company_id: string;
   company_name: string;
   industry: string | null;
@@ -15,11 +15,16 @@ interface CompanyRow {
   data_json: string;
   pricing_spec: string;
   working_state_json: string | null;
+  quotation_filename?: string | null;
+  quotation_filesize?: number | null;
+  quotation_markdown?: string | null;
+  quotation_parsed_at?: string | null;
+  briefing_locked?: number | null;
   created_at: string;
   updated_at: string;
 }
 
-function formatCompanyResponse(row: CompanyRow) {
+export function formatCompanyResponse(row: CompanyRow) {
   let parsedData: Record<string, unknown> = {};
   try {
     parsedData = JSON.parse(row.data_json);
@@ -36,6 +41,16 @@ function formatCompanyResponse(row: CompanyRow) {
     }
   }
 
+  let documentMetadata = null;
+  if (row.quotation_filename) {
+    documentMetadata = {
+      filename: row.quotation_filename,
+      filesize: row.quotation_filesize || 0,
+      extracted_markdown: row.quotation_markdown || "",
+      parsed_at: row.quotation_parsed_at || "",
+    };
+  }
+
   return {
     company_id: row.company_id,
     company_name: row.company_name,
@@ -47,6 +62,8 @@ function formatCompanyResponse(row: CompanyRow) {
     data: parsedData,
     pricing_spec: row.pricing_spec,
     working_state: parsedWorkingState,
+    briefing_locked: Boolean(row.briefing_locked),
+    document_metadata: documentMetadata,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -57,14 +74,17 @@ router.get("/", (_req: Request, res: Response): void => {
   try {
     const db = getDatabase();
     const stmt = db.prepare(`
-      SELECT company_id, company_name, industry, location, email, website, phone, pricing_spec, updated_at, created_at
+      SELECT company_id, company_name, industry, location, email, website, phone, pricing_spec, briefing_locked, quotation_filename, updated_at, created_at
       FROM company_sessions
       ORDER BY company_id ASC
     `);
     const rows = stmt.all();
     res.json({
       success: true,
-      companies: rows,
+      companies: rows.map((r: any) => ({
+        ...r,
+        briefing_locked: Boolean(r.briefing_locked),
+      })),
     });
   } catch (error) {
     res.status(500).json({

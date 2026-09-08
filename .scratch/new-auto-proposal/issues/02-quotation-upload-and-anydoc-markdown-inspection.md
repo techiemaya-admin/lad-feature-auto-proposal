@@ -4,17 +4,18 @@
 
 **Blocked by:** 01: Foundation and Multi-Company Shell
 
-**Status:** ready-for-agent
+**Status:** complete
 
-- [ ] Install `@firecrawl/anydoc` and `multer` in backend dependencies.
-- [ ] Configure Multer storage to route uploaded `.docx` files to `storage/<company_id>/original_quotation.docx`.
-- [ ] Implement backend route `POST /api/companies/:id/briefing/submit` (or paired upload & spec endpoints) accepting prompt text + `.docx` upload, executing AnyDoc Markdown conversion, and updating SQLite.
-- [ ] Store document metadata (filename, size, extracted markdown, parse timestamp) in SQLite.
-- [ ] Build Compound Briefing Capsule UI (`PromptDocCapsule.tsx`) with multiline prompt textarea, docked dropzone directly underneath, and smart `[Send ➔]` button validation.
-- [ ] Apply recessed darker well styling for prompt textarea and dropzone (`zinc-900/90` with inset shadow in dark mode) to prevent box-in-box nesting.
-- [ ] Implement dropzone micro-interactions: drag-over focus ring pulse (`ring-2 ring-primary/60 bg-primary/10 transition-all duration-150`) and attached file badge pop-in (`animate-in fade-in zoom-in-95`).
-- [ ] Implement tactile button physics (`active:scale-[0.98]`) and electric indigo gradient glow on the `[Send ➔]` CTA.
-- [ ] Implement Locked State presentation: smooth collapse transition (<200ms) into read-only briefing ribbon with document status chip and `[Edit / Reset ✎]` button.
-- [ ] Implement Hard Reset confirmation modal: prompts user, preserves existing prompt text upon unlock, and safely resets downstream state.
-- [ ] Hook AnyDoc Markdown output into the Bottom Dev Dock tab.
-- [ ] Verify that submitting all three sample companies (`co1_seo`, `co2_msp`, `co3_dev`) produces clean AnyDoc Markdown and transitions smoothly into the locked state.
+- [x] Install `@firecrawl/anydoc` and `multer` in backend dependencies.
+- [x] Configure Multer storage to route uploaded `.docx` files to `storage/<company_id>/original_quotation.docx`.
+- [x] Implement backend route `POST /api/companies/:id/briefing/submit` (or paired upload & spec endpoints) accepting prompt text + `.docx` upload, executing AnyDoc Markdown conversion, and updating SQLite.
+- [x] Store document metadata (filename, size, extracted markdown, parse timestamp) in SQLite.
+- [x] Build Compound Briefing Capsule UI (`PromptDocCapsule.tsx`) with multiline prompt textarea, docked dropzone directly underneath, and smart `[Send ➔]` button validation.
+- [x] Apply recessed darker well styling for prompt textarea and dropzone (`zinc-900/90` with inset shadow in dark mode) to prevent box-in-box nesting.
+- [x] Implement dropzone micro-interactions: drag-over focus ring pulse (`ring-2 ring-primary/60 bg-primary/10 transition-all duration-150`) and attached file badge pop-in (`animate-in fade-in zoom-in-95`).
+- [x] Implement tactile button physics (`active:scale-[0.98]`) and electric indigo gradient glow on the `[Send ➔]` CTA.
+- [x] Implement Locked State presentation: smooth collapse transition (<200ms) into read-only briefing ribbon with document status chip and `[Edit / Reset ✎]` button.
+- [x] Implement Hard Reset confirmation modal: prompts user, preserves existing prompt text upon unlock, and safely resets downstream state.
+- [x] Hook AnyDoc Markdown output into the Bottom Dev Dock tab.
+- [x] Verify that submitting all three sample companies (`co1_seo`, `co2_msp`, `co3_dev`) produces clean AnyDoc Markdown and transitions smoothly into the locked state.
+

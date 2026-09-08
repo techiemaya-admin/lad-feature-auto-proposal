@@ -2,6 +2,7 @@ import express, { Express, Request, Response } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import companiesRouter from "./routes/companies.js";
+import briefingRouter from "./routes/briefing.js";
 
 dotenv.config();
 
@@ -21,7 +22,8 @@ export function createApp(): Express {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
-  // Mount company routes
+  // Mount company & briefing routes
+  app.use("/api/companies", briefingRouter);
   app.use("/api/companies", companiesRouter);
 
   return app;
