@@ -1,6 +1,8 @@
 <!-- labels: ready-for-agent -->
 # Specification — Zero-Config Auto-Proposal Prototype
 
+**Detailed Variable & Template Spec:** [variable-and-template-architecture-spec.md](variable-and-template-architecture-spec.md)  
+
 ## Problem Statement
 
 When service-based agencies (digital marketing, IT MSPs, dev shops) run automated inbound/outbound campaigns, leads frequently reply asking for quotes or pricing. At that exact moment, campaign automation stops: an account manager or sales rep must manually read the lead's email, deduce their requirements, look up or calculate prices against mental models or spreadsheets, manually edit an existing Word proposal document, and email it back.

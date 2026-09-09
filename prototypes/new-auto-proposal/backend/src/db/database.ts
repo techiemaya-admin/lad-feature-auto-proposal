@@ -73,6 +73,25 @@ export function initDatabase(dbPath?: string): DatabaseSync {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS company_variables (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      variable_name TEXT NOT NULL,
+      natural_name TEXT NOT NULL,
+      category TEXT NOT NULL CHECK (category IN ('customer_input', 'pricing', 'paragraph', 'table_loop', 'comparison_matrix', 'compound_table')),
+      data_type TEXT NOT NULL CHECK (data_type IN ('string', 'number', 'currency', 'enum', 'paragraph', 'table')),
+      is_custom INTEGER DEFAULT 0,
+      is_deleted INTEGER DEFAULT 0,
+      sort_order INTEGER DEFAULT 0,
+      descriptor_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (company_id) REFERENCES company_sessions(company_id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_company_variables_lookup 
+    ON company_variables (company_id, category, is_deleted);
   `);
 
   // Non-destructive column migrations for existing databases

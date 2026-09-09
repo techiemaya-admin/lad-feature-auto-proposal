@@ -210,10 +210,31 @@ router.post("/:id/briefing/unlock", (req: Request, res: Response): void => {
 
     const now = new Date().toISOString();
 
+    // Cascading Hard Reset on Briefing Unlock:
+    // Delete all variables in company_variables table for this company
+    try {
+      const deleteVarsStmt = db.prepare("DELETE FROM company_variables WHERE company_id = ?");
+      deleteVarsStmt.run(id);
+    } catch {
+      // Table may not exist yet in certain unit test runs
+    }
+
+    // Clean up downstream generated template.docx if present
+    const templatePath = path.join(getStorageDir(), id, "template.docx");
+    if (fs.existsSync(templatePath)) {
+      try {
+        fs.unlinkSync(templatePath);
+      } catch {
+        // Ignore file unlink error
+      }
+    }
+
     // Reset downstream progress while preserving prompt text and quotation file
     const resetWorkingState = {
       stage: "briefing",
       unlocked_at: now,
+      extracted_variables: null,
+      template_generated: false,
     };
 
     const updateStmt = db.prepare(`

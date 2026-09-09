@@ -1,8 +1,10 @@
 import React, { useState } from "react";
 import { RotateCcw, DownloadCloud, Building2 } from "lucide-react";
 import type { Company } from "../types/company";
+import type { CompanyVariable, CompoundTable } from "../types/variable";
 import { Button } from "./ui/button";
 import { PromptDocCapsule } from "./PromptDocCapsule";
+import { VariableReviewDeck } from "./VariableReviewDeck";
 
 interface CompanyProfileCardProps {
   company: Company;
@@ -13,6 +15,8 @@ interface CompanyProfileCardProps {
   onResetDefault: () => Promise<void>;
   onSubmitBriefing: (prompt: string, file: File | null) => Promise<void>;
   onUnlockBriefing: () => Promise<void>;
+  onVariablesChange?: (variables: CompanyVariable[], tables: CompoundTable[]) => void;
+  onGenerateTemplate?: () => void;
 }
 
 export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
@@ -23,6 +27,8 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
   onResetDefault,
   onSubmitBriefing,
   onUnlockBriefing,
+  onVariablesChange,
+  onGenerateTemplate,
 }) => {
   const [isImporting, setIsImporting] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
@@ -108,6 +114,18 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
         onSubmit={onSubmitBriefing}
         onUnlock={onUnlockBriefing}
       />
+
+      {/* Stage 2: Variable Discovery & Interactive Review Deck */}
+      {company.briefing_locked && (
+        <VariableReviewDeck
+          key={`vars_${company.company_id}_${company.updated_at || ""}`}
+          companyId={company.company_id}
+          companyName={basics.company_name}
+          quotationMarkdown={company.document_metadata?.extracted_markdown}
+          onVariablesChange={onVariablesChange}
+          onGenerateTemplate={onGenerateTemplate}
+        />
+      )}
     </div>
   );
 };

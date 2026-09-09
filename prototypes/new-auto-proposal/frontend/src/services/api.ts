@@ -141,3 +141,73 @@ export async function fetchQuotationMarkdown(
   return res.json();
 }
 
+export async function fetchVariables(
+  companyId: string
+): Promise<import("../types/variable").VariablesResponse> {
+  const res = await fetch(`${API_BASE}/companies/${companyId}/variables`);
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(errorData.error || `Failed to fetch variables: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function extractVariables(
+  companyId: string
+): Promise<import("../types/variable").VariablesResponse> {
+  const res = await fetch(`${API_BASE}/companies/${companyId}/variables/extract`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(errorData.error || `Failed to extract variables: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function updateVariables(
+  companyId: string,
+  payload: {
+    variables?: any[];
+    compound_tables?: any[];
+  }
+): Promise<{ success: boolean; updated_count: number }> {
+  const res = await fetch(`${API_BASE}/companies/${companyId}/variables`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(errorData.error || `Failed to update variables: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function addCustomVariable(
+  companyId: string,
+  payload: {
+    natural_name: string;
+    category: string;
+    exact_quotation_snippet: string;
+    context_anchor?: string;
+    data_type?: string;
+    description?: string;
+  }
+): Promise<{ success: boolean; variable: import("../types/variable").CompanyVariable }> {
+  const res = await fetch(`${API_BASE}/companies/${companyId}/variables/custom`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(errorData.error || `Failed to add custom variable: ${res.statusText}`);
+  }
+  return res.json();
+}
+

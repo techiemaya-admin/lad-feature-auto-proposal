@@ -13,15 +13,18 @@ import {
   Building2,
 } from "lucide-react";
 import type { Company } from "../types/company";
+import type { CompanyVariable, CompoundTable } from "../types/variable";
 import { Button } from "./ui/button";
 
 interface DevDockProps {
   company: Company | null;
+  variables?: CompanyVariable[];
+  compoundTables?: CompoundTable[];
 }
 
 type TabKey = "profile" | "anydoc" | "variables" | "rules" | "logs";
 
-export const DevDock: React.FC<DevDockProps> = ({ company }) => {
+export const DevDock: React.FC<DevDockProps> = ({ company, variables, compoundTables }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>("profile");
@@ -38,7 +41,13 @@ export const DevDock: React.FC<DevDockProps> = ({ company }) => {
     } else if (activeTab === "anydoc") {
       content = markdown;
     } else if (activeTab === "variables") {
-      content = JSON.stringify(company?.working_state || {}, null, 2);
+      content = JSON.stringify(
+        variables && variables.length > 0
+          ? { variables, compound_tables: compoundTables || [] }
+          : company?.working_state?.extracted_variables || company?.working_state || {},
+        null,
+        2
+      );
     } else if (activeTab === "rules") {
       content = JSON.stringify(company?.data?.pricing_engine_spec || {}, null, 2);
     } else if (activeTab === "logs") {
@@ -286,17 +295,24 @@ export const DevDock: React.FC<DevDockProps> = ({ company }) => {
 
             {activeTab === "variables" && (
               <div>
-                <div className="text-xs font-sans text-muted-foreground mb-2">
-                  Taxonomy and variable anchors (Stage 2 preview):
+                <div className="text-xs font-sans text-muted-foreground mb-2 flex items-center justify-between">
+                  <span>Taxonomy and variable anchors (Stage 2):</span>
+                  {variables && variables.length > 0 && (
+                    <span className="font-mono text-[11px] bg-muted px-2 py-0.5 rounded border border-border/60">
+                      {variables.length} active • {compoundTables?.length || 0} tables
+                    </span>
+                  )}
                 </div>
                 <pre className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap break-words break-all">
                   <code>
                     {JSON.stringify(
-                      company?.working_state?.extracted_variables || {
-                        status: "awaiting_stage_2",
-                        info: "Gemini variable extraction runs in Stage 2 upon briefing confirmation.",
-                        working_state: company?.working_state,
-                      },
+                      variables && variables.length > 0
+                        ? { variables, compound_tables: compoundTables || [] }
+                        : company?.working_state?.extracted_variables || {
+                            status: "awaiting_stage_2",
+                            info: "Gemini variable extraction runs in Stage 2 upon briefing confirmation.",
+                            working_state: company?.working_state,
+                          },
                       null,
                       2
                     )}

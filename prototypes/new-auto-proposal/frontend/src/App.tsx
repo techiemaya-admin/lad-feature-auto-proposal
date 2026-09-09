@@ -9,6 +9,7 @@ import {
   unlockBriefing,
 } from "./services/api";
 import type { Company, CompanySummary } from "./types/company";
+import type { CompanyVariable, CompoundTable } from "./types/variable";
 import { CompanyProfileCard } from "./components/CompanyProfileCard";
 import { DevDock } from "./components/DevDock";
 import { Button } from "./components/ui/button";
@@ -27,6 +28,8 @@ export function App() {
   const [companies, setCompanies] = useState<CompanySummary[]>([]);
   const [activeCompanyId, setActiveCompanyId] = useState<string>("co1_seo");
   const [currentCompany, setCurrentCompany] = useState<Company | null>(null);
+  const [activeVariables, setActiveVariables] = useState<CompanyVariable[]>([]);
+  const [activeCompoundTables, setActiveCompoundTables] = useState<CompoundTable[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSubmittingBriefing, setIsSubmittingBriefing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -160,6 +163,8 @@ export function App() {
     try {
       const updated = await unlockBriefing(currentCompany.company_id);
       setCurrentCompany(updated);
+      setActiveVariables([]);
+      setActiveCompoundTables([]);
       setNotification({
         type: "info",
         message: `Briefing unlocked for ${updated.company_name}. Downstream state reset.`,
@@ -177,6 +182,18 @@ export function App() {
         message: err instanceof Error ? err.message : "Failed to unlock briefing",
       });
     }
+  };
+
+  const handleVariablesChange = (vars: CompanyVariable[], tables: CompoundTable[]) => {
+    setActiveVariables(vars);
+    setActiveCompoundTables(tables);
+  };
+
+  const handleGenerateTemplate = () => {
+    setNotification({
+      type: "success",
+      message: `Variables confirmed for ${currentCompany?.company_name}. Ready to mutate Word template.`,
+    });
   };
 
   const handleImportSettings = async () => {
@@ -330,12 +347,18 @@ export function App() {
             onResetDefault={handleResetDefault}
             onSubmitBriefing={handleBriefingSubmit}
             onUnlockBriefing={handleBriefingUnlock}
+            onVariablesChange={handleVariablesChange}
+            onGenerateTemplate={handleGenerateTemplate}
           />
         ) : null}
       </main>
 
       {/* Bottom Developer Dock HUD */}
-      <DevDock company={currentCompany} />
+      <DevDock
+        company={currentCompany}
+        variables={activeVariables}
+        compoundTables={activeCompoundTables}
+      />
     </div>
   );
 }
