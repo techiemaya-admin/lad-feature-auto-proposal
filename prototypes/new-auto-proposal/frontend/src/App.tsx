@@ -7,9 +7,12 @@ import {
   resetCompany,
   submitBriefing,
   unlockBriefing,
+  generateTemplate,
+  fetchTemplateStatus,
 } from "./services/api";
 import type { Company, CompanySummary } from "./types/company";
 import type { CompanyVariable, CompoundTable } from "./types/variable";
+import type { TemplateStats } from "./types/template";
 import { CompanyProfileCard } from "./components/CompanyProfileCard";
 import { DevDock } from "./components/DevDock";
 import { Button } from "./components/ui/button";
@@ -30,6 +33,9 @@ export function App() {
   const [currentCompany, setCurrentCompany] = useState<Company | null>(null);
   const [activeVariables, setActiveVariables] = useState<CompanyVariable[]>([]);
   const [activeCompoundTables, setActiveCompoundTables] = useState<CompoundTable[]>([]);
+  const [templateStats, setTemplateStats] = useState<TemplateStats | null>(null);
+  const [templateFilesize, setTemplateFilesize] = useState<number | null>(null);
+  const [isGeneratingTemplate, setIsGeneratingTemplate] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSubmittingBriefing, setIsSubmittingBriefing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -100,6 +106,27 @@ export function App() {
           setIsLoading(false);
         }
       });
+
+    // Check template status
+    fetchTemplateStatus(activeCompanyId)
+      .then((res) => {
+        if (!ignore) {
+          if (res.exists && res.stats) {
+            setTemplateStats(res.stats);
+            setTemplateFilesize(res.filesize);
+          } else {
+            setTemplateStats(null);
+            setTemplateFilesize(null);
+          }
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setTemplateStats(null);
+          setTemplateFilesize(null);
+        }
+      });
+
     return () => {
       ignore = true;
     };
@@ -165,6 +192,8 @@ export function App() {
       setCurrentCompany(updated);
       setActiveVariables([]);
       setActiveCompoundTables([]);
+      setTemplateStats(null);
+      setTemplateFilesize(null);
       setNotification({
         type: "info",
         message: `Briefing unlocked for ${updated.company_name}. Downstream state reset.`,
@@ -189,10 +218,36 @@ export function App() {
     setActiveCompoundTables(tables);
   };
 
-  const handleGenerateTemplate = () => {
+  const handleGenerateTemplate = async () => {
+    if (!currentCompany) return;
+    setIsGeneratingTemplate(true);
+    try {
+      const result = await generateTemplate(currentCompany.company_id);
+      setTemplateStats(result);
+
+      const status = await fetchTemplateStatus(currentCompany.company_id).catch(() => null);
+      if (status) {
+        setTemplateFilesize(status.filesize);
+      }
+
+      setNotification({
+        type: "success",
+        message: `Template generated for ${currentCompany.company_name}: ${result.tags_placed_count} tags placed, ${result.loops_collapsed_count} loop collapsed.`,
+      });
+    } catch (err) {
+      setNotification({
+        type: "error",
+        message: err instanceof Error ? err.message : "Failed to generate template",
+      });
+    } finally {
+      setIsGeneratingTemplate(false);
+    }
+  };
+
+  const handleProceedToPricing = () => {
     setNotification({
-      type: "success",
-      message: `Variables confirmed for ${currentCompany?.company_name}. Ready to mutate Word template.`,
+      type: "info",
+      message: `Template confirmed for ${currentCompany?.company_name}. Ready for Stage 4: Pricing Engine & Rules.`,
     });
   };
 
@@ -218,6 +273,8 @@ export function App() {
     try {
       const reset = await resetCompany(currentCompany.company_id);
       setCurrentCompany(reset);
+      setTemplateStats(null);
+      setTemplateFilesize(null);
       setNotification({
         type: "info",
         message: `Reset ${reset.company_name} to default.`,
@@ -349,6 +406,10 @@ export function App() {
             onUnlockBriefing={handleBriefingUnlock}
             onVariablesChange={handleVariablesChange}
             onGenerateTemplate={handleGenerateTemplate}
+            templateStats={templateStats}
+            templateFilesize={templateFilesize}
+            isGeneratingTemplate={isGeneratingTemplate}
+            onProceedToPricing={handleProceedToPricing}
           />
         ) : null}
       </main>
@@ -358,6 +419,7 @@ export function App() {
         company={currentCompany}
         variables={activeVariables}
         compoundTables={activeCompoundTables}
+        templateStats={templateStats}
       />
     </div>
   );

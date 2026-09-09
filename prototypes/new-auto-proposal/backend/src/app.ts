@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import companiesRouter from "./routes/companies.js";
 import briefingRouter from "./routes/briefing.js";
 import variablesRouter from "./routes/variables.js";
+import templateRouter from "./routes/template.js";
 
 dotenv.config();
 
@@ -23,9 +24,10 @@ export function createApp(): Express {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
-  // Mount company, briefing & variables routes
+  // Mount company, briefing, variables & template routes
   app.use("/api/companies", briefingRouter);
   app.use("/api/companies", variablesRouter);
+  app.use("/api/companies", templateRouter);
   app.use("/api/companies", companiesRouter);
 
   return app;

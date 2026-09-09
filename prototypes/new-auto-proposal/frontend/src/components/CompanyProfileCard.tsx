@@ -2,9 +2,11 @@ import React, { useState } from "react";
 import { RotateCcw, DownloadCloud, Building2 } from "lucide-react";
 import type { Company } from "../types/company";
 import type { CompanyVariable, CompoundTable } from "../types/variable";
+import type { TemplateStats } from "../types/template";
 import { Button } from "./ui/button";
 import { PromptDocCapsule } from "./PromptDocCapsule";
 import { VariableReviewDeck } from "./VariableReviewDeck";
+import { TemplateCheckpointCard } from "./TemplateCheckpointCard";
 
 interface CompanyProfileCardProps {
   company: Company;
@@ -17,6 +19,10 @@ interface CompanyProfileCardProps {
   onUnlockBriefing: () => Promise<void>;
   onVariablesChange?: (variables: CompanyVariable[], tables: CompoundTable[]) => void;
   onGenerateTemplate?: () => void;
+  templateStats?: TemplateStats | null;
+  templateFilesize?: number | null;
+  isGeneratingTemplate?: boolean;
+  onProceedToPricing?: () => void;
 }
 
 export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
@@ -29,6 +35,10 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
   onUnlockBriefing,
   onVariablesChange,
   onGenerateTemplate,
+  templateStats,
+  templateFilesize,
+  isGeneratingTemplate = false,
+  onProceedToPricing,
 }) => {
   const [isImporting, setIsImporting] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
@@ -64,7 +74,7 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
   const industry = company.industry || company.data?.company_details?.industry;
 
   return (
-    <div className="space-y-2.5">
+    <div className="space-y-3">
       {/* Discreet Ambient Context Strip */}
       <div className="flex items-center justify-between gap-3 px-0.5 py-0 text-xs text-muted-foreground">
         <div className="flex items-center gap-2 min-w-0">
@@ -124,6 +134,20 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
           quotationMarkdown={company.document_metadata?.extracted_markdown}
           onVariablesChange={onVariablesChange}
           onGenerateTemplate={onGenerateTemplate}
+        />
+      )}
+
+      {/* Stage 3: Minimal Template Checkpoint Preview */}
+      {company.briefing_locked && templateStats && (
+        <TemplateCheckpointCard
+          key={`checkpoint_${company.company_id}_${company.updated_at || ""}`}
+          companyId={company.company_id}
+          companyName={basics.company_name}
+          stats={templateStats}
+          filesize={templateFilesize}
+          onProceedToPricing={onProceedToPricing}
+          onRegenerate={onGenerateTemplate}
+          isRegenerating={isGeneratingTemplate}
         />
       )}
     </div>

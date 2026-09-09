@@ -14,17 +14,24 @@ import {
 } from "lucide-react";
 import type { Company } from "../types/company";
 import type { CompanyVariable, CompoundTable } from "../types/variable";
+import type { TemplateStats } from "../types/template";
 import { Button } from "./ui/button";
 
 interface DevDockProps {
   company: Company | null;
   variables?: CompanyVariable[];
   compoundTables?: CompoundTable[];
+  templateStats?: TemplateStats | null;
 }
 
 type TabKey = "profile" | "anydoc" | "variables" | "rules" | "logs";
 
-export const DevDock: React.FC<DevDockProps> = ({ company, variables, compoundTables }) => {
+export const DevDock: React.FC<DevDockProps> = ({
+  company,
+  variables,
+  compoundTables,
+  templateStats,
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>("profile");
@@ -33,6 +40,9 @@ export const DevDock: React.FC<DevDockProps> = ({ company, variables, compoundTa
 
   const docMeta = company?.document_metadata;
   const markdown = docMeta?.extracted_markdown || "";
+
+  const resolvedTemplateStats =
+    templateStats || (company?.working_state as any)?.template_stats || null;
 
   const handleCopy = () => {
     let content = "";
@@ -57,6 +67,13 @@ export const DevDock: React.FC<DevDockProps> = ({ company, variables, compoundTa
           briefing_locked: company?.briefing_locked,
           document_metadata: company?.document_metadata,
           updated_at: company?.updated_at,
+          pipeline_stage: resolvedTemplateStats
+            ? "Stage 3: Template Checkpoint"
+            : company?.briefing_locked
+            ? "Stage 2: Variable Review"
+            : "Stage 1: Pricing Briefing",
+          template_status: resolvedTemplateStats ? "generated" : "awaiting_generation",
+          template_stats: resolvedTemplateStats,
         },
         null,
         2
@@ -343,8 +360,13 @@ export const DevDock: React.FC<DevDockProps> = ({ company, variables, compoundTa
 
             {activeTab === "logs" && (
               <div>
-                <div className="text-xs font-sans text-muted-foreground mb-2">
-                  Pipeline execution telemetry & session state:
+                <div className="flex items-center justify-between text-xs font-sans text-muted-foreground mb-2">
+                  <span>Pipeline execution telemetry & mutation logs:</span>
+                  {resolvedTemplateStats && (
+                    <span className="font-mono text-[11px] text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                      {resolvedTemplateStats.tags_placed_count} tags • {resolvedTemplateStats.loops_collapsed_count} loops
+                    </span>
+                  )}
                 </div>
                 <pre className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap break-words break-all">
                   <code>
@@ -352,11 +374,15 @@ export const DevDock: React.FC<DevDockProps> = ({ company, variables, compoundTa
                       {
                         company_id: company?.company_id,
                         briefing_locked: company?.briefing_locked,
-                        document_metadata: company?.document_metadata,
-                        updated_at: company?.updated_at,
-                        pipeline_stage: company?.briefing_locked
+                        pipeline_stage: resolvedTemplateStats
+                          ? "Stage 3: Template Checkpoint (Mutated .docx ready)"
+                          : company?.briefing_locked
                           ? "Stage 2: Variable Review"
                           : "Stage 1: Pricing Briefing",
+                        template_status: resolvedTemplateStats ? "generated" : "awaiting_generation",
+                        template_stats: resolvedTemplateStats,
+                        document_metadata: company?.document_metadata,
+                        updated_at: company?.updated_at,
                       },
                       null,
                       2

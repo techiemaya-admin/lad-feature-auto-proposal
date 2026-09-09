@@ -211,3 +211,39 @@ export async function addCustomVariable(
   return res.json();
 }
 
+export async function generateTemplate(
+  companyId: string
+): Promise<import("../types/template").TemplateGenerationResponse> {
+  const res = await fetch(`${API_BASE}/companies/${companyId}/template/generate`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(errorData.error || `Failed to generate template: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchTemplateStatus(
+  companyId: string
+): Promise<import("../types/template").TemplateStatusResponse> {
+  const res = await fetch(`${API_BASE}/companies/${companyId}/template/status`);
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(errorData.error || `Failed to fetch template status: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function fetchTemplateBlob(companyId: string): Promise<Blob> {
+  const res = await fetch(`${API_BASE}/companies/${companyId}/template/download`);
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(errorData.error || `Failed to fetch template: ${res.statusText}`);
+  }
+  return res.blob();
+}
+
+export function getTemplateDownloadUrl(companyId: string): string {
+  return `${API_BASE}/companies/${companyId}/template/download`;
+}
