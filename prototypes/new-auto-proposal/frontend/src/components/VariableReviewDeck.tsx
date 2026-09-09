@@ -560,10 +560,10 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
                   return (
                     <div
                       key={v.id}
-                      className={`group rounded-xl p-3.5 border transition-all ${
+                      className={`group rounded-xl p-3.5 border transition-colors ${
                         v.is_deleted
                           ? "bg-muted/20 border-border/20 opacity-50"
-                          : "bg-muted/40 hover:bg-muted/60 border-border/40 hover:-translate-y-0.5"
+                          : "bg-muted/40 hover:bg-muted/60 border-border/40 hover:border-border/60"
                       }`}
                     >
                       {/* Top Row */}
