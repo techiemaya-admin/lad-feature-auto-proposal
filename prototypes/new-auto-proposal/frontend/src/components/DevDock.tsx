@@ -42,7 +42,7 @@ export const DevDock: React.FC<DevDockProps> = ({
   const markdown = docMeta?.extracted_markdown || "";
 
   const resolvedTemplateStats =
-    templateStats || (company?.working_state as any)?.template_stats || null;
+    templateStats || company?.working_state?.template_stats || null;
 
   const handleCopy = () => {
     let content = "";
@@ -276,7 +276,7 @@ export const DevDock: React.FC<DevDockProps> = ({
                     {company?.company_id}
                   </span>
                 </div>
-                <pre className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap break-words break-all">
+                <pre className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap wrap-break-word break-all">
                   <code>{JSON.stringify(company?.data || {}, null, 2)}</code>
                 </pre>
               </div>
@@ -286,12 +286,12 @@ export const DevDock: React.FC<DevDockProps> = ({
               <div>
                 {markdown ? (
                   viewMode === "raw" ? (
-                    <pre className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap break-words break-all select-text">
+                    <pre className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap wrap-break-word break-all select-text">
                       <code>{markdown}</code>
                     </pre>
                   ) : (
-                    <div className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap break-words break-all">
-                      <pre className="whitespace-pre-wrap break-words break-all">
+                    <div className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap wrap-break-word break-all">
+                      <pre className="whitespace-pre-wrap wrap-break-word break-all">
                         {markdown}
                       </pre>
                     </div>
@@ -320,7 +320,7 @@ export const DevDock: React.FC<DevDockProps> = ({
                     </span>
                   )}
                 </div>
-                <pre className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap break-words break-all">
+                <pre className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap wrap-break-word break-all">
                   <code>
                     {JSON.stringify(
                       variables && variables.length > 0
@@ -343,7 +343,7 @@ export const DevDock: React.FC<DevDockProps> = ({
                 <div className="text-xs font-sans text-muted-foreground mb-2">
                   Pricing Rule Schema (Stage 4 preview):
                 </div>
-                <pre className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap break-words break-all">
+                <pre className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap wrap-break-word break-all">
                   <code>
                     {JSON.stringify(
                       company?.data?.pricing_engine_spec || {
@@ -368,7 +368,7 @@ export const DevDock: React.FC<DevDockProps> = ({
                     </span>
                   )}
                 </div>
-                <pre className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap break-words break-all">
+                <pre className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap wrap-break-word break-all">
                   <code>
                     {JSON.stringify(
                       {

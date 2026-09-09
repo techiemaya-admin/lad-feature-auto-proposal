@@ -274,7 +274,7 @@ export const TemplateCheckpointCard: React.FC<TemplateCheckpointCardProps> = ({
               ) : (
                 <div
                   ref={previewContainerRef}
-                  className="bg-white text-zinc-900 rounded-lg shadow-md p-6 sm:p-10 max-w-2xl w-full min-h-[500px] overflow-x-auto text-xs"
+                  className="bg-white text-zinc-900 rounded-lg shadow-md p-6 sm:p-10 max-w-2xl w-full min-h-125 overflow-x-auto text-xs"
                 />
               )}
             </div>

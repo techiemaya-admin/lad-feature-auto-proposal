@@ -184,7 +184,7 @@ export const PromptDocCapsule: React.FC<PromptDocCapsuleProps> = ({
           <div className="flex flex-wrap items-center gap-2.5">
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/60 text-xs font-mono text-foreground select-none border border-border/40">
               <FileText className="size-3.5 text-primary shrink-0" />
-              <span className="font-medium truncate max-w-[260px] sm:max-w-md">
+              <span className="font-medium truncate max-w-65 sm:max-w-md">
                 {docMeta?.filename || "original_quotation.docx"}
               </span>
               {/* {docMeta?.filesize ? (
@@ -336,7 +336,7 @@ export const PromptDocCapsule: React.FC<PromptDocCapsuleProps> = ({
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
-          className={`relative rounded-b-2xl rounded-t-none pt-[30px] pb-3.5 sm:pb-4 px-4 cursor-pointer transition-all duration-150 border border-dashed select-none text-center shadow-xs ${
+          className={`relative rounded-b-2xl rounded-t-none pt-7.5 pb-3.5 sm:pb-4 px-4 cursor-pointer transition-all duration-150 border border-dashed select-none text-center shadow-xs ${
             isDragging
               ? "bg-blue-500/15 border-blue-500"
               : selectedFile || hasExistingDoc

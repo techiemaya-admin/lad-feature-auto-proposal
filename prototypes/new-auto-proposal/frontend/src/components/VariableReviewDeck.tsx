@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Sparkles,
   RefreshCw,
@@ -19,6 +19,7 @@ import type {
   CompanyVariable,
   CompoundTable,
   VariableCategory,
+  VariableDataType,
   VariablesResponse,
 } from "../types/variable";
 import {
@@ -55,25 +56,56 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
   const [showDeleted, setShowDeleted] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
 
+  // If companyId changes without remounting, reset loading state during render
+  // avoiding cascading renders caused by setting state synchronously inside an effect
+  const [prevCompanyId, setPrevCompanyId] = useState(companyId);
+  if (companyId !== prevCompanyId) {
+    setPrevCompanyId(companyId);
+    setIsLoading(true);
+    setError(null);
+  }
+
+  // Stable ref for parent callback to avoid unnecessary effect re-runs
+  const onVariablesChangeRef = useRef(onVariablesChange);
+  useEffect(() => {
+    onVariablesChangeRef.current = onVariablesChange;
+  });
+
+  const runExtraction = useCallback(async () => {
+    setIsExtracting(true);
+    setError(null);
+    try {
+      const result = await extractVariables(companyId);
+      setVariables(result.variables);
+      setCompoundTables(result.compound_tables);
+      onVariablesChangeRef.current?.(result.variables, result.compound_tables);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to extract variables. Please check your connection or retry."
+      );
+    } finally {
+      setIsExtracting(false);
+      setIsLoading(false);
+    }
+  }, [companyId]);
+
   // Load variables on company change
   useEffect(() => {
     let ignore = false;
-    setIsLoading(true);
-    setError(null);
 
     fetchVariables(companyId)
       .then((data: VariablesResponse) => {
         if (!ignore) {
-          if (data.variables.length === 0 && !isExtracting) {
+          if (data.variables.length === 0) {
             // Auto-trigger extraction if locked and no variables present
             runExtraction();
           } else {
             setVariables(data.variables);
             setCompoundTables(data.compound_tables);
             setIsLoading(false);
-            if (onVariablesChange) {
-              onVariablesChange(data.variables, data.compound_tables);
-            }
+            onVariablesChangeRef.current?.(data.variables, data.compound_tables);
           }
         }
       })
@@ -87,29 +119,7 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
     return () => {
       ignore = true;
     };
-  }, [companyId]);
-
-  const runExtraction = async () => {
-    setIsExtracting(true);
-    setError(null);
-    try {
-      const result = await extractVariables(companyId);
-      setVariables(result.variables);
-      setCompoundTables(result.compound_tables);
-      if (onVariablesChange) {
-        onVariablesChange(result.variables, result.compound_tables);
-      }
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to extract variables. Please check your connection or retry."
-      );
-    } finally {
-      setIsExtracting(false);
-      setIsLoading(false);
-    }
-  };
+  }, [companyId, runExtraction]);
 
   const handleUpdateNaturalName = async (id: string, newName: string) => {
     if (!newName.trim()) return;
@@ -142,7 +152,7 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
       return {
         ...v,
         category: newCategory,
-        data_type: (newCategory === "paragraph" ? "paragraph" : v.data_type) as any,
+        data_type: (newCategory === "paragraph" ? "paragraph" : v.data_type) as VariableDataType,
         descriptor: updatedDescriptor,
       };
     });
@@ -317,7 +327,7 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
     <div className="relative bg-card rounded-2xl border border-border/80 shadow-xs overflow-hidden transition-all duration-200">
       {/* Ambient Top Shimmer Bar during extraction */}
       {isExtracting && (
-        <div className="h-0.5 w-full bg-gradient-to-r from-sky-500 via-emerald-500 to-violet-500 animate-pulse" />
+        <div className="h-0.5 w-full bg-linear-to-r from-sky-500 via-emerald-500 to-violet-500 animate-pulse" />
       )}
 
       <div className="p-5 sm:p-6 space-y-5">

@@ -1,3 +1,5 @@
+import type { TemplateStats } from "./template";
+
 export interface CompanyBasics {
   company_name: string;
   location?: string;
@@ -66,6 +68,15 @@ export interface CompanySummary {
   created_at: string;
 }
 
+export interface CompanyWorkingState {
+  stage?: string;
+  template_generated?: boolean;
+  template_generated_at?: string;
+  template_stats?: TemplateStats;
+  extracted_variables?: unknown;
+  [key: string]: unknown;
+}
+
 export interface Company {
   company_id: string;
   company_name: string;
@@ -76,7 +87,7 @@ export interface Company {
   phone: string | null;
   data: CompanyData;
   pricing_spec: string;
-  working_state: Record<string, unknown> | null;
+  working_state: CompanyWorkingState | null;
   briefing_locked?: boolean;
   document_metadata?: DocumentMetadata | null;
   created_at: string;
