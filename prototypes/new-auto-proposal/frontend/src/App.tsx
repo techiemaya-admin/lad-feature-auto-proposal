@@ -277,7 +277,7 @@ export function App() {
       </header>
 
       {/* Main Workspace */}
-      <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6 space-y-6">
+      <main className="mx-auto max-w-4xl px-4 pt-3 pb-8 sm:px-6 sm:pt-4 space-y-5">
         {/* Floating Notification */}
         {notification && (
           <div

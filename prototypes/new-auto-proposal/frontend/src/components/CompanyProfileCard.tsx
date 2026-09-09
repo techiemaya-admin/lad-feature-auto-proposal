@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { RotateCcw, DownloadCloud } from "lucide-react";
+import { RotateCcw, DownloadCloud, Building2 } from "lucide-react";
 import type { Company } from "../types/company";
 import { Button } from "./ui/button";
 import { PromptDocCapsule } from "./PromptDocCapsule";
@@ -58,28 +58,32 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
   const industry = company.industry || company.data?.company_details?.industry;
 
   return (
-    <div className="space-y-6">
-      {/* Sleek Company Info & Top Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-2 border-b border-border/40">
-        <div>
-          <h2 className="text-xl font-bold tracking-tight text-foreground">
+    <div className="space-y-2.5">
+      {/* Discreet Ambient Context Strip */}
+      <div className="flex items-center justify-between gap-3 px-0.5 py-0 text-xs text-muted-foreground">
+        <div className="flex items-center gap-2 min-w-0">
+          <Building2 className="size-3.5 text-muted-foreground/60 shrink-0" />
+          <span className="font-semibold text-foreground/80 truncate">
             {basics.company_name}
-          </h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {[basics.location, industry].filter(Boolean).join(" • ")}
-          </p>
+          </span>
+          {[basics.location, industry].filter(Boolean).length > 0 && (
+            <span className="hidden sm:inline text-[11px] text-muted-foreground/60 truncate">
+              • {[basics.location, industry].filter(Boolean).join(" • ")}
+            </span>
+          )}
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        <div className="flex items-center gap-1 shrink-0">
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
             onClick={handleImport}
             disabled={isImporting || isLoading}
-            className="text-xs h-8 btn-tactile bg-card hover:bg-muted"
+            className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/60 btn-tactile font-normal"
+            title="Import mock settings and spec"
           >
-            <DownloadCloud className={`size-3.5 mr-1.5 ${isImporting ? "animate-bounce" : ""}`} />
-            {isImporting ? "Importing..." : "Import Settings"}
+            <DownloadCloud className={`size-3 mr-1 ${isImporting ? "animate-bounce" : ""}`} />
+            {isImporting ? "Importing..." : "Import"}
           </Button>
 
           <Button
@@ -87,9 +91,10 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
             size="sm"
             onClick={handleReset}
             disabled={isResetting || isLoading}
-            className="text-xs h-8 text-muted-foreground hover:text-destructive btn-tactile"
+            className="h-6 px-2 text-[11px] text-muted-foreground hover:text-destructive hover:bg-destructive/10 btn-tactile font-normal"
+            title="Reset company to default mock settings"
           >
-            <RotateCcw className={`size-3.5 mr-1.5 ${isResetting ? "animate-spin" : ""}`} />
+            <RotateCcw className={`size-3 mr-1 ${isResetting ? "animate-spin" : ""}`} />
             {isResetting ? "Resetting..." : "Reset"}
           </Button>
         </div>
