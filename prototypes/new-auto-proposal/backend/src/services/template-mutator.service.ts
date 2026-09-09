@@ -205,7 +205,8 @@ export function executeReplaceTableCell(
  */
 export function executeWrapConditionalRow(
   doc: Document,
-  mutation: MutationAction
+  mutation: MutationAction,
+  fallbackConditionTag?: string
 ): { applied: boolean; info: string } {
   if (mutation.action !== "wrap_conditional_row") {
     return { applied: false, info: "Not a wrap_conditional_row mutation" };
@@ -225,7 +226,11 @@ export function executeWrapConditionalRow(
     return { applied: false, info: "Row has 0 cells" };
   }
 
-  const rawTag = (mutation.condition_tag || "condition").replace(/^[#{/]+|[}]+$/g, "");
+  const rawTag = (
+    mutation.condition_tag ||
+    fallbackConditionTag ||
+    "condition"
+  ).replace(/^[#{/]+|[}]+$/g, "");
   const openTag = `{#${rawTag}}`;
   const closeTag = `{/${rawTag}}`;
 
@@ -492,7 +497,10 @@ export async function mutateDocumentTemplate(companyId: string): Promise<Mutatio
       }
 
       case "wrap_conditional_row": {
-        const res = executeWrapConditionalRow(doc, mutation);
+        const fallbackTag =
+          descriptor.visibility_rule?.condition_flag ||
+          (row.variable_name.startsWith("has_") ? row.variable_name : `has_${row.variable_name}`);
+        const res = executeWrapConditionalRow(doc, mutation, fallbackTag);
         applied = res.applied;
         info = res.info;
         if (applied) {

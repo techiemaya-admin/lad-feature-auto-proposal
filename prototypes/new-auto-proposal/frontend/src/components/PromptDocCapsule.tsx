@@ -187,11 +187,11 @@ export const PromptDocCapsule: React.FC<PromptDocCapsuleProps> = ({
               <span className="font-medium truncate max-w-[260px] sm:max-w-md">
                 {docMeta?.filename || "original_quotation.docx"}
               </span>
-              {docMeta?.filesize ? (
+              {/* {docMeta?.filesize ? (
                 <span className="text-muted-foreground text-[11px]">
                   ({formatBytes(docMeta.filesize)})
                 </span>
-              ) : null}
+              ) : null} */}
               <span className="size-1 rounded-full bg-emerald-500" />
               <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-sans">
                 Parsed
