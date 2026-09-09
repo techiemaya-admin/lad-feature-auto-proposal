@@ -13,6 +13,7 @@ import {
   EyeOff,
 } from "lucide-react";
 import { Button } from "./ui/button";
+import { CustomDropdown } from "./ui/custom-dropdown";
 import { AddCustomChipModal } from "./AddCustomChipModal";
 import type {
   CompanyVariable,
@@ -474,19 +475,20 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
 
                           <div className="flex items-center gap-1.5">
                             <span className="text-[11px] text-muted-foreground">Default:</span>
-                            <select
+                            <CustomDropdown
                               value={currentDefault}
-                              onChange={(e) =>
-                                handleUpdateDefaultTier(table.table_id, e.target.value)
+                              onChange={(val) =>
+                                handleUpdateDefaultTier(table.table_id, val)
                               }
-                              className="text-xs bg-background border border-border/60 rounded px-2 py-0.5 text-foreground font-medium focus:outline-hidden"
-                            >
-                              {tiers.map((t) => (
-                                <option key={t} value={t}>
-                                  {t}
-                                </option>
-                              ))}
-                            </select>
+                              options={tiers.map((t) => ({
+                                value: t,
+                                label: t,
+                                dotColor: "bg-indigo-500",
+                              }))}
+                              size="xs"
+                              menuAlign="right"
+                              className="h-6 px-2 text-xs bg-background/90 font-medium"
+                            />
                           </div>
                         </div>
 
@@ -596,21 +598,22 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
                           />
 
                           {/* Category Reclassifier Dropdown */}
-                          <select
+                          <CustomDropdown
                             value={v.category}
-                            onChange={(e) =>
+                            onChange={(val) =>
                               handleUpdateCategory(
                                 v.id,
-                                e.target.value as VariableCategory
+                                val as VariableCategory
                               )
                             }
-                            className="text-[10px] text-muted-foreground bg-transparent hover:bg-muted/50 border border-transparent hover:border-border/40 rounded px-1 py-0.5 outline-hidden cursor-pointer"
-                            title="Change category bucket"
-                          >
-                            <option value="customer_input">Customer Input</option>
-                            <option value="pricing">Pricing</option>
-                            <option value="paragraph">Paragraph</option>
-                          </select>
+                            options={[
+                              { value: "customer_input", label: "Customer Input", dotColor: "bg-sky-500" },
+                              { value: "pricing", label: "Pricing", dotColor: "bg-emerald-500" },
+                              { value: "paragraph", label: "Paragraph", dotColor: "bg-violet-500" },
+                            ]}
+                            size="xs"
+                            className="h-5 px-1.5 text-[10px] bg-muted/50 hover:bg-muted border-border/30 rounded-md font-normal"
+                          />
 
                           {/* Custom Variable Indicator */}
                           {v.is_custom && (
