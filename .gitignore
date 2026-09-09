@@ -13,3 +13,4 @@ prototypes/new-auto-proposal/backend/storage/
 coverage
 oauth2.keys.json
 client_secret_*.json
+*.docx#

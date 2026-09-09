@@ -34,9 +34,13 @@ test("Briefing & Quotation Ingestion Suite", async (t) => {
     throw new Error(`Mock Data directory not found. Looked in: ${candidateMockDirs.join(", ")}`);
   }
 
-  const northstarDocx = path.join(mockDataDir, "Proposal_Northstar_BloomAndCo.docx");
-  const fortressDocx = path.join(mockDataDir, "Proposal_FortressIT_WhitfieldAssociates.docx");
-  const fieldstoneDocx = path.join(mockDataDir, "Proposal_Fieldstone_RosewoodHomeGoods.docx");
+  const findDocx = (name: string) => {
+    const docxSub = path.join(mockDataDir, "docx", name);
+    return fs.existsSync(docxSub) ? docxSub : path.join(mockDataDir, name);
+  };
+  const northstarDocx = findDocx("Proposal_Northstar_BloomAndCo.docx");
+  const fortressDocx = findDocx("Proposal_FortressIT_WhitfieldAssociates.docx");
+  const fieldstoneDocx = findDocx("Proposal_Fieldstone_RosewoodHomeGoods.docx");
 
   t.after(() => {
     closeDatabase();

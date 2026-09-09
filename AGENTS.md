@@ -60,4 +60,5 @@ Documentation and `AGENTS.md` must stay continuously aligned with codebase reali
 - **Frontend SDK Client Standards:** [docs/frontend-sdk.md](file:///c:/Users/syedm/Desktop/Muneer%20Work/TechieMaya%20AI%20Fullstack%20Developer%20Intern/lad-feature-auto-proposal/docs/frontend-sdk.md)
 - **Issue Tracking & Scratch Notes:** `.scratch/` (see [docs/agents/issue-tracker.md](file:///c:/Users/syedm/Desktop/Muneer%20Work/TechieMaya%20AI%20Fullstack%20Developer%20Intern/lad-feature-auto-proposal/docs/agents/issue-tracker.md))
 - **Triage & Label Vocabulary:** [docs/agents/triage-labels.md](file:///c:/Users/syedm/Desktop/Muneer%20Work/TechieMaya%20AI%20Fullstack%20Developer%20Intern/lad-feature-auto-proposal/docs/agents/triage-labels.md)
+- **Prototype Workspace (`prototypes/new-auto-proposal`):** [prototypes/new-auto-proposal/AGENTS.md](file:///c:/Users/syedm/Desktop/Muneer%20Work/TechieMaya%20AI%20Fullstack%20Developer%20Intern/lad-feature-auto-proposal/prototypes/new-auto-proposal/AGENTS.md) — consult when working in `prototypes/new-auto-proposal/` for its dedicated architecture, guardrails, and roadmap.
 
