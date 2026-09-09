@@ -8,7 +8,7 @@
 **Research Reference:** [prototypes/test-docXMLater/RESEARCH.md](../../prototypes/test-docXMLater/RESEARCH.md)  
 **Blocked by:** 03: Gemini Variable Extraction and Categorized Review Deck  
 
-**Status:** ready-for-agent
+**Status:** completed
 
 ---
 
@@ -142,24 +142,24 @@ Following `DESIGN.md`:
 
 ## 7. Acceptance Criteria
 
-- [ ] Install `docxmlater@12.1.0` in `prototypes/new-auto-proposal/backend/package.json`.
-- [ ] Install `docx-preview` in `prototypes/new-auto-proposal/frontend/package.json`.
-- [ ] Implement `template-mutator.service.ts` in backend supporting:
-  - [ ] `replace_text_run` with `context_anchor` matching and native `replaceTextCrossRun` handling.
-  - [ ] `replace_table_cell` with hybrid table resolution (candidate index + semantic row fallback).
-  - [ ] `wrap_conditional_row` with cross-cell `{#flag}` and `{/flag}` injection.
-  - [ ] `collapse_repeating_table` with header preservation (Row 0), loop row synthesis (Row 1 with `{#loop}` in Cell 0 and `{/loop}` in last Cell), reverse-order redundant sample row deletion, and summary footer preservation.
-- [ ] Implement API endpoints:
-  - [ ] `POST /api/companies/:id/template/generate` (executes mutation and saves `storage/<company_id>/template.docx`).
-  - [ ] `GET /api/companies/:id/template/download` (streams binary `.docx`).
-- [ ] Build `TemplateCheckpointCard.tsx` with:
-  - [ ] Status banner ("Dynamic Template Generated Successfully") with tag & loop counts.
-  - [ ] `[ Quick Preview (.docx) ]` modal embedding `docx-preview`.
-  - [ ] `[ Download Template .docx ]` download button.
-  - [ ] Primary advance button `[ Proceed to Pricing Engine ➔ ]`.
-- [ ] Hook mutation statistics and tag placement records into Bottom Dev Dock Tab 5 (`Pipeline Logs`).
-- [ ] Verify generated `template.docx` for Northstar (`co1_seo`), Fortress IT (`co2_msp`), and Fieldstone (`co3_dev`):
-  - [ ] Opens in Microsoft Word without schema repair warnings.
-  - [ ] Preserves all cell background shading `<w:shd>`, borders, and bold fonts.
-  - [ ] Contains clean single-brace tags (`{client_name}`, `{selected_tier}`) and loop syntax (`{#items}...{/items}`).
+- [x] Install `docxmlater@12.1.0` in `prototypes/new-auto-proposal/backend/package.json`.
+- [x] Install `docx-preview` in `prototypes/new-auto-proposal/frontend/package.json`.
+- [x] Implement `template-mutator.service.ts` in backend supporting:
+  - [x] `replace_text_run` with `context_anchor` matching and native `replaceTextCrossRun` handling.
+  - [x] `replace_table_cell` with hybrid table resolution (candidate index + semantic row fallback).
+  - [x] `wrap_conditional_row` with cross-cell `{#flag}` and `{/flag}` injection.
+  - [x] `collapse_repeating_table` with header preservation (Row 0), loop row synthesis (Row 1 with `{#loop}` in Cell 0 and `{/loop}` in last Cell), reverse-order redundant sample row deletion, and summary footer preservation.
+- [x] Implement API endpoints:
+  - [x] `POST /api/companies/:id/template/generate` (executes mutation and saves `storage/<company_id>/template.docx`).
+  - [x] `GET /api/companies/:id/template/download` (streams binary `.docx`).
+- [x] Build `TemplateCheckpointCard.tsx` with:
+  - [x] Status banner ("Dynamic Template Generated Successfully") with tag & loop counts.
+  - [x] `[ Quick Preview (.docx) ]` modal embedding `docx-preview`.
+  - [x] `[ Download Template .docx ]` download button.
+  - [x] Primary advance button `[ Proceed to Pricing Engine ➔ ]`.
+- [x] Hook mutation statistics and tag placement records into Bottom Dev Dock Tab 5 (`Pipeline Logs`).
+- [x] Verify generated `template.docx` for Northstar (`co1_seo`), Fortress IT (`co2_msp`), and Fieldstone (`co3_dev`):
+  - [x] Opens in Microsoft Word without schema repair warnings.
+  - [x] Preserves all cell background shading `<w:shd>`, borders, and bold fonts.
+  - [x] Contains clean single-brace tags (`{client_name}`, `{selected_tier}`) and loop syntax (`{#items}...{/items}`).
 
