@@ -332,6 +332,111 @@ export function executeReplaceTextRun(
   const anchor = (mutation.context_anchor || "").trim();
   const allParagraphs = doc.getAllParagraphs();
 
+  // Tier 0: Multi-bullet scope / narrative list container detection and collapsing
+  const isListContainer =
+    varName === "scope_deliverables_summary" ||
+    varName === "scope_inclusions_narrative" ||
+    tag.includes("scope_deliverables_summary") ||
+    tag.includes("scope_inclusions_narrative") ||
+    /^\s*[-*•]\s+/.test(sample) ||
+    /\n\s*[-*•]\s+/.test(sample);
+
+  if (isListContainer) {
+    const lines = sample.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const firstBulletText = (lines[0] || sample)
+      .replace(/^[-*•]\s*/, "")
+      .replace(/^\d+\.\s*/, "")
+      .trim();
+    const normFirstBullet = normalizeText(firstBulletText);
+
+    const bodyElements = (doc as any).bodyElements as any[];
+    let targetIndex = -1;
+    let targetPara: Paragraph | undefined;
+
+    if (bodyElements && Array.isArray(bodyElements)) {
+      for (let i = 0; i < bodyElements.length; i++) {
+        const el = bodyElements[i];
+        if (el instanceof Paragraph) {
+          const text = normalizeText(el.getText());
+          if (normFirstBullet && text.includes(normFirstBullet)) {
+            targetPara = el;
+            targetIndex = i;
+            break;
+          }
+        }
+      }
+    }
+
+    if (targetPara && targetIndex >= 0) {
+      const listNumId = targetPara.getNumbering()?.numId;
+      targetPara.clearContent();
+      targetPara.addText(tag);
+      targetPara.removeNumbering();
+
+      const toPrune: Paragraph[] = [];
+      for (let j = targetIndex + 1; j < bodyElements.length; j++) {
+        const sibling = bodyElements[j];
+        if (!(sibling instanceof Paragraph)) {
+          // Reached a Table or non-Paragraph element -> boundary reached
+          break;
+        }
+
+        const sText = sibling.getText().trim();
+        const sNorm = normalizeText(sText);
+
+        const isNumberedSection = /^\s*\d{2}\s+[A-Z]/.test(sText);
+        const isKnownSection =
+          sNorm.startsWith("your investment") ||
+          sNorm.startsWith("payment schedule") ||
+          sNorm.startsWith("next steps") ||
+          sNorm.startsWith("room to grow") ||
+          sNorm.startsWith("total project");
+
+        const headingLvl =
+          typeof (sibling as any).detectHeadingLevel === "function"
+            ? (sibling as any).detectHeadingLevel()
+            : null;
+        const styleName = (sibling as any).getStyle?.() || (sibling.getFormatting() as any)?.style || "";
+        const isHeading =
+          headingLvl !== null ||
+          styleName.toLowerCase().includes("heading") ||
+          isNumberedSection ||
+          isKnownSection;
+
+        if (isHeading) {
+          break;
+        }
+
+        const hasSameNumId = listNumId !== undefined && sibling.getNumbering()?.numId === listNumId;
+        const hasAnyNumbering = sibling.getNumbering()?.numId !== undefined;
+        const hasBulletPrefix = /^[-*•]\s+/.test(sText);
+
+        if (hasSameNumId || hasAnyNumbering || hasBulletPrefix) {
+          toPrune.push(sibling);
+        } else {
+          const matchesSampleLine = lines.some((l) => {
+            const cleanLine = l.replace(/^[-*•]\s*/, "").trim();
+            return cleanLine && sNorm.includes(normalizeText(cleanLine));
+          });
+          if (matchesSampleLine) {
+            toPrune.push(sibling);
+          } else {
+            break;
+          }
+        }
+      }
+
+      for (const p of toPrune) {
+        doc.removeParagraph(p);
+      }
+
+      return {
+        applied: true,
+        info: `Collapsed scope container into "${tag}" and pruned ${toPrune.length} sibling bullet paragraphs`,
+      };
+    }
+  }
+
   // Tier 1: High-Entropy Entities (client_name, client_company_name) -> Global replacement across all paragraphs
   if (isHighEntropyEntity(varName, tag)) {
     let globalReplacements = 0;
@@ -677,8 +782,31 @@ export function executeCollapseRepeatingTable(
   const openTag = `{#${loopTag}}`;
   const closeTag = `{/${loopTag}}`;
 
-  const templateRowIdx =
-    mutation.template_row_index ?? (match && match.rowIndex > 0 ? match.rowIndex : 1);
+  let templateRowIdx = mutation.template_row_index;
+  if (templateRowIdx === undefined) {
+    if (match && match.rowIndex > 0) {
+      templateRowIdx = match.rowIndex;
+    } else if (loopTag === "addon_items" || loopTag.includes("addon")) {
+      // Auto-resolve to first add-on data row in table (excluding summary rows)
+      const rows = targetTable.getRows();
+      for (let r = 1; r < rows.length; r++) {
+        const text = normalizeText(rows[r].getText());
+        if (
+          (text.includes("add-on") || text.includes("addon")) &&
+          !text.includes("subtotal") &&
+          !text.includes("discount") &&
+          !text.includes("total")
+        ) {
+          templateRowIdx = r;
+          break;
+        }
+      }
+    }
+  }
+  if (templateRowIdx === undefined || templateRowIdx <= 0) {
+    templateRowIdx = 1;
+  }
+
   const targetRow = targetTable.getRow(templateRowIdx);
 
   if (!targetRow) {
@@ -687,23 +815,58 @@ export function executeCollapseRepeatingTable(
 
   const cellCount = targetRow.getCellCount();
 
-  // 1. InRow Loop Boundary Placement & Column Replacement
+  // 1. InRow Loop Boundary Placement & Dynamic Column Tag Replacement
   if (mutation.column_tags && Array.isArray(mutation.column_tags) && mutation.column_tags.length > 0) {
     for (const col of mutation.column_tags) {
       if (col.col_index >= 0 && col.col_index < cellCount) {
-        let tag = col.replacement_tag;
+        let tag = col.replacement_tag.trim();
         if (!tag.startsWith("{") && !tag.includes("{")) tag = `{${tag}}`;
         targetTable.setCell(templateRowIdx, col.col_index, tag);
       }
     }
-  } else if (compoundTable?.columns && Array.isArray(compoundTable.columns)) {
-    compoundTable.columns.forEach((col: any, idx: number) => {
-      if (idx < cellCount) {
-        const colName = typeof col === "string" ? col : col.name || `col_${idx}`;
-        const cleanName = colName.toLowerCase().replace(/[^a-z0-9_]+/g, "_");
-        targetTable!.setCell(templateRowIdx, idx, `{${cleanName}}`);
+  } else {
+    // Derive from compoundTable.columns or intelligent defaults
+    let columns = compoundTable?.columns;
+    if (!columns || !Array.isArray(columns) || columns.length === 0) {
+      if (loopTag === "project_phases" || loopTag === "milestones" || targetIndex === 1) {
+        columns = ["phase_number", "milestone_title", "deliverable_summary"];
+      } else if (loopTag === "addon_items" || loopTag.includes("addon")) {
+        columns = ["addon_name", "addon_fee"];
+      } else if (loopTag === "payment_milestones" || targetIndex === 3) {
+        columns = ["milestone_name", "trigger_description", "payment_amount"];
       }
-    });
+    }
+
+    if (columns && Array.isArray(columns)) {
+      const canonicalTagMap: Record<string, string> = {
+        phase: "phase_number",
+        phase_number: "phase_number",
+        milestone: "milestone_title",
+        milestone_title: "milestone_title",
+        milestone_name: "milestone_name",
+        deliverable: "deliverable_summary",
+        deliverable_summary: "deliverable_summary",
+        description: "deliverable_summary",
+        line_item: "addon_name",
+        item: "addon_name",
+        addon_name: "addon_name",
+        amount: loopTag === "payment_milestones" ? "payment_amount" : "addon_fee",
+        fee: "addon_fee",
+        addon_fee: "addon_fee",
+        trigger: "trigger_description",
+        trigger_description: "trigger_description",
+        payment_amount: "payment_amount",
+      };
+
+      columns.forEach((col: any, idx: number) => {
+        if (idx < cellCount) {
+          const rawName = typeof col === "string" ? col : col.name || `col_${idx}`;
+          const cleanKey = rawName.toLowerCase().replace(/[^a-z0-9_]+/g, "_").trim();
+          const canonical = canonicalTagMap[cleanKey] || cleanKey;
+          targetTable!.setCell(templateRowIdx, idx, `{${canonical}}`);
+        }
+      });
+    }
   }
 
   // Inject opening loop tag into first cell
@@ -828,6 +991,19 @@ export async function mutateDocumentTemplate(companyId: string): Promise<Mutatio
   let mutationsAppliedCount = 0;
   const details: MutationLogEntry[] = [];
 
+  // Partition mutations into 3 deterministic phases:
+  // Phase 1: Text run replacements
+  // Phase 2: Scalar cell replacements and conditional row wrapping
+  // Phase 3: Table loop collapsing (executed last to prevent row index shifting)
+  interface PendingMutation {
+    row: VariableRow;
+    descriptor: any;
+    mutation: MutationAction;
+    phase: 1 | 2 | 3;
+  }
+
+  const pending: PendingMutation[] = [];
+
   for (const row of rows) {
     let descriptor: any = {};
     try {
@@ -846,6 +1022,23 @@ export async function mutateDocumentTemplate(companyId: string): Promise<Mutatio
     }
     if (!mutation || !mutation.action) continue;
 
+    let phase: 1 | 2 | 3 = 1;
+    if (mutation.action === "replace_text_run") {
+      phase = 1;
+    } else if (mutation.action === "replace_table_cell" || mutation.action === "wrap_conditional_row") {
+      phase = 2;
+    } else if (mutation.action === "collapse_repeating_table") {
+      phase = 3;
+    }
+
+    pending.push({ row, descriptor, mutation, phase });
+  }
+
+  // Sort by phase so Phase 1 runs first, Phase 2 second, Phase 3 last
+  const sortedPending = pending.sort((a, b) => a.phase - b.phase);
+
+  for (const item of sortedPending) {
+    const { row, descriptor, mutation } = item;
     let applied = false;
     let info = "";
 
@@ -934,7 +1127,28 @@ export async function hydrateProposalTemplate(
   templateBuffer: Buffer,
   payload: ProposalHydrationPayload | Record<string, any>
 ): Promise<Buffer> {
+  const normalizedPayload: Record<string, any> = { ...payload };
+
+  // Alias bridging for seamless template compatibility
+  if (!normalizedPayload.project_phases && normalizedPayload.milestones) {
+    normalizedPayload.project_phases = normalizedPayload.milestones;
+  }
+  if (!normalizedPayload.milestones && normalizedPayload.project_phases) {
+    normalizedPayload.milestones = normalizedPayload.project_phases;
+  }
+
+  if (!normalizedPayload.scope_deliverables_summary && normalizedPayload.scope_inclusions_narrative) {
+    normalizedPayload.scope_deliverables_summary = normalizedPayload.scope_inclusions_narrative;
+  }
+  if (!normalizedPayload.scope_inclusions_narrative && normalizedPayload.scope_deliverables_summary) {
+    normalizedPayload.scope_inclusions_narrative = normalizedPayload.scope_deliverables_summary;
+  }
+
+  if (normalizedPayload.has_addons === undefined && Array.isArray(normalizedPayload.addon_items)) {
+    normalizedPayload.has_addons = normalizedPayload.addon_items.length > 0;
+  }
+
   const handler = new TemplateHandler();
-  const doc = await handler.process(templateBuffer, payload);
+  const doc = await handler.process(templateBuffer, normalizedPayload);
   return Buffer.from(doc);
 }

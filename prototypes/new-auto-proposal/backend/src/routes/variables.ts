@@ -276,15 +276,34 @@ router.post("/:id/variables/extract", async (req: Request, res: Response): Promi
           }
         }
 
-        // Guarantee columns array for repeating loop compound tables
+        // Guarantee columns array and mutations for repeating loop compound tables
         for (const t of extraction.compound_tables) {
           if (t.type === "repeating_loop" && (!t.columns || t.columns.length === 0)) {
-            if (t.loop_tag === "milestones" || t.table_index === 1) {
+            if (t.loop_tag === "milestones" || t.loop_tag === "project_phases" || t.table_index === 1) {
               t.columns = ["phase_number", "milestone_title", "deliverable_summary"];
-            } else if (t.loop_tag === "addon_items") {
+            } else if (t.loop_tag === "addon_items" || t.table_index === 2) {
               t.columns = ["addon_name", "addon_fee"];
             } else if (t.loop_tag === "payment_milestones" || t.table_index === 3) {
               t.columns = ["milestone_name", "trigger_description", "payment_amount"];
+            }
+          }
+
+          if (t.type === "repeating_loop" && (t.loop_tag === "addon_items" || t.table_index === 2)) {
+            if (!t.mutation) {
+              t.mutation = {
+                action: "collapse_repeating_table",
+                table_index: t.table_index,
+                loop_tag: t.loop_tag || "addon_items",
+                template_row_index: 2,
+                row_identifier: "add-on",
+              };
+            } else if (t.mutation.action === "collapse_repeating_table") {
+              if (t.mutation.template_row_index === undefined) {
+                t.mutation.template_row_index = 2;
+              }
+              if (!t.mutation.row_identifier) {
+                t.mutation.row_identifier = "add-on";
+              }
             }
           }
         }

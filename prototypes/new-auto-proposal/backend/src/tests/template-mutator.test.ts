@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { Document, Paragraph } from "docxmlater";
 import { createApp } from "../app.js";
 import { initDatabase, closeDatabase, getDatabase } from "../db/database.js";
+import { toMarkdown } from "@firecrawl/anydoc";
 import {
   findTableAndRow,
   executeReplaceTextRun,
@@ -936,6 +937,389 @@ test("docXMLater Word Template Mutation Suite", async (t) => {
       assert.ok(para.getText().includes("{server_count} servers"));
       assert.ok(para.getText().includes("$75.00/server"));
       assert.ok(!para.getText().includes("$7{server_count}"));
+    }
+  );
+
+  await t.test(
+    "Unit: Fieldstone Table 2 retains Row 1 as static base project row and collapses Rows 2-3 into {#addon_items} with dynamic columns",
+    async () => {
+      const doc = await Document.loadFromBuffer(fs.readFileSync(fieldstoneDocx));
+      const table2 = doc.getTableAt(2)!;
+      assert.equal(table2.getRowCount(), 7);
+
+      // Phase 2: Scalar cell replacements & conditional row wrapping
+      executeReplaceTableCell(doc, {
+        action: "replace_table_cell",
+        table_index: 2,
+        template_row_index: 1,
+        sample_text: "$9,500.00",
+        template_tag: "{tier_base_investment}",
+      });
+
+      executeWrapConditionalRow(doc, {
+        action: "wrap_conditional_row",
+        table_index: 2,
+        row_identifier: "Add-on subtotal",
+        condition_tag: "has_addons",
+      });
+
+      executeWrapConditionalRow(doc, {
+        action: "wrap_conditional_row",
+        table_index: 2,
+        row_identifier: "Bundle discount",
+        condition_tag: "has_bundle_discount",
+      });
+
+      executeReplaceTableCell(doc, {
+        action: "replace_table_cell",
+        table_index: 2,
+        row_identifier: "Total Project Investment",
+        col_index: 1,
+        sample_text: "$10,445.00",
+        template_tag: "{total_project_investment}",
+      });
+
+      // Phase 3: Mid-table sub-range loop collapse at Row 2
+      const collapseRes = executeCollapseRepeatingTable(
+        doc,
+        {
+          action: "collapse_repeating_table",
+          table_index: 2,
+          template_row_index: 2,
+          loop_tag: "addon_items",
+          delete_sample_rows_from: 3,
+          delete_sample_rows_count: 1,
+        },
+        {
+          columns: ["addon_name", "addon_fee"],
+        }
+      );
+
+      assert.equal(collapseRes.applied, true);
+      assert.equal(table2.getRowCount(), 6);
+
+      // Header Row 0 preserved
+      assert.equal(table2.getRow(0)?.getText().trim(), "Line Item\tAmount");
+
+      // Row 1: Static Base Project Row preserved with {tier_base_investment}
+      const row1 = table2.getRow(1)!;
+      assert.ok(row1.getCell(0)?.getText().includes("E-Commerce Build"));
+      assert.equal(row1.getCell(1)?.getText().trim(), "{tier_base_investment}");
+
+      // Row 2: Converted to {#addon_items}{addon_name} | {addon_fee}{/addon_items}
+      const row2 = table2.getRow(2)!;
+      assert.ok(row2.getCell(0)?.getText().includes("{#addon_items}"));
+      assert.ok(row2.getCell(0)?.getText().includes("{addon_name}"));
+      assert.ok(row2.getCell(1)?.getText().includes("{/addon_items}"));
+      assert.ok(row2.getCell(1)?.getText().includes("{addon_fee}"));
+
+      // Row 3: Add-on subtotal preserved with {#has_addons}
+      const row3 = table2.getRow(3)!;
+      assert.ok(row3.getCell(0)?.getText().includes("{#has_addons}"));
+      assert.ok(row3.getCell(0)?.getText().includes("Add-on subtotal"));
+
+      // Row 4: Bundle discount preserved with {#has_bundle_discount}
+      const row4 = table2.getRow(4)!;
+      assert.ok(row4.getCell(0)?.getText().includes("{#has_bundle_discount}"));
+      assert.ok(row4.getCell(0)?.getText().includes("Bundle discount"));
+
+      // Row 5: Total Project Investment preserved with {total_project_investment}
+      const row5 = table2.getRow(5)!;
+      assert.ok(row5.getCell(0)?.getText().includes("Total Project Investment"));
+      assert.equal(row5.getCell(1)?.getText().trim(), "{total_project_investment}");
+    }
+  );
+
+  await t.test(
+    "Unit: Fieldstone Table 1 collapses Row 1 into {#project_phases} with dynamic columns replacing hardcoded sample text",
+    async () => {
+      const doc = await Document.loadFromBuffer(fs.readFileSync(fieldstoneDocx));
+      const table1 = doc.getTableAt(1)!;
+      assert.equal(table1.getRowCount(), 6);
+
+      const collapseRes = executeCollapseRepeatingTable(
+        doc,
+        {
+          action: "collapse_repeating_table",
+          table_index: 1,
+          template_row_index: 1,
+          loop_tag: "project_phases",
+          delete_sample_rows_from: 2,
+        },
+        {
+          columns: ["phase_number", "milestone_title", "deliverable_summary"],
+        }
+      );
+
+      assert.equal(collapseRes.applied, true);
+      assert.equal(table1.getRowCount(), 2);
+
+      // Header Row 0 preserved
+      assert.equal(table1.getRow(0)?.getText().trim(), "Phase\tMilestone\tDeliverable");
+
+      // Row 1: Dynamic loop row
+      const loopRow = table1.getRow(1)!;
+      assert.equal(loopRow.getCell(0)?.getText().trim(), "{#project_phases}{phase_number}");
+      assert.equal(loopRow.getCell(1)?.getText().trim(), "{milestone_title}");
+      assert.equal(loopRow.getCell(2)?.getText().trim(), "{deliverable_summary}{/project_phases}");
+
+      // Ensure hardcoded sample text was completely eliminated
+      const fullRowText = loopRow.getText();
+      assert.ok(!fullRowText.includes("Discovery"));
+      assert.ok(!fullRowText.includes("Requirements confirmed"));
+    }
+  );
+
+  await t.test(
+    "Unit: Multi-bullet scope deliverables in Northstar and Fortress IT collapse into single narrative container and prune sibling bullets",
+    async () => {
+      // 1. Northstar
+      const docNorthstar = await Document.loadFromBuffer(fs.readFileSync(northstarDocx));
+      const northstarRes = executeReplaceTextRun(
+        docNorthstar,
+        {
+          action: "replace_text_run",
+          sample_text:
+            "- Included: Google Business Profile management for both clinic locations\n- Included: On-page SEO across your site, citation building across major directories",
+          template_tag: "{scope_deliverables_summary}",
+        },
+        "scope_deliverables_summary"
+      );
+
+      assert.equal(northstarRes.applied, true);
+
+      // Verify paragraph 1 replaced and siblings pruned
+      const nsParas = (docNorthstar as any).bodyElements.filter((e: any) => e instanceof Paragraph) as Paragraph[];
+      const scopeIdx = nsParas.findIndex((p) => p.getText().includes("{scope_deliverables_summary}"));
+      assert.ok(scopeIdx >= 0);
+
+      // Sibling bullets must be pruned
+      const nsFullText = nsParas.map((p) => p.getText()).join("\n");
+      assert.ok(!nsFullText.includes("On-page SEO across your site"));
+      assert.ok(!nsFullText.includes("A dedicated 1:1 strategist"));
+
+      // Subsequent heading "Your Investment" must remain intact right after scope
+      const nextHeading = nsParas[scopeIdx + 1]?.getText().trim();
+      assert.equal(nextHeading, "Your Investment");
+
+      // 2. Fortress IT
+      const docFortress = await Document.loadFromBuffer(fs.readFileSync(fortressDocx));
+      const fortressRes = executeReplaceTextRun(
+        docFortress,
+        {
+          action: "replace_text_run",
+          sample_text:
+            "- Onboarding of all 42 endpoints and 5 servers into 24/7 monitoring within weeks 1–2",
+          template_tag: "{scope_deliverables_summary}",
+        },
+        "scope_deliverables_summary"
+      );
+
+      assert.equal(fortressRes.applied, true);
+
+      const fParas = (docFortress as any).bodyElements.filter((e: any) => e instanceof Paragraph) as Paragraph[];
+      const fScopeIdx = fParas.findIndex((p) => p.getText().includes("{scope_deliverables_summary}"));
+      assert.ok(fScopeIdx >= 0);
+
+      // Sibling bullets pruned
+      const fFullText = fParas.map((p) => p.getText()).join("\n");
+      assert.ok(!fFullText.includes("Managed backup configuration"));
+      assert.ok(!fFullText.includes("Named account engineer"));
+
+      // Subsequent heading "05  Next Steps" must remain intact
+      const fNextHeading = fParas[fScopeIdx + 1]?.getText().trim();
+      assert.equal(fNextHeading, "05  Next Steps");
+    }
+  );
+
+  await t.test(
+    "Integration: Proposal templates for all 3 mock companies convert via @firecrawl/anydoc to Markdown matching Expected Results",
+    async () => {
+      // 1. Mutate and verify Fieldstone (co3_dev)
+      const fieldstoneDoc = await Document.loadFromBuffer(fs.readFileSync(fieldstoneDocx));
+
+      // Global entity replacement
+      executeReplaceTextRun(fieldstoneDoc, {
+        action: "replace_text_run",
+        sample_text: "Rosewood Home Goods",
+        template_tag: "{client_name}",
+      }, "client_name");
+
+      // Replace metadata Table 0
+      executeReplaceTableCell(fieldstoneDoc, {
+        action: "replace_table_cell",
+        table_index: 0,
+        template_row_index: 1,
+        col_index: 0,
+        sample_text: "September 7, 2026",
+        template_tag: "{proposal_date}",
+      });
+      executeReplaceTableCell(fieldstoneDoc, {
+        action: "replace_table_cell",
+        table_index: 0,
+        template_row_index: 1,
+        col_index: 2,
+        sample_text: "September 21, 2026 (14 days)",
+        template_tag: "{proposal_valid_until}",
+      });
+
+      // Table 1 Scope Milestones
+      executeCollapseRepeatingTable(
+        fieldstoneDoc,
+        {
+          action: "collapse_repeating_table",
+          table_index: 1,
+          template_row_index: 1,
+          loop_tag: "project_phases",
+          delete_sample_rows_from: 2,
+        },
+        {
+          columns: ["phase_number", "milestone_title", "deliverable_summary"],
+        }
+      );
+
+      // Table 2 Investment
+      executeReplaceTableCell(fieldstoneDoc, {
+        action: "replace_table_cell",
+        table_index: 2,
+        template_row_index: 1,
+        col_index: 1,
+        sample_text: "$9,500.00",
+        template_tag: "{tier_base_investment}",
+      });
+      executeWrapConditionalRow(fieldstoneDoc, {
+        action: "wrap_conditional_row",
+        table_index: 2,
+        row_identifier: "Add-on subtotal",
+        condition_tag: "has_addons",
+      });
+      executeWrapConditionalRow(fieldstoneDoc, {
+        action: "wrap_conditional_row",
+        table_index: 2,
+        row_identifier: "Bundle discount",
+        condition_tag: "has_bundle_discount",
+      });
+      executeReplaceTableCell(fieldstoneDoc, {
+        action: "replace_table_cell",
+        table_index: 2,
+        row_identifier: "Total Project Investment",
+        col_index: 1,
+        sample_text: "$10,445.00",
+        template_tag: "{total_project_investment}",
+      });
+      executeCollapseRepeatingTable(
+        fieldstoneDoc,
+        {
+          action: "collapse_repeating_table",
+          table_index: 2,
+          template_row_index: 2,
+          loop_tag: "addon_items",
+          delete_sample_rows_from: 3,
+          delete_sample_rows_count: 1,
+        },
+        {
+          columns: ["addon_name", "addon_fee"],
+        }
+      );
+
+      // Table 3 Payment Schedule
+      executeCollapseRepeatingTable(
+        fieldstoneDoc,
+        {
+          action: "collapse_repeating_table",
+          table_index: 3,
+          template_row_index: 1,
+          loop_tag: "payment_milestones",
+          delete_sample_rows_from: 2,
+        },
+        {
+          columns: ["milestone_name", "trigger_description", "payment_amount"],
+        }
+      );
+
+      const fieldstoneBuf = await fieldstoneDoc.toBuffer();
+      const tmpFieldstone = path.join(testDir, "fieldstone_templatized.docx");
+      fs.writeFileSync(tmpFieldstone, fieldstoneBuf);
+
+      const normMd = (md: string) => md.replace(/\\_/g, "_");
+
+      const fieldstoneMd = normMd(await toMarkdown(tmpFieldstone));
+
+      // Assert Markdown matches Expected Results in Templatized Documents.md
+      assert.ok(fieldstoneMd.includes("Prepared for {client_name}"));
+      assert.ok(fieldstoneMd.includes("{#project_phases}{phase_number} | {milestone_title} | {deliverable_summary}{/project_phases}"));
+      assert.ok(fieldstoneMd.includes("E-Commerce Build (base template, up to 100 products) | {tier_base_investment}"));
+      assert.ok(fieldstoneMd.includes("{#addon_items}{addon_name} | {addon_fee}{/addon_items}"));
+      assert.ok(fieldstoneMd.includes("{#has_bundle_discount}"));
+      assert.ok(fieldstoneMd.includes("{total_project_investment}"));
+      assert.ok(fieldstoneMd.includes("{#payment_milestones}{milestone_name} | {trigger_description} | {payment_amount}{/payment_milestones}"));
+
+      // 2. Mutate and verify Northstar (co1_seo)
+      const northstarDoc = await Document.loadFromBuffer(fs.readFileSync(northstarDocx));
+
+      executeReplaceTextRun(northstarDoc, {
+        action: "replace_text_run",
+        sample_text: "Bloom & Co Dental Group",
+        template_tag: "{client_name}",
+      }, "client_name");
+
+      executeReplaceTextRun(northstarDoc, {
+        action: "replace_text_run",
+        sample_text: "Growth",
+        context_anchor: "Recommended Package: Growth",
+        template_tag: "{selected_tier}",
+      }, "selected_tier");
+
+      executeReplaceTextRun(northstarDoc, {
+        action: "replace_text_run",
+        sample_text: "- Included: Google Business Profile management for both clinic locations",
+        template_tag: "{scope_deliverables_summary}",
+      }, "scope_deliverables_summary");
+
+      const northstarBuf = await northstarDoc.toBuffer();
+      const tmpNorthstar = path.join(testDir, "northstar_templatized.docx");
+      fs.writeFileSync(tmpNorthstar, northstarBuf);
+
+      const northstarMd = normMd(await toMarkdown(tmpNorthstar));
+
+      assert.ok(northstarMd.includes("Prepared for {client_name}"));
+      assert.ok(northstarMd.includes("Recommended Package: {selected_tier}"));
+      assert.ok(northstarMd.includes("{scope_deliverables_summary}"));
+      assert.ok(northstarMd.includes("**Your Investment**"));
+
+      // 3. Mutate and verify Fortress IT (co2_msp)
+      const fortressDoc = await Document.loadFromBuffer(fs.readFileSync(fortressDocx));
+
+      executeReplaceTextRun(fortressDoc, {
+        action: "replace_text_run",
+        sample_text: "Whitfield & Associates",
+        template_tag: "{client_name}",
+      }, "client_name");
+
+      executeReplaceTextRun(fortressDoc, {
+        action: "replace_text_run",
+        sample_text: "Standard",
+        context_anchor: "02  Recommended Tier: Standard",
+        template_tag: "{selected_tier}",
+      }, "selected_tier");
+
+      executeReplaceTextRun(fortressDoc, {
+        action: "replace_text_run",
+        sample_text: "- Onboarding of all 42 endpoints and 5 servers into 24/7 monitoring within weeks 1–2",
+        template_tag: "{scope_deliverables_summary}",
+      }, "scope_deliverables_summary");
+
+      const fortressBuf = await fortressDoc.toBuffer();
+      const tmpFortress = path.join(testDir, "fortress_templatized.docx");
+      fs.writeFileSync(tmpFortress, fortressBuf);
+
+      const fortressMd = normMd(await toMarkdown(tmpFortress));
+
+      assert.ok(fortressMd.includes("Prepared for {client_name}"));
+      assert.ok(fortressMd.includes("02  Recommended Tier: {selected_tier}"));
+      assert.ok(fortressMd.includes("04  What's Included This Cycle"));
+      assert.ok(fortressMd.includes("{scope_deliverables_summary}"));
+      assert.ok(fortressMd.includes("05  Next Steps"));
     }
   );
 });
