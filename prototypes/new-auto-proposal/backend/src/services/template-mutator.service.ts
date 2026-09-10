@@ -1,9 +1,60 @@
 import { Document, Table, TableRow, Paragraph } from "docxmlater";
 import fs from "node:fs";
 import path from "node:path";
+import { TemplateHandler } from "easy-template-x";
 import { getStorageDir, getDatabase } from "../db/database.js";
 import type { MutationAction } from "./gemini.service.js";
 import type { VariableRow } from "../routes/variables.js";
+
+export interface CollapseTableOptions {
+  tableIndex?: number;
+  rowIdentifier?: string;
+  loopTag: string;
+  templateRowIndex?: number;
+  columnTags?: Array<{ col_index: number; replacement_tag: string }>;
+  deleteSampleRowsFrom?: number;
+  deleteSampleRowsCount?: number;
+}
+
+export interface ProposalHydrationPayload {
+  client_name?: string;
+  proposal_date?: string;
+  proposal_valid_until?: string;
+  selected_tier?: string;
+
+  // Repeating Milestones Loop
+  milestones?: Array<{
+    phase_number?: number | string;
+    milestone_title?: string;
+    deliverable_summary?: string;
+    [key: string]: any;
+  }>;
+
+  // Repeating Add-ons Loop
+  has_addons?: boolean;
+  addon_items?: Array<{
+    addon_name?: string;
+    addon_fee?: string;
+    [key: string]: any;
+  }>;
+  has_bundle_discount?: boolean;
+  bundle_discount_amount?: string;
+
+  // Repeating Payment Schedule Loop
+  payment_milestones?: Array<{
+    milestone_name?: string;
+    trigger_description?: string;
+    payment_amount?: string;
+    [key: string]: any;
+  }>;
+
+  // Financial Summary
+  subtotal_amount?: string;
+  has_tax?: boolean;
+  tax_amount?: string;
+  total_investment_amount?: string;
+  [key: string]: any;
+}
 
 export interface MutationLogEntry {
   action: string;
@@ -30,56 +81,192 @@ function normalizeText(text: string): string {
 }
 
 /**
+ * Detects whether a table row functions as a column header row.
+ * Checks for Word's native isHeader flag, common column header tokens (Date, Amount, Line Item, Phase, etc.),
+ * and tier package headers (Standard, Growth, Essential, etc.).
+ */
+export function isColumnHeaderRow(row: TableRow | null | undefined): boolean {
+  if (!row) return false;
+  if (row.getFormatting()?.isHeader) return true;
+
+  const cellCount = row.getCellCount();
+  if (cellCount === 0) return false;
+
+  const text = normalizeText(row.getText());
+  if (!text) return false;
+
+  // Known column header titles and comparison tier packages
+  const headerKeywords = [
+    "date",
+    "prepared by",
+    "proposal valid until",
+    "valid until",
+    "line item",
+    "amount",
+    "phase",
+    "milestone",
+    "deliverable",
+    "trigger",
+    "description",
+    "unit price",
+    "quantity",
+    "total investment",
+    "essential",
+    "standard",
+    "premium",
+    "local",
+    "growth",
+    "authority",
+  ];
+
+  // If cells contain numbers or currency values, it's typically a data row (e.g. "Total employees / seats | 42" or "$3,150.00")
+  const cells = row.getCells();
+  const hasPureNumericCell = cells.some((c) => {
+    const cText = c.getText().trim();
+    return /^\d+$/.test(cText) || /^\$[\d,]+(\.\d{2})?$/.test(cText);
+  });
+
+  if (hasPureNumericCell) {
+    return false;
+  }
+
+  return headerKeywords.some((kw) => text.includes(kw));
+}
+
+/**
+ * Verifies whether Table Row 0 matches expected column header tokens semantically.
+ */
+export function tableMatchesHeaders(
+  table: Table,
+  expectedHeaders: string[] | string
+): boolean {
+  if (table.getRowCount() === 0) return false;
+  const row0Text = normalizeText(table.getRow(0)?.getText() || "");
+  if (!row0Text) return false;
+
+  const tokens: string[] = Array.isArray(expectedHeaders)
+    ? expectedHeaders.map(normalizeText).filter(Boolean)
+    : expectedHeaders
+        .split(/[|,;\t\n]+/)
+        .map(normalizeText)
+        .filter(Boolean);
+
+  if (tokens.length === 0) return false;
+
+  return tokens.every((tok) => row0Text.includes(tok));
+}
+
+export interface FindTableAndRowOptions {
+  allowHeaderRow?: boolean;
+  templateRowIndex?: number;
+  expectedHeaders?: string[] | string;
+}
+
+/**
+ * Checks whether a variable name represents a high-entropy entity (e.g. client or company name)
+ */
+function isHighEntropyEntity(varName?: string): boolean {
+  if (!varName) return false;
+  const lower = varName.toLowerCase();
+  return (
+    lower === "client_name" ||
+    lower === "client_company_name" ||
+    lower === "company_name" ||
+    lower === "customer_name" ||
+    lower === "client_business_name" ||
+    lower === "prospective_client_name" ||
+    lower.endsWith("_client_name") ||
+    lower.endsWith("_company_name")
+  );
+}
+
+/**
  * Hybrid table and row locator:
- * 1. Tries candidate table_index first
+ * 1. Verifies candidate table_index against expectedHeaders semantically, falling back to all tables
  * 2. If row_identifier is not found, falls back to semantic search across all tables in the document
+ * 3. Defaults allowHeaderRow to false, permanently protecting Row 0 from being targeted as a data row
  */
 export function findTableAndRow(
   doc: Document,
   tableIndex?: number,
-  rowIdentifier?: string
+  rowIdentifier?: string,
+  options?: FindTableAndRowOptions
 ): { table: Table; row: TableRow; rowIndex: number; tableIndex: number } | null {
+  const allowHeader = options?.allowHeaderRow ?? false;
+  const expectedHeaders = options?.expectedHeaders;
+  const allTables = doc.getTables();
+
+  // 1. Semantic header table resolution if expectedHeaders provided
+  let targetTable: Table | undefined;
+  let resolvedTableIndex = tableIndex;
+
+  if (expectedHeaders) {
+    // Check candidate tableIndex first
+    if (tableIndex !== undefined && tableIndex >= 0 && tableIndex < allTables.length) {
+      if (tableMatchesHeaders(allTables[tableIndex], expectedHeaders)) {
+        targetTable = allTables[tableIndex];
+        resolvedTableIndex = tableIndex;
+      }
+    }
+    // If not matched at tableIndex, scan all tables in the document
+    if (!targetTable) {
+      for (let i = 0; i < allTables.length; i++) {
+        if (tableMatchesHeaders(allTables[i], expectedHeaders)) {
+          targetTable = allTables[i];
+          resolvedTableIndex = i;
+          break;
+        }
+      }
+    }
+  } else if (tableIndex !== undefined && tableIndex >= 0 && tableIndex < allTables.length) {
+    targetTable = allTables[tableIndex];
+    resolvedTableIndex = tableIndex;
+  }
+
+  // 2. If row_identifier is absent or empty, respect template_row_index (never Row 0 when !allowHeader)
   if (!rowIdentifier || !rowIdentifier.trim()) {
-    if (tableIndex !== undefined) {
-      const candidateTable = doc.getTableAt(tableIndex);
-      if (candidateTable && candidateTable.getRowCount() > 0) {
-        return {
-          table: candidateTable,
-          row: candidateTable.getRow(0)!,
-          rowIndex: 0,
-          tableIndex,
-        };
+    const table =
+      targetTable ||
+      (tableIndex !== undefined && tableIndex >= 0 ? doc.getTableAt(tableIndex) : undefined);
+    const tIdx = resolvedTableIndex ?? tableIndex ?? 0;
+
+    if (table && table.getRowCount() > 0) {
+      const rowCount = table.getRowCount();
+      let targetRowIdx: number;
+
+      if (!allowHeader) {
+        if (options?.templateRowIndex !== undefined && options.templateRowIndex > 0) {
+          targetRowIdx = options.templateRowIndex;
+        } else {
+          targetRowIdx = 1;
+        }
+        if (targetRowIdx >= rowCount) {
+          return null;
+        }
+      } else {
+        targetRowIdx = options?.templateRowIndex ?? 0;
+        if (targetRowIdx >= rowCount) {
+          targetRowIdx = 0;
+        }
+      }
+
+      const row = table.getRow(targetRowIdx);
+      if (row) {
+        return { table, row, rowIndex: targetRowIdx, tableIndex: tIdx };
       }
     }
     return null;
   }
 
+  // 3. Search by rowIdentifier
   const target = normalizeText(rowIdentifier);
 
-  // Fast path: check candidate table index
-  if (tableIndex !== undefined && tableIndex >= 0) {
-    const candidateTable = doc.getTableAt(tableIndex);
-    if (candidateTable) {
-      const rows = candidateTable.getRows();
-      for (let r = 0; r < rows.length; r++) {
-        if (normalizeText(rows[r].getText()).includes(target)) {
-          return {
-            table: candidateTable,
-            row: rows[r],
-            rowIndex: r,
-            tableIndex,
-          };
-        }
-      }
-    }
-  }
-
-  // Fallback path: scan all tables in document
-  const allTables = doc.getTables();
-  for (let tIdx = 0; tIdx < allTables.length; tIdx++) {
-    const table = allTables[tIdx];
+  const scanTable = (table: Table, tIdx: number) => {
     const rows = table.getRows();
-    for (let r = 0; r < rows.length; r++) {
+    if (rows.length === 0) return null;
+
+    // First pass: Scan data rows (1..N) first
+    for (let r = 1; r < rows.length; r++) {
       if (normalizeText(rows[r].getText()).includes(target)) {
         return {
           table,
@@ -89,13 +276,45 @@ export function findTableAndRow(
         };
       }
     }
+
+    // Second pass: Check Row 0 only if allowHeader is true, OR if Row 0 is NOT a column header row (e.g. key-value table)
+    const row0 = rows[0];
+    const isColHeader = isColumnHeaderRow(row0);
+
+    if (allowHeader || !isColHeader) {
+      if (normalizeText(row0.getText()).includes(target)) {
+        return {
+          table,
+          row: row0,
+          rowIndex: 0,
+          tableIndex: tIdx,
+        };
+      }
+    }
+
+    return null;
+  };
+
+  // Check targetTable / candidate table first
+  if (targetTable && resolvedTableIndex !== undefined) {
+    const match = scanTable(targetTable, resolvedTableIndex);
+    if (match) return match;
+  }
+
+  // Fallback path: scan all tables in document
+  for (let tIdx = 0; tIdx < allTables.length; tIdx++) {
+    if (targetTable && tIdx === resolvedTableIndex) continue;
+    const match = scanTable(allTables[tIdx], tIdx);
+    if (match) return match;
   }
 
   return null;
 }
 
 /**
- * Replaces a text run in body paragraphs using context_anchor or sample_text
+ * Replaces text runs in body paragraphs using two-tier replacement logic:
+ * 1. High-Entropy Entities (client_name, client_company_name): Replaced globally across all paragraphs without early stopping.
+ * 2. Low-Entropy Terms (Numbers, Enums, Currency): Scoped to context_anchor paragraphs using strict regex word boundaries (\b).
  */
 export function executeReplaceTextRun(
   doc: Document,
@@ -113,37 +332,85 @@ export function executeReplaceTextRun(
   const anchor = (mutation.context_anchor || "").trim();
   const allParagraphs = doc.getAllParagraphs();
 
-  // 1. Try context_anchor search first
+  // Tier 1: High-Entropy Entities (client_name, client_company_name) -> Global replacement across all paragraphs
+  if (isHighEntropyEntity(varName)) {
+    let globalReplacements = 0;
+    const normSample = normalizeText(sample);
+
+    for (const para of allParagraphs) {
+      if (normalizeText(para.getText()).includes(normSample)) {
+        const count = para.replaceTextCrossRun(sample, tag, { caseSensitive: false });
+        if (count > 0) {
+          globalReplacements += count;
+        }
+      }
+    }
+
+    if (globalReplacements > 0) {
+      return {
+        applied: true,
+        info: `Replaced entity "${sample}" globally across ${globalReplacements} occurrence(s) in document`,
+      };
+    }
+
+    return { applied: false, info: `No matching paragraph found for entity "${sample}"` };
+  }
+
+  // Tier 2: Low-Entropy Terms (enums, numbers, currency) -> Scoped by context_anchor with strict word boundaries (\b)
+  const escaped = sample.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const isStartWordChar = /^\w/.test(sample);
+  const isEndWordChar = /\w$/.test(sample);
+  const prefixBoundary = isStartWordChar ? "\\b" : "";
+  const suffixBoundary = isEndWordChar ? "\\b" : "";
+  const wordRegex = new RegExp(`${prefixBoundary}${escaped}${suffixBoundary}`, "i");
+
+  // Determine candidate paragraphs
+  let candidateParas = allParagraphs;
   if (anchor) {
     const normAnchor = normalizeText(anchor);
-    const candidateParas = allParagraphs.filter((p) =>
+    const matched = allParagraphs.filter((p) =>
       normalizeText(p.getText()).includes(normAnchor)
     );
-
-    for (const para of candidateParas) {
-      const count = para.replaceTextCrossRun(sample, tag, { caseSensitive: false });
-      if (count > 0) {
-        return { applied: true, info: `Replaced in anchor paragraph via cross-run (${count} match)` };
-      }
+    if (matched.length > 0) {
+      candidateParas = matched;
     }
   }
 
-  // 2. Fallback search across all paragraphs by sample_text
-  const normSample = normalizeText(sample);
-  for (const para of allParagraphs) {
-    if (normalizeText(para.getText()).includes(normSample)) {
-      const count = para.replaceTextCrossRun(sample, tag, { caseSensitive: false });
-      if (count > 0) {
-        return { applied: true, info: `Replaced across all paragraphs (${count} match)` };
+  let wordReplacements = 0;
+  for (const para of candidateParas) {
+    if (!wordRegex.test(para.getText())) continue;
+
+    let count = 0;
+    if (isStartWordChar && isEndWordChar) {
+      count = para.replaceText(sample, tag, { caseSensitive: false, wholeWord: true });
+      if (count === 0) {
+        para.consolidateRuns();
+        count = para.replaceText(sample, tag, { caseSensitive: false, wholeWord: true });
       }
+    } else {
+      count = para.replaceTextCrossRun(sample, tag, { caseSensitive: false });
+    }
+
+    if (count > 0) {
+      wordReplacements += count;
     }
   }
 
-  return { applied: false, info: `No matching paragraph found for "${sample}"` };
+  if (wordReplacements > 0) {
+    return {
+      applied: true,
+      info: `Replaced low-entropy term "${sample}" with word boundary (${wordReplacements} match)`,
+    };
+  }
+
+  return { applied: false, info: `No matching word-bounded paragraph found for "${sample}"` };
 }
 
 /**
- * Replaces text in a specific table cell using hybrid resolution
+ * Replaces text in a specific table cell using hybrid resolution:
+ * - When sample_text is supplied, it must match within the targeted cell or adjacent data cells in the same row.
+ * - If no match is found, cell text is preserved, applied: false is returned, and a warning is logged.
+ * - Direct cell substitution (table.setCell) is strictly limited to cases where sample_text was omitted and Col 0 matched row_identifier.
  */
 export function executeReplaceTableCell(
   doc: Document,
@@ -155,28 +422,55 @@ export function executeReplaceTableCell(
   }
 
   let tag = mutation.template_tag || (varName ? `{${varName}}` : "");
-  if (!tag.startsWith("{")) tag = `{${tag}}`;
+  if (!tag.startsWith("{") && !tag.includes("{")) tag = `{${tag}}`;
 
-  const match = findTableAndRow(doc, mutation.table_index, mutation.row_identifier);
+  const match = findTableAndRow(doc, mutation.table_index, mutation.row_identifier, {
+    allowHeaderRow: false,
+    templateRowIndex: mutation.template_row_index,
+    expectedHeaders: mutation.expected_headers,
+  });
+
   if (!match) {
     return {
       applied: false,
-      info: `Table row "${mutation.row_identifier || mutation.table_index}" not found`,
+      info: `Table data row "${mutation.row_identifier || mutation.table_index}" not found`,
     };
   }
 
   const { table, row, rowIndex, tableIndex } = match;
-  const colIndex = mutation.col_index ?? 1;
-  const cellCount = row.getCellCount();
-  const targetCol = Math.min(Math.max(0, colIndex), cellCount - 1);
-  const cell = row.getCell(targetCol);
 
+  // Header Protection: Refuse to mutate column header row 0
+  if (rowIndex === 0 && isColumnHeaderRow(row)) {
+    return {
+      applied: false,
+      info: `Safety guard: Refusing to mutate column header row 0 in Table ${tableIndex}`,
+    };
+  }
+
+  const cellCount = row.getCellCount();
+  const colIndex = mutation.col_index ?? 1;
+  let targetCol = Math.min(Math.max(0, colIndex), cellCount - 1);
+
+  // Smart column selection if col_index was not provided and sample_text is in another column
+  if (mutation.col_index === undefined && mutation.sample_text) {
+    const normSample = normalizeText(mutation.sample_text);
+    for (let c = 0; c < cellCount; c++) {
+      const candidateCell = row.getCell(c);
+      if (candidateCell && normalizeText(candidateCell.getText()).includes(normSample)) {
+        targetCol = c;
+        break;
+      }
+    }
+  }
+
+  const cell = row.getCell(targetCol);
   if (!cell) {
     return { applied: false, info: `Cell at column ${targetCol} not found in row` };
   }
 
-  // If sample_text is present, try replaceTextCrossRun within cell paragraphs first (preserves surrounding cell label text)
+  // Case A: Sample text provided -> strict match-or-fail contract
   if (mutation.sample_text) {
+    // 1. Check primary targeted cell
     let replacedCount = 0;
     for (const para of cell.getParagraphs()) {
       const count = para.replaceTextCrossRun(mutation.sample_text, tag, {
@@ -187,16 +481,59 @@ export function executeReplaceTableCell(
     if (replacedCount > 0) {
       return {
         applied: true,
-        info: `Replaced within cell (Table ${tableIndex}, Row ${rowIndex}, Col ${targetCol})`,
+        info: `Replaced snippet in Table ${tableIndex}, Row ${rowIndex}, Col ${targetCol} (${replacedCount} matches)`,
       };
     }
+
+    // 2. Check adjacent data cells in that specific row
+    const normSample = normalizeText(mutation.sample_text);
+    for (let c = 0; c < cellCount; c++) {
+      if (c === targetCol) continue;
+      const adjacentCell = row.getCell(c);
+      if (adjacentCell && normalizeText(adjacentCell.getText()).includes(normSample)) {
+        let adjReplaced = 0;
+        for (const para of adjacentCell.getParagraphs()) {
+          const count = para.replaceTextCrossRun(mutation.sample_text, tag, {
+            caseSensitive: false,
+          });
+          if (count > 0) adjReplaced += count;
+        }
+        if (adjReplaced > 0) {
+          return {
+            applied: true,
+            info: `Replaced snippet in adjacent Table ${tableIndex}, Row ${rowIndex}, Col ${c} (${adjReplaced} matches)`,
+          };
+        }
+      }
+    }
+
+    // Strict non-destructive contract: Preserve cell text, return applied: false, and log warning
+    console.warn(
+      `[template-mutator] Sample text "${mutation.sample_text}" not found in Table ${tableIndex} Row ${rowIndex}. Preserving original cell text.`
+    );
+    return {
+      applied: false,
+      info: `Sample text "${mutation.sample_text}" not found in Table ${tableIndex}, Row ${rowIndex}; preserved original cell text`,
+    };
   }
 
-  // Fallback: replace cell text while preserving cell borders and shading
-  table.setCell(rowIndex, targetCol, tag);
+  // Case B: Direct cell substitution (permitted ONLY when sample_text was omitted and Col 0 matched row_identifier)
+  const cell0Text = row.getCell(0)?.getText() || "";
+  const rowIdMatchesCol0 =
+    mutation.row_identifier &&
+    normalizeText(cell0Text).includes(normalizeText(mutation.row_identifier));
+
+  if (rowIdMatchesCol0 && (!isColumnHeaderRow(row) || rowIndex > 0)) {
+    table.setCell(rowIndex, targetCol, tag);
+    return {
+      applied: true,
+      info: `Set cell text to "${tag}" in Table ${tableIndex}, Row ${rowIndex}, Col ${targetCol}`,
+    };
+  }
+
   return {
-    applied: true,
-    info: `Set cell text to "${tag}" (Table ${tableIndex}, Row ${rowIndex}, Col ${targetCol})`,
+    applied: false,
+    info: `Direct cell substitution rejected: sample_text omitted and no verified row_identifier match on Col 0`,
   };
 }
 
@@ -212,15 +549,26 @@ export function executeWrapConditionalRow(
     return { applied: false, info: "Not a wrap_conditional_row mutation" };
   }
 
-  const match = findTableAndRow(doc, mutation.table_index, mutation.row_identifier);
+  const match = findTableAndRow(doc, mutation.table_index, mutation.row_identifier, {
+    allowHeaderRow: false,
+  });
+
   if (!match) {
     return {
       applied: false,
-      info: `Row "${mutation.row_identifier}" not found for conditional wrap`,
+      info: `Data row "${mutation.row_identifier}" not found for conditional wrap`,
     };
   }
 
   const { table, row, rowIndex, tableIndex } = match;
+
+  if (rowIndex === 0) {
+    return {
+      applied: false,
+      info: `Safety guard: Refusing to wrap header row 0 in Table ${tableIndex}`,
+    };
+  }
+
   const cellCount = row.getCellCount();
   if (cellCount === 0) {
     return { applied: false, info: "Row has 0 cells" };
@@ -266,14 +614,14 @@ export function executeWrapConditionalRow(
 
   return {
     applied: true,
-    info: `Wrapped row ${rowIndex} with ${openTag}...${closeTag} in Table ${tableIndex}`,
+    info: `Safely wrapped data row ${rowIndex} with ${openTag}...${closeTag} in Table ${tableIndex}`,
   };
 }
 
 /**
- * Collapses a repeating line-item table into a single loop row:
- * - Row 0: Preserved as header
- * - Row 1: Converted to {#items}...{/items} loop row
+ * Collapses a repeating line-item or mid-table add-on section into a single loop row:
+ * - Row 0 / prior rows: Preserved
+ * - Target row: Converted to {#loop_tag}...{/loop_tag} loop row
  * - Redundant sample rows: Pruned in reverse order
  * - Summary footers (Subtotal, Tax, Total, Terms): Strictly preserved
  */
@@ -286,18 +634,26 @@ export function executeCollapseRepeatingTable(
     return { applied: false, info: "Not a collapse_repeating_table mutation" };
   }
 
+  // Find table via candidate index or row identifier
   let targetTable: Table | undefined;
   let targetIndex = mutation.table_index ?? -1;
 
-  if (targetIndex >= 0) {
-    targetTable = doc.getTableAt(targetIndex);
+  const match = findTableAndRow(doc, mutation.table_index, mutation.row_identifier, {
+    allowHeaderRow: true,
+  });
+
+  if (match) {
+    targetTable = match.table;
+    targetIndex = match.tableIndex;
+  } else if (mutation.table_index !== undefined && mutation.table_index >= 0) {
+    targetTable = doc.getTableAt(mutation.table_index);
   }
 
-  // Fallback: discover table with >= 3 rows if index was offset
+  // Fallback: discover table with >= 2 rows if index was offset or not found
   if (!targetTable) {
     const tables = doc.getTables();
     for (let i = 0; i < tables.length; i++) {
-      if (tables[i].getRowCount() >= 3) {
+      if (tables[i].getRowCount() >= 2) {
         targetTable = tables[i];
         targetIndex = i;
         break;
@@ -305,8 +661,13 @@ export function executeCollapseRepeatingTable(
     }
   }
 
-  if (!targetTable || targetTable.getRowCount() <= 1) {
-    return { applied: false, info: "Candidate repeating table not found or has <= 1 rows" };
+  if (!targetTable) {
+    return { applied: false, info: "Table not found for repeating collapse" };
+  }
+
+  const rowCount = targetTable.getRowCount();
+  if (rowCount < 2) {
+    return { applied: false, info: "Table has fewer than 2 rows; cannot collapse" };
   }
 
   const loopTag = (mutation.loop_tag || compoundTable?.loop_tag || "items").replace(
@@ -316,83 +677,91 @@ export function executeCollapseRepeatingTable(
   const openTag = `{#${loopTag}}`;
   const closeTag = `{/${loopTag}}`;
 
-  const templateRowIndex = mutation.template_row_index ?? 1;
-  if (templateRowIndex >= targetTable.getRowCount()) {
-    return { applied: false, info: `Template row index ${templateRowIndex} out of bounds` };
+  const templateRowIdx =
+    mutation.template_row_index ?? (match && match.rowIndex > 0 ? match.rowIndex : 1);
+  const targetRow = targetTable.getRow(templateRowIdx);
+
+  if (!targetRow) {
+    return { applied: false, info: `Template row index ${templateRowIdx} not found in table` };
   }
 
-  const row1 = targetTable.getRow(templateRowIndex);
-  if (!row1) return { applied: false, info: "Template row 1 not accessible" };
-  const colCount = row1.getCellCount();
+  const cellCount = targetRow.getCellCount();
 
-  // Apply column replacement tags if specified
-  if (mutation.column_tags && mutation.column_tags.length > 0) {
-    for (const ct of mutation.column_tags) {
-      if (ct.col_index >= 0 && ct.col_index < colCount) {
-        const cleanTag = ct.replacement_tag.startsWith("{")
-          ? ct.replacement_tag
-          : `{${ct.replacement_tag}}`;
-        targetTable.setCell(templateRowIndex, ct.col_index, cleanTag);
+  // 1. InRow Loop Boundary Placement & Column Replacement
+  if (mutation.column_tags && Array.isArray(mutation.column_tags) && mutation.column_tags.length > 0) {
+    for (const col of mutation.column_tags) {
+      if (col.col_index >= 0 && col.col_index < cellCount) {
+        let tag = col.replacement_tag;
+        if (!tag.startsWith("{") && !tag.includes("{")) tag = `{${tag}}`;
+        targetTable.setCell(templateRowIdx, col.col_index, tag);
       }
     }
   } else if (compoundTable?.columns && Array.isArray(compoundTable.columns)) {
     compoundTable.columns.forEach((col: any, idx: number) => {
-      if (idx < colCount) {
+      if (idx < cellCount) {
         const colName = typeof col === "string" ? col : col.name || `col_${idx}`;
         const cleanName = colName.toLowerCase().replace(/[^a-z0-9_]+/g, "_");
-        targetTable!.setCell(templateRowIndex, idx, `{${cleanName}}`);
+        targetTable!.setCell(templateRowIdx, idx, `{${cleanName}}`);
       }
     });
   }
 
-  // Inject loop tags: opening in Cell 0, closing in last Cell of template row
-  const cell0 = targetTable.getCell(templateRowIndex, 0);
-  const cell0Text = cell0?.getText().trim() || "";
-  if (!cell0Text.includes(openTag)) {
-    targetTable.setCell(templateRowIndex, 0, `${openTag}${cell0Text}`);
+  // Inject opening loop tag into first cell
+  const firstCell = targetRow.getCell(0);
+  const firstCellText = firstCell?.getText().trim() || "";
+  if (!firstCellText.includes(openTag)) {
+    const separator = firstCellText.startsWith("{") ? "" : " ";
+    targetTable.setCell(templateRowIdx, 0, `${openTag}${separator}${firstCellText}`.trim());
   }
 
-  const lastCol = colCount - 1;
-  const lastCell = targetTable.getCell(templateRowIndex, lastCol);
+  // Inject closing loop tag into last cell
+  const lastColIdx = cellCount - 1;
+  const lastCell = targetRow.getCell(lastColIdx);
   const lastCellText = lastCell?.getText().trim() || "";
   if (!lastCellText.includes(closeTag)) {
-    targetTable.setCell(templateRowIndex, lastCol, `${lastCellText}${closeTag}`);
+    const separator = lastCellText.endsWith("}") ? "" : " ";
+    targetTable.setCell(templateRowIdx, lastColIdx, `${lastCellText}${separator}${closeTag}`.trim());
   }
 
-  // Identify where summary footers start
-  const deleteStartFrom = mutation.delete_sample_rows_from ?? 2;
-  const summaryKeywords = [
-    "subtotal",
-    "tax",
-    "total",
-    "payment terms",
-    "terms",
-    "due",
-    "balance",
-  ];
-  let summaryStartIndex = targetTable.getRowCount();
+  // 2. Reverse-Order Redundant Sample Row Deletion
+  const deleteFrom = mutation.delete_sample_rows_from ?? (templateRowIdx + 1);
+  let deleteUntil = targetTable.getRowCount();
 
-  for (let r = deleteStartFrom; r < targetTable.getRowCount(); r++) {
-    const rowText = normalizeText(targetTable.getRow(r)?.getText() || "");
-    if (summaryKeywords.some((kw) => rowText.includes(kw))) {
-      summaryStartIndex = r;
-      break;
+  if (mutation.delete_sample_rows_count !== undefined) {
+    deleteUntil = Math.min(targetTable.getRowCount(), deleteFrom + mutation.delete_sample_rows_count);
+  } else if (compoundTable?.summary_start_index !== undefined) {
+    deleteUntil = compoundTable.summary_start_index;
+  } else {
+    const summaryKeywords = [
+      "subtotal",
+      "tax",
+      "total",
+      "payment terms",
+      "terms",
+      "due",
+      "balance",
+    ];
+    for (let r = deleteFrom; r < targetTable.getRowCount(); r++) {
+      const rowText = normalizeText(targetTable.getRow(r)?.getText() || "");
+      if (summaryKeywords.some((kw) => rowText.includes(kw))) {
+        deleteUntil = r;
+        break;
+      }
     }
   }
 
-  // Reverse-order deletion to preserve row indices and summary footers
-  const lastSampleRowIndex = summaryStartIndex - 1;
   let deletedCount = 0;
-  if (lastSampleRowIndex >= deleteStartFrom) {
-    for (let r = lastSampleRowIndex; r >= deleteStartFrom; r--) {
-      const removed = targetTable.removeRow(r);
-      if (removed) deletedCount++;
+  // Crucial: delete from bottom up to avoid index shifting collisions!
+  for (let r = deleteUntil - 1; r >= deleteFrom; r--) {
+    if (r > templateRowIdx && r < targetTable.getRowCount()) {
+      targetTable.removeRow(r);
+      deletedCount++;
     }
   }
 
   return {
     applied: true,
-    info: `Collapsed Table ${targetIndex}: Row 1 wrapped with ${openTag}...${closeTag}, pruned ${deletedCount} sample rows (Rows ${deleteStartFrom}..${lastSampleRowIndex}) in reverse order`,
+    info: `Collapsed Table ${targetIndex}: Row ${templateRowIdx} wrapped with ${openTag}...${closeTag}, pruned ${deletedCount} sample rows (Rows ${deleteFrom}..${deleteUntil - 1}) in reverse order`,
   };
 }
 
@@ -467,7 +836,14 @@ export async function mutateDocumentTemplate(companyId: string): Promise<Mutatio
       descriptor = {};
     }
 
-    const mutation: MutationAction | undefined = descriptor.mutation;
+    let mutation: MutationAction | undefined = descriptor.mutation;
+    if (!mutation && (row.category === "table_loop" || descriptor.type === "repeating_loop")) {
+      mutation = {
+        action: "collapse_repeating_table",
+        table_index: descriptor.table_index,
+        loop_tag: descriptor.loop_tag,
+      };
+    }
     if (!mutation || !mutation.action) continue;
 
     let applied = false;
@@ -549,4 +925,16 @@ export async function mutateDocumentTemplate(companyId: string): Promise<Mutatio
     mutations_applied_count: mutationsAppliedCount,
     details,
   };
+}
+
+/**
+ * Hydrates a Word template with dynamic proposal data using easy-template-x
+ */
+export async function hydrateProposalTemplate(
+  templateBuffer: Buffer,
+  payload: ProposalHydrationPayload | Record<string, any>
+): Promise<Buffer> {
+  const handler = new TemplateHandler();
+  const doc = await handler.process(templateBuffer, payload);
+  return Buffer.from(doc);
 }

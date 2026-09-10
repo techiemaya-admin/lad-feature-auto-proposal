@@ -15,6 +15,8 @@ export type MutationAction =
       col_index?: number;
       sample_text?: string;
       template_tag?: string;
+      template_row_index?: number;
+      expected_headers?: string[] | string;
     }
   | {
       action: "wrap_conditional_row";
