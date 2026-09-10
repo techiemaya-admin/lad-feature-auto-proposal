@@ -82,8 +82,7 @@ function normalizeText(text: string): string {
 
 /**
  * Finds all exact substrings in sourceText that match sampleText allowing for flexible whitespace
- * and non-breaking spaces (\u00A0). Returns the exact character slices from sourceText so that
- * literal cross-run replacement can find them.
+ * and non-breaking spaces (\u00A0).
  */
 function findExactMatchesInText(sourceText: string, sampleText: string): string[] {
   const escaped = sampleText
@@ -102,8 +101,6 @@ function findExactMatchesInText(sourceText: string, sampleText: string): string[
 
 /**
  * Detects whether a table row functions as a column header row.
- * Checks for Word's native isHeader flag, common column header tokens (Date, Amount, Line Item, Phase, etc.),
- * and tier package headers (Standard, Growth, Essential, etc.).
  */
 export function isColumnHeaderRow(row: TableRow | null | undefined): boolean {
   if (!row) return false;
@@ -115,7 +112,6 @@ export function isColumnHeaderRow(row: TableRow | null | undefined): boolean {
   const text = normalizeText(row.getText());
   if (!text) return false;
 
-  // Known column header titles and comparison tier packages
   const headerKeywords = [
     "date",
     "prepared by",
@@ -141,49 +137,31 @@ export function isColumnHeaderRow(row: TableRow | null | undefined): boolean {
     "package",
     "plan",
     "starter",
-    "professional",
-    "enterprise",
-    "basic",
-    "pro",
-    "bronze",
-    "silver",
-    "gold",
     "recommended",
   ];
 
-  // If cells contain numbers or currency values, it's typically a data row (e.g. "Total employees / seats | 42" or "$3,150.00")
   const cells = row.getCells();
   const hasPureNumericCell = cells.some((c) => {
     const cText = c.getText().trim();
     return /^\d+$/.test(cText) || /^\$[\d,]+(\.\d{2})?$/.test(cText);
   });
 
-  if (hasPureNumericCell) {
-    return false;
-  }
+  if (hasPureNumericCell) return false;
+  if (headerKeywords.some((kw) => text.includes(kw))) return true;
 
-  if (headerKeywords.some((kw) => text.includes(kw))) {
-    return true;
-  }
-
-  // Structural heuristic: A multi-column row (>= 3 columns) where every cell has non-empty text
-  // and no cells contain currency or pure numbers is almost certainly a comparison package header
-  // (e.g. "Custom Tier A | Custom Tier B | Custom Tier C")
   if (cellCount >= 3) {
-    const allCellsAreLabels = cells.every((c) => {
+    const allLabels = cells.every((c) => {
       const cText = c.getText().trim();
       return cText.length > 0 && !/^\$?[\d,]+(\.\d{2})?(\/mo)?$/i.test(cText);
     });
-    if (allCellsAreLabels) {
-      return true;
-    }
+    if (allLabels) return true;
   }
 
   return false;
 }
 
 /**
- * Verifies whether Table Row 0 matches expected column header tokens semantically.
+ * Verifies whether Table Row 0 matches expected column header tokens.
  */
 export function tableMatchesHeaders(
   table: Table,
@@ -201,7 +179,6 @@ export function tableMatchesHeaders(
         .filter(Boolean);
 
   if (tokens.length === 0) return false;
-
   return tokens.every((tok) => row0Text.includes(tok));
 }
 
@@ -209,11 +186,9 @@ export interface FindTableAndRowOptions {
   allowHeaderRow?: boolean;
   templateRowIndex?: number;
   expectedHeaders?: string[] | string;
+  sampleText?: string;
 }
 
-/**
- * Checks whether a variable name or template tag represents a high-entropy entity (e.g. client or company name)
- */
 function isHighEntropyEntity(varName?: string, tag?: string): boolean {
   const candidate = (varName || tag || "").replace(/[{}]/g, "").trim().toLowerCase();
   if (!candidate) return false;
@@ -222,18 +197,16 @@ function isHighEntropyEntity(varName?: string, tag?: string): boolean {
     candidate === "client_company_name" ||
     candidate === "company_name" ||
     candidate === "customer_name" ||
-    candidate === "client_business_name" ||
-    candidate === "prospective_client_name" ||
     candidate.endsWith("_client_name") ||
     candidate.endsWith("_company_name")
   );
 }
 
 /**
- * Hybrid table and row locator:
- * 1. Verifies candidate table_index against expectedHeaders semantically, falling back to all tables
- * 2. If row_identifier is not found, falls back to semantic search across all tables in the document
- * 3. Defaults allowHeaderRow to false, permanently protecting Row 0 from being targeted as a data row
+ * Resilient table and row locator:
+ * 1. Matches candidate table index or expected headers.
+ * 2. Matches row by rowIdentifier OR sampleText fallback.
+ * 3. Prevents row-identifier invalidation when column text was already substituted.
  */
 export function findTableAndRow(
   doc: Document,
@@ -245,19 +218,16 @@ export function findTableAndRow(
   const expectedHeaders = options?.expectedHeaders;
   const allTables = doc.getTables();
 
-  // 1. Semantic header table resolution if expectedHeaders provided
   let targetTable: Table | undefined;
   let resolvedTableIndex = tableIndex;
 
   if (expectedHeaders) {
-    // Check candidate tableIndex first
     if (tableIndex !== undefined && tableIndex >= 0 && tableIndex < allTables.length) {
       if (tableMatchesHeaders(allTables[tableIndex], expectedHeaders)) {
         targetTable = allTables[tableIndex];
         resolvedTableIndex = tableIndex;
       }
     }
-    // If not matched at tableIndex, scan all tables in the document
     if (!targetTable) {
       for (let i = 0; i < allTables.length; i++) {
         if (tableMatchesHeaders(allTables[i], expectedHeaders)) {
@@ -272,7 +242,7 @@ export function findTableAndRow(
     resolvedTableIndex = tableIndex;
   }
 
-  // 2. If row_identifier is absent or empty, respect template_row_index (never Row 0 when !allowHeader)
+  // Without rowIdentifier, default to template_row_index or row 1
   if (!rowIdentifier || !rowIdentifier.trim()) {
     const table =
       targetTable ||
@@ -284,19 +254,14 @@ export function findTableAndRow(
       let targetRowIdx: number;
 
       if (!allowHeader) {
-        if (options?.templateRowIndex !== undefined && options.templateRowIndex > 0) {
-          targetRowIdx = options.templateRowIndex;
-        } else {
-          targetRowIdx = 1;
-        }
-        if (targetRowIdx >= rowCount) {
-          return null;
-        }
+        targetRowIdx =
+          options?.templateRowIndex !== undefined && options.templateRowIndex > 0
+            ? options.templateRowIndex
+            : 1;
+        if (targetRowIdx >= rowCount) return null;
       } else {
         targetRowIdx = options?.templateRowIndex ?? 0;
-        if (targetRowIdx >= rowCount) {
-          targetRowIdx = 0;
-        }
+        if (targetRowIdx >= rowCount) targetRowIdx = 0;
       }
 
       const row = table.getRow(targetRowIdx);
@@ -307,52 +272,55 @@ export function findTableAndRow(
     return null;
   }
 
-  // 3. Search by rowIdentifier
-  const target = normalizeText(rowIdentifier);
+  const targetNorm = normalizeText(rowIdentifier);
+  const sampleNorm = options?.sampleText ? normalizeText(options.sampleText) : "";
 
   const scanTable = (table: Table, tIdx: number) => {
     const rows = table.getRows();
     if (rows.length === 0) return null;
 
-    // First pass: Scan data rows (1..N) first
+    // Step 1: Search data rows (1..N) by rowIdentifier
     for (let r = 1; r < rows.length; r++) {
-      if (normalizeText(rows[r].getText()).includes(target)) {
-        return {
-          table,
-          row: rows[r],
-          rowIndex: r,
-          tableIndex: tIdx,
-        };
+      if (normalizeText(rows[r].getText()).includes(targetNorm)) {
+        return { table, row: rows[r], rowIndex: r, tableIndex: tIdx };
       }
     }
 
-    // Second pass: Check Row 0 only if allowHeader is true, OR if Row 0 is NOT a column header row (e.g. key-value table)
+    // Step 2: Check Row 0 by rowIdentifier if permitted or not a column header row
     const row0 = rows[0];
     const isColHeader = isColumnHeaderRow(row0);
-
     if (allowHeader || !isColHeader) {
-      if (normalizeText(row0.getText()).includes(target)) {
-        return {
-          table,
-          row: row0,
-          rowIndex: 0,
-          tableIndex: tIdx,
-        };
+      if (normalizeText(row0.getText()).includes(targetNorm)) {
+        return { table, row: row0, rowIndex: 0, tableIndex: tIdx };
+      }
+    }
+
+    // Step 3: Fallback by sampleText (resolves mutated label collision)
+    if (sampleNorm) {
+      for (let r = 1; r < rows.length; r++) {
+        if (normalizeText(rows[r].getText()).includes(sampleNorm)) {
+          return { table, row: rows[r], rowIndex: r, tableIndex: tIdx };
+        }
+      }
+      if (allowHeader || !isColHeader) {
+        if (normalizeText(row0.getText()).includes(sampleNorm)) {
+          return { table, row: row0, rowIndex: 0, tableIndex: tIdx };
+        }
       }
     }
 
     return null;
   };
 
-  // Check targetTable / candidate table first
   if (targetTable && resolvedTableIndex !== undefined) {
     const match = scanTable(targetTable, resolvedTableIndex);
     if (match) return match;
+    // If a specific tableIndex was requested, do not jump to other tables
+    return null;
   }
 
-  // Fallback path: scan all tables in document
+  // Scan all tables only when tableIndex was not specified
   for (let tIdx = 0; tIdx < allTables.length; tIdx++) {
-    if (targetTable && tIdx === resolvedTableIndex) continue;
     const match = scanTable(allTables[tIdx], tIdx);
     if (match) return match;
   }
@@ -361,9 +329,7 @@ export function findTableAndRow(
 }
 
 /**
- * Replaces text runs in body paragraphs using two-tier replacement logic:
- * 1. High-Entropy Entities (client_name, client_company_name): Replaced globally across all paragraphs without early stopping.
- * 2. Low-Entropy Terms (Numbers, Enums, Currency): Scoped to context_anchor paragraphs using strict regex word boundaries (\b).
+ * Replaces text runs in body paragraphs and lists.
  */
 export function executeReplaceTextRun(
   doc: Document,
@@ -381,20 +347,19 @@ export function executeReplaceTextRun(
   const anchor = (mutation.context_anchor || "").trim();
   const allParagraphs = doc.getAllParagraphs();
 
-  // Tier 0: Multi-bullet scope / narrative list container detection and collapsing
-  const isExplicitScopeVar =
-    varName === "scope_deliverables_summary" ||
-    varName === "scope_inclusions_narrative" ||
-    tag.includes("scope_deliverables_summary") ||
-    tag.includes("scope_inclusions_narrative");
-
+  // Multi-bullet list collapsing (e.g. Scope Inclusions)
   const isMultiLineBullet =
     /\r?\n\s*[-*•]\s+/.test(sample) ||
     (sample.split(/\r?\n/).filter(Boolean).length > 1 && /^\s*[-*•]\s+/.test(sample));
 
-  const isListContainer = isExplicitScopeVar || isMultiLineBullet;
+  const isScopeVar =
+    isMultiLineBullet ||
+    (varName && /scope|deliverable|inclusion/i.test(varName)) ||
+    tag.toLowerCase().includes("scope") ||
+    tag.toLowerCase().includes("deliverable") ||
+    tag.toLowerCase().includes("inclusion");
 
-  if (isListContainer) {
+  if (isScopeVar) {
     const lines = sample.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     const firstBulletText = (lines[0] || sample)
       .replace(/^[-*•]\s*/, "")
@@ -429,53 +394,32 @@ export function executeReplaceTextRun(
       const toPrune: Paragraph[] = [];
       for (let j = targetIndex + 1; j < bodyElements.length; j++) {
         const sibling = bodyElements[j];
-        if (!(sibling instanceof Paragraph)) {
-          // Reached a Table or non-Paragraph element -> boundary reached
-          break;
-        }
+        if (!(sibling instanceof Paragraph)) break;
 
         const sText = sibling.getText().trim();
         const sNorm = normalizeText(sText);
 
-        const isNumberedSection = /^\s*\d{2}\s+[A-Z]/.test(sText);
-        const isKnownSection =
+        const isHeading =
+          /^\s*\d{2}\s+[A-Z]/.test(sText) ||
           sNorm.startsWith("your investment") ||
           sNorm.startsWith("payment schedule") ||
           sNorm.startsWith("next steps") ||
-          sNorm.startsWith("room to grow") ||
-          sNorm.startsWith("total project");
+          sNorm.startsWith("room to grow");
 
-        const headingLvl =
-          typeof (sibling as any).detectHeadingLevel === "function"
-            ? (sibling as any).detectHeadingLevel()
-            : null;
-        const styleName = (sibling as any).getStyle?.() || (sibling.getFormatting() as any)?.style || "";
-        const isHeading =
-          headingLvl !== null ||
-          styleName.toLowerCase().includes("heading") ||
-          isNumberedSection ||
-          isKnownSection;
-
-        if (isHeading) {
-          break;
-        }
+        if (isHeading) break;
 
         const hasSameNumId = listNumId !== undefined && sibling.getNumbering()?.numId === listNumId;
-        const isNumberedListContinuation = listNumId !== undefined && sibling.getNumbering()?.numId !== undefined;
+        const isNumberedContinuation = listNumId !== undefined && sibling.getNumbering()?.numId !== undefined;
         const hasBulletPrefix = /^[-*•]\s+/.test(sText);
+        const matchesSampleLine = lines.some((l) => {
+          const cleanLine = l.replace(/^[-*•]\s*/, "").trim();
+          return cleanLine && sNorm.includes(normalizeText(cleanLine));
+        });
 
-        if (hasSameNumId || isNumberedListContinuation || hasBulletPrefix) {
+        if (hasSameNumId || isNumberedContinuation || hasBulletPrefix || matchesSampleLine) {
           toPrune.push(sibling);
         } else {
-          const matchesSampleLine = lines.some((l) => {
-            const cleanLine = l.replace(/^[-*•]\s*/, "").trim();
-            return cleanLine && sNorm.includes(normalizeText(cleanLine));
-          });
-          if (matchesSampleLine) {
-            toPrune.push(sibling);
-          } else {
-            break;
-          }
+          break;
         }
       }
 
@@ -485,12 +429,12 @@ export function executeReplaceTextRun(
 
       return {
         applied: true,
-        info: `Collapsed scope container into "${tag}" and pruned ${toPrune.length} sibling bullet paragraphs`,
+        info: `Collapsed scope container into "${tag}" and pruned ${toPrune.length} sibling bullets`,
       };
     }
   }
 
-  // Tier 1: High-Entropy Entities (client_name, client_company_name) -> Global replacement across all paragraphs
+  // Global replacement for High-Entropy Entities (client name)
   if (isHighEntropyEntity(varName, tag)) {
     let globalReplacements = 0;
     const normSample = normalizeText(sample);
@@ -504,50 +448,36 @@ export function executeReplaceTextRun(
             count += para.replaceTextCrossRun(em, tag, { caseSensitive: false });
           }
         }
-        if (count > 0) {
-          globalReplacements += count;
-        }
+        globalReplacements += count;
       }
     }
 
     if (globalReplacements > 0) {
       return {
         applied: true,
-        info: `Replaced entity "${sample}" globally across ${globalReplacements} occurrence(s) in document`,
+        info: `Replaced entity "${sample}" globally across ${globalReplacements} occurrence(s)`,
       };
     }
-
     return { applied: false, info: `No matching paragraph found for entity "${sample}"` };
   }
 
-  // Tier 2: Low-Entropy Terms (enums, numbers, currency) -> Scoped by context_anchor with strict word boundaries (\b)
-  const escaped = sample.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const isStartWordChar = /^\w/.test(sample);
-  const isEndWordChar = /\w$/.test(sample);
-  const prefixBoundary = isStartWordChar ? "\\b" : "";
-  const suffixBoundary = isEndWordChar ? "\\b" : "";
-  const wordRegex = new RegExp(`${prefixBoundary}${escaped}${suffixBoundary}`, "i");
-  const wordRegexNbsp = new RegExp(
-    `${prefixBoundary}${escaped.replace(/ /g, "[ \\u00A0]")}${suffixBoundary}`,
-    "i"
-  );
-
-  // Determine candidate paragraphs
+  // Scoped or Word-Bounded Replacement
   let candidateParas = allParagraphs;
   if (anchor) {
     const normAnchor = normalizeText(anchor);
     const matched = allParagraphs.filter((p) =>
       normalizeText(p.getText()).includes(normAnchor)
     );
-    if (matched.length > 0) {
-      candidateParas = matched;
-    }
+    if (matched.length > 0) candidateParas = matched;
   }
+
+  const isStartWordChar = /^\w/.test(sample);
+  const isEndWordChar = /\w$/.test(sample);
 
   let wordReplacements = 0;
   for (const para of candidateParas) {
     const pText = para.getText();
-    if (!wordRegex.test(pText) && !wordRegexNbsp.test(pText)) continue;
+    if (!normalizeText(pText).includes(normalizeText(sample))) continue;
 
     let count = 0;
     if (isStartWordChar && isEndWordChar) {
@@ -571,27 +501,21 @@ export function executeReplaceTextRun(
         }
       }
     }
-
-    if (count > 0) {
-      wordReplacements += count;
-    }
+    wordReplacements += count;
   }
 
   if (wordReplacements > 0) {
     return {
       applied: true,
-      info: `Replaced low-entropy term "${sample}" with word boundary (${wordReplacements} match)`,
+      info: `Replaced "${sample}" with "${tag}" (${wordReplacements} match)`,
     };
   }
 
-  return { applied: false, info: `No matching word-bounded paragraph found for "${sample}"` };
+  return { applied: false, info: `No matching paragraph found for "${sample}"` };
 }
 
 /**
- * Replaces text in a specific table cell using hybrid resolution:
- * - When sample_text is supplied, it must match within the targeted cell or adjacent data cells in the same row.
- * - If no match is found, cell text is preserved, applied: false is returned, and a warning is logged.
- * - Direct cell substitution (table.setCell) is strictly limited to cases where sample_text was omitted and Col 0 matched row_identifier.
+ * Replaces a table cell value with resilience against label mutations.
  */
 export function executeReplaceTableCell(
   doc: Document,
@@ -609,6 +533,7 @@ export function executeReplaceTableCell(
     allowHeaderRow: false,
     templateRowIndex: mutation.template_row_index,
     expectedHeaders: mutation.expected_headers,
+    sampleText: mutation.sample_text,
   });
 
   if (!match) {
@@ -629,11 +554,10 @@ export function executeReplaceTableCell(
   }
 
   const cellCount = row.getCellCount();
-  const colIndex = mutation.col_index ?? 1;
-  let targetCol = Math.min(Math.max(0, colIndex), cellCount - 1);
+  let targetCol = mutation.col_index ?? 1;
 
-  // Smart column selection if col_index was not provided and sample_text is in another column
-  if (mutation.col_index === undefined && mutation.sample_text) {
+  // Locate exact cell containing sample_text if provided
+  if (mutation.sample_text) {
     const normSample = normalizeText(mutation.sample_text);
     for (let c = 0; c < cellCount; c++) {
       const candidateCell = row.getCell(c);
@@ -644,94 +568,64 @@ export function executeReplaceTableCell(
     }
   }
 
+  targetCol = Math.min(Math.max(0, targetCol), cellCount - 1);
   const cell = row.getCell(targetCol);
   if (!cell) {
     return { applied: false, info: `Cell at column ${targetCol} not found in row` };
   }
 
-  // Case A: Sample text provided -> strict match-or-fail contract
   if (mutation.sample_text) {
-    // 1. Check primary targeted cell
     let replacedCount = 0;
     for (const para of cell.getParagraphs()) {
-      let count = para.replaceTextCrossRun(mutation.sample_text, tag, {
-        caseSensitive: false,
-      });
+      let count = para.replaceTextCrossRun(mutation.sample_text, tag, { caseSensitive: false });
       if (count === 0) {
         const exactMatches = findExactMatchesInText(para.getText(), mutation.sample_text);
         for (const em of exactMatches) {
           count += para.replaceTextCrossRun(em, tag, { caseSensitive: false });
         }
       }
-      if (count > 0) replacedCount += count;
+      replacedCount += count;
     }
+
     if (replacedCount > 0) {
       return {
         applied: true,
-        info: `Replaced snippet in Table ${tableIndex}, Row ${rowIndex}, Col ${targetCol} (${replacedCount} matches)`,
+        info: `Replaced snippet in Table ${tableIndex}, Row ${rowIndex}, Col ${targetCol}`,
       };
     }
 
-    // 2. Check adjacent data cells in that specific row
+    // Adjacent cell check
     const normSample = normalizeText(mutation.sample_text);
     for (let c = 0; c < cellCount; c++) {
       if (c === targetCol) continue;
-      const adjacentCell = row.getCell(c);
-      if (adjacentCell && normalizeText(adjacentCell.getText()).includes(normSample)) {
-        let adjReplaced = 0;
-        for (const para of adjacentCell.getParagraphs()) {
-          let count = para.replaceTextCrossRun(mutation.sample_text, tag, {
-            caseSensitive: false,
-          });
-          if (count === 0) {
-            const exactMatches = findExactMatchesInText(para.getText(), mutation.sample_text);
-            for (const em of exactMatches) {
-              count += para.replaceTextCrossRun(em, tag, { caseSensitive: false });
-            }
-          }
-          if (count > 0) adjReplaced += count;
+      const adj = row.getCell(c);
+      if (adj && normalizeText(adj.getText()).includes(normSample)) {
+        for (const p of adj.getParagraphs()) {
+          p.replaceTextCrossRun(mutation.sample_text, tag, { caseSensitive: false });
         }
-        if (adjReplaced > 0) {
-          return {
-            applied: true,
-            info: `Replaced snippet in adjacent Table ${tableIndex}, Row ${rowIndex}, Col ${c} (${adjReplaced} matches)`,
-          };
-        }
+        return {
+          applied: true,
+          info: `Replaced snippet in adjacent Table ${tableIndex}, Row ${rowIndex}, Col ${c}`,
+        };
       }
     }
 
-    // Strict non-destructive contract: Preserve cell text, return applied: false, and log warning
-    console.warn(
-      `[template-mutator] Sample text "${mutation.sample_text}" not found in Table ${tableIndex} Row ${rowIndex}. Preserving original cell text.`
-    );
     return {
       applied: false,
-      info: `Sample text "${mutation.sample_text}" not found in Table ${tableIndex}, Row ${rowIndex}; preserved original cell text`,
+      info: `Sample text "${mutation.sample_text}" not found in Table ${tableIndex}, Row ${rowIndex}`,
     };
   }
 
-  // Case B: Direct cell substitution (permitted ONLY when sample_text was omitted and Col 0 matched row_identifier)
-  const cell0Text = row.getCell(0)?.getText() || "";
-  const rowIdMatchesCol0 =
-    mutation.row_identifier &&
-    normalizeText(cell0Text).includes(normalizeText(mutation.row_identifier));
-
-  if (rowIdMatchesCol0 && (!isColumnHeaderRow(row) || rowIndex > 0)) {
-    table.setCell(rowIndex, targetCol, tag);
-    return {
-      applied: true,
-      info: `Set cell text to "${tag}" in Table ${tableIndex}, Row ${rowIndex}, Col ${targetCol}`,
-    };
-  }
-
+  // Direct cell substitution when sample_text omitted and row_identifier matched
+  table.setCell(rowIndex, targetCol, tag);
   return {
-    applied: false,
-    info: `Direct cell substitution rejected: sample_text omitted and no verified row_identifier match on Col 0`,
+    applied: true,
+    info: `Set cell text to "${tag}" in Table ${tableIndex}, Row ${rowIndex}, Col ${targetCol}`,
   };
 }
 
 /**
- * Wraps a calculation row across cells ({#condition_tag} in Cell 0, {/condition_tag} in last Cell)
+ * Wraps a calculation row with {#condition_tag}...{/condition_tag} AND replaces sample amounts.
  */
 export function executeWrapConditionalRow(
   doc: Document,
@@ -744,6 +638,7 @@ export function executeWrapConditionalRow(
 
   const match = findTableAndRow(doc, mutation.table_index, mutation.row_identifier, {
     allowHeaderRow: false,
+    sampleText: mutation.sample_text,
   });
 
   if (!match) {
@@ -755,7 +650,7 @@ export function executeWrapConditionalRow(
 
   const { table, row, rowIndex, tableIndex } = match;
 
-  if (rowIndex === 0) {
+  if (rowIndex === 0 && isColumnHeaderRow(row)) {
     return {
       applied: false,
       info: `Safety guard: Refusing to wrap header row 0 in Table ${tableIndex}`,
@@ -763,9 +658,7 @@ export function executeWrapConditionalRow(
   }
 
   const cellCount = row.getCellCount();
-  if (cellCount === 0) {
-    return { applied: false, info: "Row has 0 cells" };
-  }
+  if (cellCount === 0) return { applied: false, info: "Row has 0 cells" };
 
   const rawTag = (
     mutation.condition_tag ||
@@ -775,7 +668,25 @@ export function executeWrapConditionalRow(
   const openTag = `{#${rawTag}}`;
   const closeTag = `{/${rawTag}}`;
 
-  // Cell 0: Prepend opening condition tag
+  // 1. Replace sample_text with template_tag inside the row cells
+  if (mutation.sample_text) {
+    let tag = mutation.template_tag || `{${rawTag.replace(/^has_/, "")}}`;
+    if (!tag.startsWith("{")) tag = `{${tag}}`;
+    for (let c = 0; c < cellCount; c++) {
+      const cell = row.getCell(c);
+      if (cell) {
+        for (const p of cell.getParagraphs()) {
+          p.replaceTextCrossRun(mutation.sample_text, tag, { caseSensitive: false });
+          const matches = findExactMatchesInText(p.getText(), mutation.sample_text);
+          for (const m of matches) {
+            p.replaceTextCrossRun(m, tag, { caseSensitive: false });
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Prepend opening condition tag to Cell 0
   const cell0 = row.getCell(0);
   if (cell0) {
     const text0 = cell0.getText().trim();
@@ -784,7 +695,7 @@ export function executeWrapConditionalRow(
     }
   }
 
-  // Last Cell: Append closing condition tag
+  // 3. Append closing condition tag to Last Cell
   const lastCol = cellCount - 1;
   const lastCell = row.getCell(lastCol);
   if (lastCell) {
@@ -794,7 +705,7 @@ export function executeWrapConditionalRow(
     }
   }
 
-  // Process explicit cell overrides if provided in mutation.cells
+  // 4. Process explicit cell overrides if provided
   if (mutation.cells && Array.isArray(mutation.cells)) {
     for (const c of mutation.cells) {
       if (c.col_index >= 0 && c.col_index < cellCount) {
@@ -812,11 +723,7 @@ export function executeWrapConditionalRow(
 }
 
 /**
- * Collapses a repeating line-item or mid-table add-on section into a single loop row:
- * - Row 0 / prior rows: Preserved
- * - Target row: Converted to {#loop_tag}...{/loop_tag} loop row
- * - Redundant sample rows: Pruned in reverse order
- * - Summary footers (Subtotal, Tax, Total, Terms): Strictly preserved
+ * Collapses a repeating line-item or add-on section into a single loop row.
  */
 export function executeCollapseRepeatingTable(
   doc: Document,
@@ -827,7 +734,6 @@ export function executeCollapseRepeatingTable(
     return { applied: false, info: "Not a collapse_repeating_table mutation" };
   }
 
-  // Find table via candidate index or row identifier
   let targetTable: Table | undefined;
   let targetIndex = mutation.table_index ?? -1;
 
@@ -845,7 +751,7 @@ export function executeCollapseRepeatingTable(
   if (!targetTable) {
     return {
       applied: false,
-      info: `Table locator failed for loop "${mutation.loop_tag || compoundTable?.loop_tag || "items"}": table_index ${mutation.table_index} not found and no matching row identifier`,
+      info: `Table locator failed for loop: table_index ${mutation.table_index} not found`,
     };
   }
 
@@ -866,7 +772,6 @@ export function executeCollapseRepeatingTable(
     if (match && match.rowIndex > 0) {
       templateRowIdx = match.rowIndex;
     } else if (loopTag === "addon_items" || loopTag.includes("addon")) {
-      // Auto-resolve to first add-on data row in table (excluding summary rows)
       const rows = targetTable.getRows();
       for (let r = 1; r < rows.length; r++) {
         const text = normalizeText(rows[r].getText());
@@ -887,24 +792,22 @@ export function executeCollapseRepeatingTable(
   }
 
   const targetRow = targetTable.getRow(templateRowIdx);
-
   if (!targetRow) {
     return { applied: false, info: `Template row index ${templateRowIdx} not found in table` };
   }
 
   const cellCount = targetRow.getCellCount();
 
-  // 1. InRow Loop Boundary Placement & Dynamic Column Tag Replacement
+  // Column tags substitution
   if (mutation.column_tags && Array.isArray(mutation.column_tags) && mutation.column_tags.length > 0) {
     for (const col of mutation.column_tags) {
       if (col.col_index >= 0 && col.col_index < cellCount) {
         let tag = col.replacement_tag.trim();
-        if (!tag.startsWith("{") && !tag.includes("{")) tag = `{${tag}}`;
+        if (!tag.startsWith("{")) tag = `{${tag}}`;
         targetTable.setCell(templateRowIdx, col.col_index, tag);
       }
     }
   } else {
-    // Derive from compoundTable.columns or intelligent defaults
     let columns = compoundTable?.columns;
     if (!columns || !Array.isArray(columns) || columns.length === 0) {
       if (loopTag === "project_phases" || loopTag === "milestones" || targetIndex === 1) {
@@ -925,9 +828,7 @@ export function executeCollapseRepeatingTable(
         milestone_name: "milestone_name",
         deliverable: "deliverable_summary",
         deliverable_summary: "deliverable_summary",
-        description: "deliverable_summary",
         line_item: "addon_name",
-        item: "addon_name",
         addon_name: "addon_name",
         amount: loopTag === "payment_milestones" ? "payment_amount" : "addon_fee",
         fee: "addon_fee",
@@ -948,41 +849,28 @@ export function executeCollapseRepeatingTable(
     }
   }
 
-  // Inject opening loop tag into first cell
-  const firstCell = targetRow.getCell(0);
-  const firstCellText = firstCell?.getText().trim() || "";
+  // Inject opening and closing loop tags
+  const firstCellText = targetRow.getCell(0)?.getText().trim() || "";
   if (!firstCellText.includes(openTag)) {
     const separator = firstCellText.startsWith("{") ? "" : " ";
     targetTable.setCell(templateRowIdx, 0, `${openTag}${separator}${firstCellText}`.trim());
   }
 
-  // Inject closing loop tag into last cell
   const lastColIdx = cellCount - 1;
-  const lastCell = targetRow.getCell(lastColIdx);
-  const lastCellText = lastCell?.getText().trim() || "";
+  const lastCellText = targetRow.getCell(lastColIdx)?.getText().trim() || "";
   if (!lastCellText.includes(closeTag)) {
     const separator = lastCellText.endsWith("}") ? "" : " ";
     targetTable.setCell(templateRowIdx, lastColIdx, `${lastCellText}${separator}${closeTag}`.trim());
   }
 
-  // 2. Reverse-Order Redundant Sample Row Deletion
+  // Prune sample rows in reverse order
   const deleteFrom = mutation.delete_sample_rows_from ?? (templateRowIdx + 1);
   let deleteUntil = targetTable.getRowCount();
 
   if (mutation.delete_sample_rows_count !== undefined) {
     deleteUntil = Math.min(targetTable.getRowCount(), deleteFrom + mutation.delete_sample_rows_count);
-  } else if (compoundTable?.summary_start_index !== undefined) {
-    deleteUntil = compoundTable.summary_start_index;
   } else {
-    const summaryKeywords = [
-      "subtotal",
-      "tax",
-      "total",
-      "payment terms",
-      "terms",
-      "due",
-      "balance",
-    ];
+    const summaryKeywords = ["subtotal", "tax", "total", "terms", "due", "balance"];
     for (let r = deleteFrom; r < targetTable.getRowCount(); r++) {
       const rowText = normalizeText(targetTable.getRow(r)?.getText() || "");
       if (summaryKeywords.some((kw) => rowText.includes(kw))) {
@@ -993,7 +881,6 @@ export function executeCollapseRepeatingTable(
   }
 
   let deletedCount = 0;
-  // Crucial: delete from bottom up to avoid index shifting collisions!
   for (let r = deleteUntil - 1; r >= deleteFrom; r--) {
     if (r > templateRowIdx && r < targetTable.getRowCount()) {
       targetTable.removeRow(r);
@@ -1003,14 +890,13 @@ export function executeCollapseRepeatingTable(
 
   return {
     applied: true,
-    info: `Collapsed Table ${targetIndex}: Row ${templateRowIdx} wrapped with ${openTag}...${closeTag}, pruned ${deletedCount} sample rows (Rows ${deleteFrom}..${deleteUntil - 1}) in reverse order`,
+    info: `Collapsed Table ${targetIndex}: Row ${templateRowIdx} wrapped with ${openTag}...${closeTag}, pruned ${deletedCount} rows`,
   };
 }
 
 /**
  * Main Orchestrator:
- * Ingests original quotation .docx, applies all confirmed mutations in-memory,
- * and saves template.docx into storage/<company_id>/template.docx.
+ * Ingests original quotation .docx, applies mutations, and saves template.docx.
  */
 export async function mutateDocumentTemplate(companyId: string): Promise<MutationResult> {
   const db = getDatabase();
@@ -1019,12 +905,10 @@ export async function mutateDocumentTemplate(companyId: string): Promise<Mutatio
   const sourceFilePath = path.join(companyDir, "original_quotation.docx");
   const targetFilePath = path.join(companyDir, "template.docx");
 
-  // Verify or locate original_quotation.docx
   let docBuffer: Buffer;
   if (fs.existsSync(sourceFilePath)) {
     docBuffer = fs.readFileSync(sourceFilePath);
   } else {
-    // Check Mock Data fallback
     const mockFileMap: Record<string, string> = {
       co1_seo: "Proposal_Northstar_BloomAndCo.docx",
       co2_msp: "Proposal_FortressIT_WhitfieldAssociates.docx",
@@ -1053,10 +937,8 @@ export async function mutateDocumentTemplate(companyId: string): Promise<Mutatio
     docBuffer = fs.readFileSync(sourceFilePath);
   }
 
-  // Load document into docxmlater DOM
   const doc = await Document.loadFromBuffer(docBuffer);
 
-  // Retrieve confirmed active variables and compound tables
   const varStmt = db.prepare(`
     SELECT * FROM company_variables
     WHERE company_id = ? AND is_deleted = 0
@@ -1070,10 +952,6 @@ export async function mutateDocumentTemplate(companyId: string): Promise<Mutatio
   let mutationsAppliedCount = 0;
   const details: MutationLogEntry[] = [];
 
-  // Partition mutations into 3 deterministic phases:
-  // Phase 1: Text run replacements
-  // Phase 2: Scalar cell replacements and conditional row wrapping
-  // Phase 3: Table loop collapsing (executed last to prevent row index shifting)
   interface PendingMutation {
     row: VariableRow;
     descriptor: any;
@@ -1113,7 +991,7 @@ export async function mutateDocumentTemplate(companyId: string): Promise<Mutatio
     pending.push({ row, descriptor, mutation, phase });
   }
 
-  // Sort by phase so Phase 1 runs first, Phase 2 second, Phase 3 last
+  // Sort by phase so scalar and cell mutations execute before repeating table collapsing
   const sortedPending = pending.sort((a, b) => a.phase - b.phase);
 
   for (const item of sortedPending) {
@@ -1182,7 +1060,6 @@ export async function mutateDocumentTemplate(companyId: string): Promise<Mutatio
     });
   }
 
-  // Save modified document to disk
   const mutatedBuffer = await doc.toBuffer();
   fs.writeFileSync(targetFilePath, mutatedBuffer);
 
@@ -1200,7 +1077,7 @@ export async function mutateDocumentTemplate(companyId: string): Promise<Mutatio
 }
 
 /**
- * Hydrates a Word template with dynamic proposal data using easy-template-x
+ * Hydrates a Word template with dynamic proposal data using easy-template-x.
  */
 export async function hydrateProposalTemplate(
   templateBuffer: Buffer,
@@ -1208,7 +1085,6 @@ export async function hydrateProposalTemplate(
 ): Promise<Buffer> {
   const normalizedPayload: Record<string, any> = { ...payload };
 
-  // Alias bridging for seamless template compatibility
   if (!normalizedPayload.project_phases && normalizedPayload.milestones) {
     normalizedPayload.project_phases = normalizedPayload.milestones;
   }

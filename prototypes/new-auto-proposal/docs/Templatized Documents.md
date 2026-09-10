@@ -128,10 +128,10 @@ Reply to confirm and we'll invoice the deposit — kickoff call happens within 2
 {
   "variables": [
     {
-      "id": "0d6cd99a-ea27-4808-a0a2-efbd895b677f",
+      "id": "198346d6-0823-4a91-b85e-74f938903154",
       "company_id": "co3_dev",
-      "variable_name": "client_name",
-      "natural_name": "Client Name",
+      "variable_name": "client_company_name",
+      "natural_name": "Client Company Name",
       "category": "customer_input",
       "data_type": "string",
       "is_custom": false,
@@ -139,18 +139,18 @@ Reply to confirm and we'll invoice the deposit — kickoff call happens within 2
       "sort_order": 0,
       "descriptor": {
         "sample_value": "Rosewood Home Goods",
-        "description": "The name of the prospective client company.",
+        "description": "The name of the prospective client company receiving the proposal.",
         "mutation": {
           "action": "replace_text_run",
           "sample_text": "Rosewood Home Goods",
-          "template_tag": "{client_name}"
+          "template_tag": "{client_company_name}"
         }
       },
-      "created_at": "2026-09-10T03:55:58.433Z",
-      "updated_at": "2026-09-10T03:55:58.433Z"
+      "created_at": "2026-09-10T07:29:26.136Z",
+      "updated_at": "2026-09-10T07:29:26.136Z"
     },
     {
-      "id": "807e67ab-0f8e-4493-8285-031a75d0bbcd",
+      "id": "d06f6cea-641f-408b-ad90-a73500c96ca7",
       "company_id": "co3_dev",
       "variable_name": "proposal_date",
       "natural_name": "Proposal Date",
@@ -161,22 +161,25 @@ Reply to confirm and we'll invoice the deposit — kickoff call happens within 2
       "sort_order": 1,
       "descriptor": {
         "sample_value": "September 7, 2026",
-        "description": "The date the proposal was issued.",
+        "description": "The date when the proposal is issued.",
+        "default_value": "September 7, 2026",
         "mutation": {
           "action": "replace_table_cell",
           "table_index": 0,
-          "template_row_index": 1,
-          "template_tag": "{proposal_date}"
+          "template_tag": "{proposal_date}",
+          "col_index": 0,
+          "row_identifier": "September 7, 2026",
+          "sample_text": "September 7, 2026"
         }
       },
-      "created_at": "2026-09-10T03:55:58.433Z",
-      "updated_at": "2026-09-10T03:55:58.433Z"
+      "created_at": "2026-09-10T07:29:26.136Z",
+      "updated_at": "2026-09-10T07:29:26.136Z"
     },
     {
-      "id": "7bbbc337-6352-4a10-9fb3-728a735c1ac8",
+      "id": "57edf2d1-dfeb-4e69-9919-e212284d530e",
       "company_id": "co3_dev",
-      "variable_name": "valid_until_date",
-      "natural_name": "Valid Until Date",
+      "variable_name": "proposal_valid_until",
+      "natural_name": "Proposal Valid Until",
       "category": "customer_input",
       "data_type": "string",
       "is_custom": false,
@@ -184,70 +187,54 @@ Reply to confirm and we'll invoice the deposit — kickoff call happens within 2
       "sort_order": 2,
       "descriptor": {
         "sample_value": "September 21, 2026 (14 days)",
-        "description": "The expiration date and validity window of the proposal.",
+        "description": "The expiration date and validity period of the proposal.",
+        "default_value": "September 21, 2026 (14 days)",
         "mutation": {
           "action": "replace_table_cell",
           "table_index": 0,
-          "template_row_index": 1,
-          "template_tag": "{valid_until_date}"
+          "template_tag": "{proposal_valid_until}",
+          "col_index": 2,
+          "row_identifier": "September 7, 2026",
+          "sample_text": "September 21, 2026 (14 days)"
         }
       },
-      "created_at": "2026-09-10T03:55:58.433Z",
-      "updated_at": "2026-09-10T03:55:58.433Z"
+      "created_at": "2026-09-10T07:29:26.136Z",
+      "updated_at": "2026-09-10T07:29:26.136Z"
     },
     {
-      "id": "aa9f02be-cd7f-42c1-bb98-13b2cbe87ece",
+      "id": "85a19291-86e5-4da7-ae70-b91354302b08",
       "company_id": "co3_dev",
       "variable_name": "selected_tier",
-      "natural_name": "Selected Tier",
-      "category": "customer_input",
+      "natural_name": "Selected Package Tier",
+      "category": "pricing",
       "data_type": "enum",
       "is_custom": false,
       "is_deleted": false,
       "sort_order": 3,
       "descriptor": {
         "sample_value": "E-commerce",
-        "description": "The primary service package selected for the project.",
+        "description": "The selected project package tier.",
         "enum_options": [
           "Landing Page",
           "Business Website",
           "E-commerce",
           "Custom Web App"
         ],
-        "default_value": "E-commerce",
+        "visibility_rule": {
+          "condition_flag": "has_selected_tier",
+          "show_when": "value != null"
+        },
         "mutation": {
           "action": "replace_text_run",
-          "sample_text": "E-Commerce",
+          "sample_text": "E-Commerce Build",
           "template_tag": "{selected_tier}"
         }
       },
-      "created_at": "2026-09-10T03:55:58.433Z",
-      "updated_at": "2026-09-10T03:55:58.433Z"
+      "created_at": "2026-09-10T07:29:26.136Z",
+      "updated_at": "2026-09-10T07:29:26.136Z"
     },
     {
-      "id": "765b2ef4-0304-488d-b24e-e8496a0f9567",
-      "company_id": "co3_dev",
-      "variable_name": "product_count",
-      "natural_name": "Product Count",
-      "category": "customer_input",
-      "data_type": "number",
-      "is_custom": false,
-      "is_deleted": false,
-      "sort_order": 4,
-      "descriptor": {
-        "sample_value": "60",
-        "description": "The number of products to be loaded into the store.",
-        "mutation": {
-          "action": "replace_text_run",
-          "sample_text": "60",
-          "template_tag": "{product_count}"
-        }
-      },
-      "created_at": "2026-09-10T03:55:58.433Z",
-      "updated_at": "2026-09-10T03:55:58.433Z"
-    },
-    {
-      "id": "5a3ecaf6-7600-4356-82fc-a6205fb3506f",
+      "id": "c686ab8a-76e9-4c65-a262-bf6d163f370e",
       "company_id": "co3_dev",
       "variable_name": "tier_base_investment",
       "natural_name": "Tier Base Investment",
@@ -255,22 +242,25 @@ Reply to confirm and we'll invoice the deposit — kickoff call happens within 2
       "data_type": "currency",
       "is_custom": false,
       "is_deleted": false,
-      "sort_order": 5,
+      "sort_order": 4,
       "descriptor": {
         "sample_value": "$9,500.00",
-        "description": "The base price for the selected tier.",
+        "description": "The base price for the selected project tier.",
+        "default_value": "9500.00",
         "mutation": {
           "action": "replace_table_cell",
           "table_index": 2,
-          "template_row_index": 1,
-          "template_tag": "{tier_base_investment}"
+          "template_tag": "{tier_base_investment}",
+          "col_index": 1,
+          "row_identifier": "E-Commerce Build (base template, up to 100 products)",
+          "sample_text": "$9,500.00"
         }
       },
-      "created_at": "2026-09-10T03:55:58.433Z",
-      "updated_at": "2026-09-10T03:55:58.433Z"
+      "created_at": "2026-09-10T07:29:26.136Z",
+      "updated_at": "2026-09-10T07:29:26.136Z"
     },
     {
-      "id": "792f8627-e6e1-4282-a4c3-56f83177528a",
+      "id": "037eaaa0-bf41-48ba-bd5c-b19994fb27f1",
       "company_id": "co3_dev",
       "variable_name": "addon_subtotal",
       "natural_name": "Add-on Subtotal",
@@ -278,22 +268,25 @@ Reply to confirm and we'll invoice the deposit — kickoff call happens within 2
       "data_type": "currency",
       "is_custom": false,
       "is_deleted": false,
-      "sort_order": 6,
+      "sort_order": 5,
       "descriptor": {
         "sample_value": "$1,050.00",
-        "description": "The combined subtotal of all selected add-ons.",
+        "description": "Subtotal amount for selected add-ons.",
+        "default_value": "1050.00",
         "mutation": {
           "action": "replace_table_cell",
           "table_index": 2,
-          "template_row_index": 4,
-          "template_tag": "{addon_subtotal}"
+          "template_tag": "{addon_subtotal}",
+          "col_index": 1,
+          "row_identifier": "Add-on subtotal",
+          "sample_text": "$1,050.00"
         }
       },
-      "created_at": "2026-09-10T03:55:58.433Z",
-      "updated_at": "2026-09-10T03:55:58.433Z"
+      "created_at": "2026-09-10T07:29:26.136Z",
+      "updated_at": "2026-09-10T07:29:26.136Z"
     },
     {
-      "id": "33a64638-1c9c-4cfe-a068-2930022f87f2",
+      "id": "12049676-6273-4a13-97a9-d8296667324d",
       "company_id": "co3_dev",
       "variable_name": "bundle_discount_amount",
       "natural_name": "Bundle Discount Amount",
@@ -301,26 +294,29 @@ Reply to confirm and we'll invoice the deposit — kickoff call happens within 2
       "data_type": "currency",
       "is_custom": false,
       "is_deleted": false,
-      "sort_order": 7,
+      "sort_order": 6,
       "descriptor": {
         "sample_value": "−$105.00",
-        "description": "The discount applied when 2 or more add-ons are selected.",
+        "description": "Discount applied when 2 or more add-ons are selected.",
         "visibility_rule": {
           "condition_flag": "has_bundle_discount",
           "show_when": "value > 0"
         },
         "mutation": {
-          "action": "replace_table_cell",
+          "action": "wrap_conditional_row",
+          "condition_tag": "has_bundle_discount",
           "table_index": 2,
-          "template_row_index": 5,
-          "template_tag": "{bundle_discount_amount}"
+          "template_tag": "{bundle_discount_amount}",
+          "col_index": 1,
+          "row_identifier": "Bundle discount (10% off add-ons, 2+ selected)",
+          "sample_text": "−$105.00"
         }
       },
-      "created_at": "2026-09-10T03:55:58.433Z",
-      "updated_at": "2026-09-10T03:55:58.433Z"
+      "created_at": "2026-09-10T07:29:26.136Z",
+      "updated_at": "2026-09-10T07:29:26.136Z"
     },
     {
-      "id": "ee47e624-0c37-49bf-8eb0-284c53d8cec5",
+      "id": "3563d780-774a-47f1-81e5-cc3d8902888b",
       "company_id": "co3_dev",
       "variable_name": "total_project_investment",
       "natural_name": "Total Project Investment",
@@ -328,62 +324,73 @@ Reply to confirm and we'll invoice the deposit — kickoff call happens within 2
       "data_type": "currency",
       "is_custom": false,
       "is_deleted": false,
-      "sort_order": 8,
+      "sort_order": 7,
       "descriptor": {
         "sample_value": "$10,445.00",
-        "description": "The final total cost for the project including add-ons and discounts.",
+        "description": "The final total project cost including base, add-ons, and discounts.",
+        "default_value": "10445.00",
         "mutation": {
           "action": "replace_table_cell",
           "table_index": 2,
-          "template_row_index": 6,
-          "template_tag": "{total_project_investment}"
+          "template_tag": "{total_project_investment}",
+          "col_index": 1,
+          "row_identifier": "Total Project Investment",
+          "sample_text": "$10,445.00"
         }
       },
-      "created_at": "2026-09-10T03:55:58.433Z",
-      "updated_at": "2026-09-10T03:55:58.433Z"
+      "created_at": "2026-09-10T07:29:26.136Z",
+      "updated_at": "2026-09-10T07:29:26.136Z"
     }
   ],
   "compound_tables": [
     {
-      "id": "3ca66b6d-6499-4cc0-b318-2f2d9f45312c",
-      "table_id": "metadata_table",
-      "natural_name": "Proposal Metadata",
-      "table_index": 0,
-      "type": "comparison_matrix",
-      "columns": [],
-      "enum_options": [],
-      "is_deleted": false
-    },
-    {
-      "id": "57ad0162-fb02-4023-a09d-73832556dc35",
-      "table_id": "project_scope_table",
+      "id": "4b31fe47-7aad-4939-9b9e-c7fc276dfa8a",
+      "table_id": "table_phases",
       "natural_name": "Project Scope Phases",
       "table_index": 1,
       "type": "repeating_loop",
-      "loop_tag": "project_phases",
-      "columns": [],
+      "loop_tag": "milestones",
+      "columns": [
+        "phase_number",
+        "milestone_title",
+        "deliverable_summary"
+      ],
       "enum_options": [],
       "is_deleted": false
     },
     {
-      "id": "7e103e8e-dc6f-4cab-8a93-4753de92514c",
-      "table_id": "investment_summary_table",
+      "id": "9a4a27b3-d527-45cc-961e-34f82a94cabf",
+      "table_id": "table_investment_line_items",
       "natural_name": "Investment Line Items",
       "table_index": 2,
       "type": "repeating_loop",
       "loop_tag": "addon_items",
-      "columns": [],
+      "columns": [
+        "line_item_name",
+        "line_item_amount"
+      ],
       "enum_options": [],
+      "mutation": {
+        "action": "collapse_repeating_table",
+        "table_index": 2,
+        "loop_tag": "addon_items",
+        "template_row_index": 2,
+        "row_identifier": "add-on"
+      },
       "is_deleted": false
     },
     {
-      "id": "8fd27e3e-22dd-4dd0-8779-f22a3b23be50",
-      "table_id": "payment_schedule_table",
-      "natural_name": "Payment Schedule Milestones",
+      "id": "4e400ca9-fe2c-4b5c-95c1-df46c7d1030a",
+      "table_id": "table_payment_schedule",
+      "natural_name": "Payment Schedule",
       "table_index": 3,
       "type": "repeating_loop",
       "loop_tag": "payment_milestones",
-      "columns": [],
+      "columns": [
+        "milestone_name",
+        "trigger_description",
+        "payment_amount"
+      ],
       "enum_options": [],
       "is_deleted": false
     }
@@ -397,23 +404,23 @@ Reply to confirm and we'll invoice the deposit — kickoff call happens within 2
 ```md
 **Project Proposal**
 
-**Prepared for {client\_name}**
+**Prepared for {client\_company\_name}**
 
-| **Date** | {valid_until_date} | **Proposal Valid Until** |
+| **Date** | **Prepared By** | **Proposal Valid Until** |
 | --- | --- | --- |
-| September 7, 2026 | Fieldstone Studio | September 21, 2026 (14 days) |
+| {proposal_date} | Fieldstone Studio | September 21, 2026 (14 days) |
 
 **From Kickoff to Launch**
 
-You reached out about moving Rosewood Home Goods into {selected_tier} — roughly {product_count} products, wanting product copy written for you and basic SEO set up rather than handling both in-house. That's a clean fit for our {selected_tier} template, with two add-ons layered in below. Here's exactly what happens, phase by phase, and what it costs.
+You reached out about moving {client_company_name} into e-commerce — roughly 60 products, wanting product copy written for you and basic SEO set up rather than handling both in-house. That's a clean fit for our E-commerce template, with two add-ons layered in below. Here's exactly what happens, phase by phase, and what it costs.
 
-**Project Scope: E-Commerce Build**
+**Project Scope: {selected\_tier}**
 
 Base template: up to 100 products, Shopify or custom cart, typical delivery in 4–6 weeks.
 
 | **Phase** | **Milestone** | **Deliverable** |
 | --- | --- | --- |
-| {#project_phases} 1 | Discovery | Requirements confirmed: product catalog structure, cart provider, copy & SEO inputs gathered {/project_phases} |
+| {#milestones}{phase_number} | {milestone_title} | {deliverable_summary}{/milestones} |
 
 **Add-On Menu — Selected for This Project**
 
@@ -431,12 +438,13 @@ Base template: up to 100 products, Shopify or custom cart, typical delivery in 4
 
 **Your Investment**
 
-| **Line Item** | {total_project_investment} |
+| **Line Item** | **Amount** |
 | --- | --- |
-| {#addon_items} E-Commerce Build (base template, up to 100 products) | $9,500.00 {/addon_items} |
-| Add-on subtotal | $1,050.00 |
-| Bundle discount (10% off add-ons, 2+ selected) | −$105.00 |
-| **Total Project Investment** | **$10,445.00** |
+| {selected_tier} (base template, up to 100 products) | $9,500.00 |
+| {#addon_items}{line_item_name} | {line_item_amount}{/addon_items} |
+| Add-on subtotal | {addon_subtotal} |
+| {#has_bundle_discount} Bundle discount (10% off add-ons, 2+ selected) | −$105.00 {/has_bundle_discount} |
+| **Total Project Investment** | **{total\_project\_investment}** |
 
 *No sales tax applies to this engagement under our standard services treatment.*
 
@@ -444,7 +452,7 @@ Base template: up to 100 products, Shopify or custom cart, typical delivery in 4
 
 | **Milestone** | **Trigger** | **Amount** |
 | --- | --- | --- |
-| {#payment_milestones} Deposit (50%) | On signing | $5,222.50 {/payment_milestones} |
+| {#payment_milestones}{milestone_name} | {trigger_description} | {payment_amount}{/payment_milestones} |
 
 **Next Steps**
 
@@ -987,21 +995,21 @@ Confirm by reply or call (614) 555-0193 — we'll schedule your network & securi
 ```md
 **Managed IT Services Proposal**
 
-**{client\_company\_name}**
+**Prepared for {client\_name}**
 
 | **Date** | **Prepared By** | **Proposal Valid Until** |
 | --- | --- | --- |
-| September 7, 2026 | Fortress IT Group — Sales Engineering | September 21, 2026 (14 days) |
+| {proposal_date} | Fortress IT Group — Sales Engineering | September 21, 2026 (14 days) |
 
 **01  Current Environment Risk Profile**
 
-{risk_profile_narrative} At that headcount, informal or single-contractor IT support is statistically where firms start seeing recurring downtime, delayed patching, and no documented backup posture — all of which compound quietly until an outage or incident forces the issue. The scope below is sized specifically to your headcount and device footprint.
+You noted {client_name} has grown to 42 employees across two offices with no dedicated IT support in place. At that headcount, informal or single-contractor IT support is statistically where firms start seeing recurring downtime, delayed patching, and no documented backup posture — all of which compound quietly until an outage or incident forces the issue. The scope below is sized specifically to your headcount and device footprint.
 
-**02  Recommended Tier: Standard**
+**02  Recommended Tier: {selected\_tier}**
 
-Standard is built for firms your size that need faster-than-business-hours coverage and managed backups, without paying for the 24/7 / vCIO layer that Premium adds — appropriate once you're running compliance-sensitive client data with real recovery-time expectations.
+{selected_tier} is built for firms your size that need faster-than-business-hours coverage and managed backups, without paying for the 24/7 / vCIO layer that Premium adds — appropriate once you're running compliance-sensitive client data with real recovery-time expectations.
 
-| **Essential** | {proposal_valid_until} | **Premium** |
+| **Essential** | **{selected\_tier} — Recommended** | **Premium** |
 | --- | --- | --- |
 | $45/seat/mo base | **$65/seat/mo base** | $85/seat/mo base |
 | Business hours, next-day | 4-hr response + after-hours line | 1-hr priority, 24/7 |
@@ -1011,31 +1019,28 @@ Standard is built for firms your size that need faster-than-business-hours cover
 
 Shown in full so the math is auditable against your invoice every month — no black-box pricing.
 
-| **Total employees / seats** | {selected_tier} |
+| **Total employees / seats** | {seat_count} |
 | --- | --- |
-| Standard tier base rate | $65.00 / seat / mo |
-| Volume adjustment (25–49 seat band) | −$5.00 / seat / mo |
-| **Adjusted rate** | **$60.00 / seat / mo** |
-| **Seat subtotal (42 seats × $60.00)** | **$2,520.00** |
+| {selected_tier} tier base rate | $65.00 / seat / mo |
+| Volume adjustment (25–49 seat band) | {volume_adjustment} |
+| **Adjusted rate** | **{adjusted\_seat\_rate}** |
+| **Seat subtotal (42 seats × $60.00)** | **{seat\_subtotal}** |
 | Managed devices beyond 1:1 (5 servers × $12.00) | $60.00 |
-| **Monthly Recurring Subtotal** | **$2,580.00** |
-| Ohio state tax (6%, on recurring only) | $154.80 |
-| **Total Monthly Recurring** | **$2,734.80** |
+| **Monthly Recurring Subtotal** | **{monthly\_recurring\_subtotal}** |
+| {#has_tax} Ohio state tax (6%, on recurring only) | $154.80 {/has_tax} |
+| **Total Monthly Recurring** | **{total\_monthly\_recurring}** |
 
 Plus a one-time onboarding fee, invoiced separately at signing (not subject to the recurring tax above):
 
 |  |  |
 | --- | --- |
-| **One-time setup & onboarding ({employee\_count} seats × $7{server\_count}.00)** | **$3,150.00** |
+| **One-time setup & onboarding (42 seats × $75.00)** | **{one\_time\_setup\_fee}** |
 
 *Minimum billable commitment is 10 seats — your 42-seat count is well above the floor, so no minimum-commit adjustment applies.*
 
 **04  What's Included This Cycle**
 
-- Onboarding of all 42 endpoints and 5 servers into 24/7 monitoring within weeks 1–2
-- Managed backup configuration for both office locations
-- 4-hour response SLA during business hours; after-hours emergency line for critical outages
-- Named account engineer — not a rotating helpdesk queue
+{scope_deliverables_summary}
 
 **05  Next Steps**
 
@@ -1513,28 +1518,28 @@ Reply to this email or call (512) 555-0148 to confirm — we'll schedule your ki
 
 **Prepared for {client\_company\_name}**
 
-| **Date** | {proposal_valid_until} | **Proposal Valid Until** |
+| **Date** | **Prepared By** | **Proposal Valid Until** |
 | --- | --- | --- |
-| September 7, 2026 | Northstar Digital Strategy Team | September 21, 2026 (14 days) |
+| {proposal_date} | Northstar Digital Strategy Team | September 21, 2026 (14 days) |
 
 **Where You Stand Today**
 
-Thanks for reaching out through our outreach campaign — you mentioned Bloom & Co now has two active clinic locations and isn't showing up when local patients search on Google. That's a common gap at your stage: single-location SEO tactics stop working once a second location enters the picture, because you're now competing for local pack visibility in two separate map areas at once. Below is the package built for exactly that situation, along with what it costs and what's included.
+Thanks for reaching out through our outreach campaign — you mentioned Bloom & Co now has {client_location_count} and isn't showing up when local patients search on Google. That's a common gap at your stage: single-location SEO tactics stop working once a second location enters the picture, because you're now competing for local pack visibility in two separate map areas at once. Below is the package built for exactly that situation, along with what it costs and what's included.
 
 **Recommended Package: {selected\_tier}**
 
-Based on your two locations, Growth is the right fit — Local only supports a single location, and Authority is built for franchise-scale accounts. Growth covers both of your clinics under one plan with room to add a third location later without changing tiers.
+Based on your two locations, {selected_tier} is the right fit — Local only supports a single location, and Authority is built for franchise-scale accounts. {selected_tier} covers both of your clinics under one plan with room to add a third location later without changing tiers.
 
-| **Local** | {selected_tier_rate} | **Authority** |
+| **Local** | **{selected\_tier}  — Recommended** | **Authority** |
 | --- | --- | --- |
 | $1,000/mo | **$3,000/mo** | $8,000/mo |
 | 1 location | Up to 3 locations | Unlimited locations |
 | 1 blog post/mo | 4 content pieces/mo | Weekly content |
 | — | Citation building | Dedicated strategist |
 
-**Included vs. Not Included — Growth Tier**
+**Included vs. Not Included — {selected\_tier} Tier**
 
-- Included: Google Business Profile management for both clinic locations
+- {tier_scope_deliverables}
 - Included: On-page SEO across your site, citation building across major directories
 - Included: 4 content pieces/month, quarterly strategy call, monthly performance report
 - Not included: Paid ad management (Google/Meta ads) — available as a separate engagement
@@ -1544,19 +1549,19 @@ Based on your two locations, Growth is the right fit — Local only supports a s
 
 You mentioned you'd rather pay annually than track a monthly invoice — that qualifies for our annual prepay discount, applied below.
 
-| **Line Item** | {total_investment} |
+| **Line Item** | **Amount** |
 | --- | --- |
-| Growth Package — 12 months × $3,000/mo | $36,000.00 |
-| Annual prepay discount (10%) | −$3,600.00 |
-| **Subtotal** | **$32,400.00** |
-| Texas sales tax (8.25%) | $2,673.00 |
-| **Total Annual Investment** | **$35,073.00** |
+| {selected_tier} Package — 12 months × $3,000/mo | $36,000.00 |
+| {#has_annual_discount} Annual prepay discount (10%) | −$3,600.00 {/has_annual_discount} |
+| **Subtotal** | **{subtotal\_amount}** |
+| {#has_tax} Texas sales tax (8.25%) | $2,673.00 {/has_tax} |
+| **Total Annual Investment** | **{total\_investment}** |
 
 Equivalent to $2,922.75/month, billed as a single annual payment. Minimum initial engagement is 3 months; month-to-month thereafter.
 
 **Room to Grow: Your Upgrade Path**
 
-If you open a third clinic mid-year, Growth already covers it at no change in price. A fourth location would move you into Authority ($8,000/mo), which adds a dedicated strategist and weekly content — we'd re-quote at that point, not before.
+If you open a third clinic mid-year, {selected_tier} already covers it at no change in price. A fourth location would move you into Authority ($8,000/mo), which adds a dedicated strategist and weekly content — we'd re-quote at that point, not before.
 
 **Next Steps**
 
