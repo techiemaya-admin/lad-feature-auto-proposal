@@ -81,6 +81,26 @@ function normalizeText(text: string): string {
 }
 
 /**
+ * Finds all exact substrings in sourceText that match sampleText allowing for flexible whitespace
+ * and non-breaking spaces (\u00A0). Returns the exact character slices from sourceText so that
+ * literal cross-run replacement can find them.
+ */
+function findExactMatchesInText(sourceText: string, sampleText: string): string[] {
+  const escaped = sampleText
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\s+/g, "[ \\u00A0]+");
+  const regex = new RegExp(escaped, "gi");
+  const matches: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(sourceText)) !== null) {
+    if (!matches.includes(m[0])) {
+      matches.push(m[0]);
+    }
+  }
+  return matches;
+}
+
+/**
  * Detects whether a table row functions as a column header row.
  * Checks for Word's native isHeader flag, common column header tokens (Date, Amount, Line Item, Phase, etc.),
  * and tier package headers (Standard, Growth, Essential, etc.).
@@ -117,6 +137,18 @@ export function isColumnHeaderRow(row: TableRow | null | undefined): boolean {
     "local",
     "growth",
     "authority",
+    "tier",
+    "package",
+    "plan",
+    "starter",
+    "professional",
+    "enterprise",
+    "basic",
+    "pro",
+    "bronze",
+    "silver",
+    "gold",
+    "recommended",
   ];
 
   // If cells contain numbers or currency values, it's typically a data row (e.g. "Total employees / seats | 42" or "$3,150.00")
@@ -130,7 +162,24 @@ export function isColumnHeaderRow(row: TableRow | null | undefined): boolean {
     return false;
   }
 
-  return headerKeywords.some((kw) => text.includes(kw));
+  if (headerKeywords.some((kw) => text.includes(kw))) {
+    return true;
+  }
+
+  // Structural heuristic: A multi-column row (>= 3 columns) where every cell has non-empty text
+  // and no cells contain currency or pure numbers is almost certainly a comparison package header
+  // (e.g. "Custom Tier A | Custom Tier B | Custom Tier C")
+  if (cellCount >= 3) {
+    const allCellsAreLabels = cells.every((c) => {
+      const cText = c.getText().trim();
+      return cText.length > 0 && !/^\$?[\d,]+(\.\d{2})?(\/mo)?$/i.test(cText);
+    });
+    if (allCellsAreLabels) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -448,7 +497,13 @@ export function executeReplaceTextRun(
 
     for (const para of allParagraphs) {
       if (normalizeText(para.getText()).includes(normSample)) {
-        const count = para.replaceTextCrossRun(sample, tag, { caseSensitive: false });
+        let count = para.replaceTextCrossRun(sample, tag, { caseSensitive: false });
+        if (count === 0) {
+          const exactMatches = findExactMatchesInText(para.getText(), sample);
+          for (const em of exactMatches) {
+            count += para.replaceTextCrossRun(em, tag, { caseSensitive: false });
+          }
+        }
         if (count > 0) {
           globalReplacements += count;
         }
@@ -472,6 +527,10 @@ export function executeReplaceTextRun(
   const prefixBoundary = isStartWordChar ? "\\b" : "";
   const suffixBoundary = isEndWordChar ? "\\b" : "";
   const wordRegex = new RegExp(`${prefixBoundary}${escaped}${suffixBoundary}`, "i");
+  const wordRegexNbsp = new RegExp(
+    `${prefixBoundary}${escaped.replace(/ /g, "[ \\u00A0]")}${suffixBoundary}`,
+    "i"
+  );
 
   // Determine candidate paragraphs
   let candidateParas = allParagraphs;
@@ -487,7 +546,8 @@ export function executeReplaceTextRun(
 
   let wordReplacements = 0;
   for (const para of candidateParas) {
-    if (!wordRegex.test(para.getText())) continue;
+    const pText = para.getText();
+    if (!wordRegex.test(pText) && !wordRegexNbsp.test(pText)) continue;
 
     let count = 0;
     if (isStartWordChar && isEndWordChar) {
@@ -496,8 +556,20 @@ export function executeReplaceTextRun(
         para.consolidateRuns();
         count = para.replaceText(sample, tag, { caseSensitive: false, wholeWord: true });
       }
+      if (count === 0) {
+        const exactMatches = findExactMatchesInText(pText, sample);
+        for (const em of exactMatches) {
+          count += para.replaceText(em, tag, { caseSensitive: false, wholeWord: true });
+        }
+      }
     } else {
       count = para.replaceTextCrossRun(sample, tag, { caseSensitive: false });
+      if (count === 0) {
+        const exactMatches = findExactMatchesInText(pText, sample);
+        for (const em of exactMatches) {
+          count += para.replaceTextCrossRun(em, tag, { caseSensitive: false });
+        }
+      }
     }
 
     if (count > 0) {
@@ -582,9 +654,15 @@ export function executeReplaceTableCell(
     // 1. Check primary targeted cell
     let replacedCount = 0;
     for (const para of cell.getParagraphs()) {
-      const count = para.replaceTextCrossRun(mutation.sample_text, tag, {
+      let count = para.replaceTextCrossRun(mutation.sample_text, tag, {
         caseSensitive: false,
       });
+      if (count === 0) {
+        const exactMatches = findExactMatchesInText(para.getText(), mutation.sample_text);
+        for (const em of exactMatches) {
+          count += para.replaceTextCrossRun(em, tag, { caseSensitive: false });
+        }
+      }
       if (count > 0) replacedCount += count;
     }
     if (replacedCount > 0) {
@@ -602,9 +680,15 @@ export function executeReplaceTableCell(
       if (adjacentCell && normalizeText(adjacentCell.getText()).includes(normSample)) {
         let adjReplaced = 0;
         for (const para of adjacentCell.getParagraphs()) {
-          const count = para.replaceTextCrossRun(mutation.sample_text, tag, {
+          let count = para.replaceTextCrossRun(mutation.sample_text, tag, {
             caseSensitive: false,
           });
+          if (count === 0) {
+            const exactMatches = findExactMatchesInText(para.getText(), mutation.sample_text);
+            for (const em of exactMatches) {
+              count += para.replaceTextCrossRun(em, tag, { caseSensitive: false });
+            }
+          }
           if (count > 0) adjReplaced += count;
         }
         if (adjReplaced > 0) {
@@ -758,20 +842,11 @@ export function executeCollapseRepeatingTable(
     targetTable = doc.getTableAt(mutation.table_index);
   }
 
-  // Fallback: discover table with >= 2 rows if index was offset or not found
   if (!targetTable) {
-    const tables = doc.getTables();
-    for (let i = 0; i < tables.length; i++) {
-      if (tables[i].getRowCount() >= 2) {
-        targetTable = tables[i];
-        targetIndex = i;
-        break;
-      }
-    }
-  }
-
-  if (!targetTable) {
-    return { applied: false, info: "Table not found for repeating collapse" };
+    return {
+      applied: false,
+      info: `Table locator failed for loop "${mutation.loop_tag || compoundTable?.loop_tag || "items"}": table_index ${mutation.table_index} not found and no matching row identifier`,
+    };
   }
 
   const rowCount = targetTable.getRowCount();

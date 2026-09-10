@@ -1322,6 +1322,80 @@ test("docXMLater Word Template Mutation Suite", async (t) => {
       assert.ok(fortressMd.includes("05  Next Steps"));
     }
   );
+
+  await t.test(
+    "Unit: executeCollapseRepeatingTable fails cleanly when table not found, refusing to hijack Table 0",
+    async () => {
+      const doc = await Document.loadFromBuffer(fs.readFileSync(northstarDocx));
+      const table0Before = doc.getTableAt(0)?.getRow(1)?.getText();
+
+      const result = executeCollapseRepeatingTable(doc, {
+        action: "collapse_repeating_table",
+        table_index: 99,
+        row_identifier: "NonExistentRowIdentifier",
+        loop_tag: "mystery_items",
+      });
+
+      // Must fail safely without touching Table 0
+      assert.equal(result.applied, false);
+      assert.ok(result.info.includes("Table locator failed"));
+      assert.equal(doc.getTableAt(0)?.getRow(1)?.getText(), table0Before);
+      assert.ok(!doc.getTableAt(0)?.getRow(1)?.getText().includes("{#mystery_items}"));
+    }
+  );
+
+  await t.test(
+    "Unit: isColumnHeaderRow recognizes generalized multi-column tier packages structurally and via extended keywords",
+    async () => {
+      // 1. Extended keywords: Starter | Professional | Enterprise
+      const testDoc = new Document();
+      const table1 = testDoc.createTable(2, 3);
+      table1.setCell(0, 0, "Starter");
+      table1.setCell(0, 1, "Professional");
+      table1.setCell(0, 2, "Enterprise");
+      table1.setCell(1, 0, "$500");
+      table1.setCell(1, 1, "$1,000");
+      table1.setCell(1, 2, "$2,000");
+
+      assert.equal(isColumnHeaderRow(table1.getRow(0)), true);
+      assert.equal(isColumnHeaderRow(table1.getRow(1)), false);
+
+      // 2. Structural heuristic: Custom Tier Alpha | Custom Tier Beta | Custom Tier Gamma
+      const table2 = testDoc.createTable(2, 3);
+      table2.setCell(0, 0, "Custom Alpha");
+      table2.setCell(0, 1, "Custom Beta");
+      table2.setCell(0, 2, "Custom Gamma");
+      table2.setCell(1, 0, "$250");
+      table2.setCell(1, 1, "$500");
+      table2.setCell(1, 2, "$750");
+
+      assert.equal(isColumnHeaderRow(table2.getRow(0)), true);
+      assert.equal(isColumnHeaderRow(table2.getRow(1)), false);
+    }
+  );
+
+  await t.test(
+    "Unit: executeReplaceTextRun is resilient to non-breaking spaces (\\u00A0)",
+    async () => {
+      const doc = new Document();
+      // Paragraph with non-breaking space: "Prepared for: Acme\u00A0Corp"
+      const para = new Paragraph().addText("Prepared for: Acme\u00A0Corp Solutions");
+      doc.addParagraph(para);
+
+      const result = executeReplaceTextRun(
+        doc,
+        {
+          action: "replace_text_run",
+          sample_text: "Acme Corp Solutions", // standard space ASCII 32
+          template_tag: "{client_name}",
+        },
+        "client_name"
+      );
+
+      assert.equal(result.applied, true);
+      assert.ok(para.getText().includes("{client_name}"));
+    }
+  );
 });
 
 
