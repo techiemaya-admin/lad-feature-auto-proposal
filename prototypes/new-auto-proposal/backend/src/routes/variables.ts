@@ -278,17 +278,34 @@ router.post("/:id/variables/extract", async (req: Request, res: Response): Promi
 
         // Guarantee columns array and mutations for repeating loop compound tables
         for (const t of extraction.compound_tables) {
+          const tableName = (t.natural_name || t.table_id || "").toLowerCase();
+          const loopTag = typeof t.loop_tag === "string" ? t.loop_tag.toLowerCase() : "";
+          const targetTable = tables[t.table_index];
+          const hasAddonInTable = targetTable
+            ? targetTable.getRows().some((r) => {
+                const txt = r.getText().toLowerCase();
+                return txt.includes("add-on") || txt.includes("addon");
+              })
+            : false;
+
+          const isAddonLoop =
+            loopTag === "addon_items" ||
+            loopTag.includes("addon") ||
+            tableName.includes("add-on") ||
+            tableName.includes("addon") ||
+            hasAddonInTable;
+
           if (t.type === "repeating_loop" && (!t.columns || t.columns.length === 0)) {
             if (t.loop_tag === "milestones" || t.loop_tag === "project_phases" || t.table_index === 1) {
               t.columns = ["phase_number", "milestone_title", "deliverable_summary"];
-            } else if (t.loop_tag === "addon_items" || t.table_index === 2) {
+            } else if (isAddonLoop) {
               t.columns = ["addon_name", "addon_fee"];
             } else if (t.loop_tag === "payment_milestones" || t.table_index === 3) {
               t.columns = ["milestone_name", "trigger_description", "payment_amount"];
             }
           }
 
-          if (t.type === "repeating_loop" && (t.loop_tag === "addon_items" || t.table_index === 2)) {
+          if (t.type === "repeating_loop" && isAddonLoop) {
             if (!t.mutation) {
               t.mutation = {
                 action: "collapse_repeating_table",

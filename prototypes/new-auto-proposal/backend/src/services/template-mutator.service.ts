@@ -333,13 +333,17 @@ export function executeReplaceTextRun(
   const allParagraphs = doc.getAllParagraphs();
 
   // Tier 0: Multi-bullet scope / narrative list container detection and collapsing
-  const isListContainer =
+  const isExplicitScopeVar =
     varName === "scope_deliverables_summary" ||
     varName === "scope_inclusions_narrative" ||
     tag.includes("scope_deliverables_summary") ||
-    tag.includes("scope_inclusions_narrative") ||
-    /^\s*[-*•]\s+/.test(sample) ||
-    /\n\s*[-*•]\s+/.test(sample);
+    tag.includes("scope_inclusions_narrative");
+
+  const isMultiLineBullet =
+    /\r?\n\s*[-*•]\s+/.test(sample) ||
+    (sample.split(/\r?\n/).filter(Boolean).length > 1 && /^\s*[-*•]\s+/.test(sample));
+
+  const isListContainer = isExplicitScopeVar || isMultiLineBullet;
 
   if (isListContainer) {
     const lines = sample.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -408,10 +412,10 @@ export function executeReplaceTextRun(
         }
 
         const hasSameNumId = listNumId !== undefined && sibling.getNumbering()?.numId === listNumId;
-        const hasAnyNumbering = sibling.getNumbering()?.numId !== undefined;
+        const isNumberedListContinuation = listNumId !== undefined && sibling.getNumbering()?.numId !== undefined;
         const hasBulletPrefix = /^[-*•]\s+/.test(sText);
 
-        if (hasSameNumId || hasAnyNumbering || hasBulletPrefix) {
+        if (hasSameNumId || isNumberedListContinuation || hasBulletPrefix) {
           toPrune.push(sibling);
         } else {
           const matchesSampleLine = lines.some((l) => {
