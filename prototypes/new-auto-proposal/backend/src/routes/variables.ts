@@ -1,7 +1,14 @@
 import { Router, Request, Response } from "express";
 import crypto from "node:crypto";
-import { getDatabase } from "../db/database.js";
-import { extractVariablesWithGemini, ExtractionResponse } from "../services/gemini.service.js";
+import fs from "node:fs";
+import path from "node:path";
+import { Document } from "docxmlater";
+import { getDatabase, getStorageDir } from "../db/database.js";
+import {
+  extractVariablesWithGemini,
+  generateTableManifest,
+  ExtractionResponse,
+} from "../services/gemini.service.js";
 import type { CompanyRow } from "./companies.js";
 
 const router = Router();
@@ -149,6 +156,49 @@ router.post("/:id/variables/extract", async (req: Request, res: Response): Promi
       phone: company.phone,
     };
 
+    // Pre-inspect original_quotation.docx to generate ground-truth Table Manifest (LAYER 1.5)
+    let tableManifest: string | undefined;
+    const storageDir = getStorageDir();
+    const companyDir = path.join(storageDir, id);
+    const sourceFilePath = path.join(companyDir, "original_quotation.docx");
+
+    let docBuffer: Buffer | null = null;
+    if (fs.existsSync(sourceFilePath)) {
+      docBuffer = fs.readFileSync(sourceFilePath);
+    } else {
+      // Mock Data fallback if original_quotation.docx is not yet in storage
+      const mockFileMap: Record<string, string> = {
+        co1_seo: "Proposal_Northstar_BloomAndCo.docx",
+        co2_msp: "Proposal_FortressIT_WhitfieldAssociates.docx",
+        co3_dev: "Proposal_Fieldstone_RosewoodHomeGoods.docx",
+      };
+      const mockFilename = mockFileMap[id];
+      if (mockFilename) {
+        const candidateMockDirs = [
+          path.resolve(process.cwd(), "Mock Data/docx"),
+          path.resolve(process.cwd(), "../Mock Data/docx"),
+          path.resolve(process.cwd(), "prototypes/new-auto-proposal/Mock Data/docx"),
+        ];
+        const foundDir = candidateMockDirs.find((d) => fs.existsSync(path.join(d, mockFilename)));
+        if (foundDir) {
+          const mockPath = path.join(foundDir, mockFilename);
+          if (!fs.existsSync(companyDir)) {
+            fs.mkdirSync(companyDir, { recursive: true });
+          }
+          fs.copyFileSync(mockPath, sourceFilePath);
+          docBuffer = fs.readFileSync(sourceFilePath);
+        }
+      }
+    }
+
+    if (docBuffer) {
+      try {
+        tableManifest = await generateTableManifest(docBuffer);
+      } catch (err) {
+        console.error("Failed to generate table manifest from docx:", err);
+      }
+    }
+
     // Extract using Gemini structured outputs
     const extraction: ExtractionResponse = await extractVariablesWithGemini({
       markdown: company.quotation_markdown,
@@ -156,7 +206,92 @@ router.post("/:id/variables/extract", async (req: Request, res: Response): Promi
       companyName: company.company_name,
       companyBasics,
       industry: company.industry,
+      tableManifest,
     });
+
+    // AST Grounding & Normalization: Guarantee complete row_identifier, col_index, and sample_text
+    // for all table cell and conditional row mutations using the inspected docx AST
+    if (docBuffer) {
+      try {
+        const doc = await Document.loadFromBuffer(docBuffer);
+        const tables = doc.getTables();
+
+        for (const v of extraction.variables) {
+          const m = v.mutation;
+          if (m.action === "replace_table_cell" || m.action === "wrap_conditional_row") {
+            const tIdx = m.table_index ?? 0;
+            const targetTable = tables[tIdx];
+            if (targetTable) {
+              const rows = targetTable.getRows();
+
+              // If col_index or row_identifier is missing, scan table rows to locate exact cell
+              if (m.col_index === undefined || !m.row_identifier) {
+                const sampleToFind = (m.sample_text || v.sample_value || "").trim();
+                let foundRowIdx = -1;
+                let foundColIdx = -1;
+
+                if (sampleToFind) {
+                  for (let r = 0; r < rows.length; r++) {
+                    const cells = rows[r].getCells();
+                    for (let c = 0; c < cells.length; c++) {
+                      if (cells[c].getText().includes(sampleToFind)) {
+                        foundRowIdx = r;
+                        foundColIdx = c;
+                        break;
+                      }
+                    }
+                    if (foundRowIdx >= 0) break;
+                  }
+                }
+
+                if (foundRowIdx >= 0) {
+                  if (m.col_index === undefined) m.col_index = foundColIdx;
+                  if (!m.row_identifier) {
+                    const col0 = rows[foundRowIdx].getCell(0)?.getText().trim();
+                    m.row_identifier = col0 || rows[0].getCell(foundColIdx)?.getText().trim() || v.natural_name;
+                  }
+                } else {
+                  // Fallback based on table row structure
+                  const colCount = rows[0]?.getCellCount() || 2;
+                  if (m.col_index === undefined) m.col_index = colCount === 2 ? 1 : 0;
+                  if (!m.row_identifier) m.row_identifier = v.natural_name || v.variable_name;
+                }
+              }
+
+              // Ensure sample_text is populated
+              if (!m.sample_text && v.sample_value) {
+                m.sample_text = v.sample_value;
+              }
+
+              // Ensure template_tag is populated
+              if (!m.template_tag) {
+                m.template_tag = `{${v.variable_name}}`;
+              }
+
+              // Ensure condition_tag is populated for wrap_conditional_row
+              if (m.action === "wrap_conditional_row" && !m.condition_tag) {
+                m.condition_tag = v.visibility_rule?.condition_flag || `has_${v.variable_name}`;
+              }
+            }
+          }
+        }
+
+        // Guarantee columns array for repeating loop compound tables
+        for (const t of extraction.compound_tables) {
+          if (t.type === "repeating_loop" && (!t.columns || t.columns.length === 0)) {
+            if (t.loop_tag === "milestones" || t.table_index === 1) {
+              t.columns = ["phase_number", "milestone_title", "deliverable_summary"];
+            } else if (t.loop_tag === "addon_items") {
+              t.columns = ["addon_name", "addon_fee"];
+            } else if (t.loop_tag === "payment_milestones" || t.table_index === 3) {
+              t.columns = ["milestone_name", "trigger_description", "payment_amount"];
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to ground variables against document AST:", err);
+      }
+    }
 
     const now = new Date().toISOString();
 
