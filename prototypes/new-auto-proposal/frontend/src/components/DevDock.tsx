@@ -44,6 +44,22 @@ export const DevDock: React.FC<DevDockProps> = ({
   const resolvedTemplateStats =
     templateStats || company?.working_state?.template_stats || null;
 
+  const isBriefingLocked = Boolean(company?.briefing_locked);
+
+  const variablesPayload = isBriefingLocked
+    ? variables && variables.length > 0
+      ? { variables, compound_tables: compoundTables || [] }
+      : company?.working_state?.extracted_variables || {
+          status: "extracting_variables",
+          info: "Variable extraction in progress...",
+          working_state: company?.working_state,
+        }
+    : {
+        status: "awaiting_stage_2",
+        info: "Gemini variable extraction runs in Stage 2 upon briefing confirmation.",
+        working_state: company?.working_state ?? null,
+      };
+
   const handleCopy = () => {
     let content = "";
     if (activeTab === "profile") {
@@ -51,13 +67,7 @@ export const DevDock: React.FC<DevDockProps> = ({
     } else if (activeTab === "anydoc") {
       content = markdown;
     } else if (activeTab === "variables") {
-      content = JSON.stringify(
-        variables && variables.length > 0
-          ? { variables, compound_tables: compoundTables || [] }
-          : company?.working_state?.extracted_variables || company?.working_state || {},
-        null,
-        2
-      );
+      content = JSON.stringify(variablesPayload, null, 2);
     } else if (activeTab === "rules") {
       content = JSON.stringify(company?.data?.pricing_engine_spec || {}, null, 2);
     } else if (activeTab === "logs") {
@@ -314,26 +324,14 @@ export const DevDock: React.FC<DevDockProps> = ({
               <div>
                 <div className="text-xs font-sans text-muted-foreground mb-2 flex items-center justify-between">
                   <span>Taxonomy and variable anchors (Stage 2):</span>
-                  {variables && variables.length > 0 && (
+                  {isBriefingLocked && variables && variables.length > 0 && (
                     <span className="font-mono text-[11px] bg-muted px-2 py-0.5 rounded border border-border/60">
                       {variables.length} active • {compoundTables?.length || 0} tables
                     </span>
                   )}
                 </div>
                 <pre className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap wrap-break-word break-all">
-                  <code>
-                    {JSON.stringify(
-                      variables && variables.length > 0
-                        ? { variables, compound_tables: compoundTables || [] }
-                        : company?.working_state?.extracted_variables || {
-                            status: "awaiting_stage_2",
-                            info: "Gemini variable extraction runs in Stage 2 upon briefing confirmation.",
-                            working_state: company?.working_state,
-                          },
-                      null,
-                      2
-                    )}
-                  </code>
+                  <code>{JSON.stringify(variablesPayload, null, 2)}</code>
                 </pre>
               </div>
             )}

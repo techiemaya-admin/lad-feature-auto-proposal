@@ -18,6 +18,7 @@
     "cors": "^2.8.5",
     "docxmlater": "^12.1.0",
     "dotenv": "^16.4.7",
+    "easy-template-x": "^7.2.8",
     "express": "^4.21.2",
     "multer": "^2.3.0"
   },

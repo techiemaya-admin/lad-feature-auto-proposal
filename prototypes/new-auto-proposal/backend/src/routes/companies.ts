@@ -1,5 +1,7 @@
+import fs from "node:fs";
+import path from "node:path";
 import { Router, Request, Response } from "express";
-import { getDatabase } from "../db/database.js";
+import { getDatabase, getStorageDir } from "../db/database.js";
 import { resetCompanyById } from "../db/seed.js";
 
 const router = Router();
@@ -131,6 +133,16 @@ router.post("/:id/import", (req: Request, res: Response): void => {
     const db = getDatabase();
     const reseeded = resetCompanyById(db, id);
 
+    // Clean up downstream generated template.docx if present
+    const templatePath = path.join(getStorageDir(), id, "template.docx");
+    if (fs.existsSync(templatePath)) {
+      try {
+        fs.unlinkSync(templatePath);
+      } catch {
+        // Ignore file unlink error
+      }
+    }
+
     const stmt = db.prepare(`SELECT * FROM company_sessions WHERE company_id = ?`);
     const row = stmt.get(id) as unknown as CompanyRow;
 
@@ -153,6 +165,16 @@ router.post("/:id/reset", (req: Request, res: Response): void => {
     const { id } = req.params;
     const db = getDatabase();
     const reset = resetCompanyById(db, id);
+
+    // Clean up downstream generated template.docx if present
+    const templatePath = path.join(getStorageDir(), id, "template.docx");
+    if (fs.existsSync(templatePath)) {
+      try {
+        fs.unlinkSync(templatePath);
+      } catch {
+        // Ignore file unlink error
+      }
+    }
 
     const stmt = db.prepare(`SELECT * FROM company_sessions WHERE company_id = ?`);
     const row = stmt.get(id) as unknown as CompanyRow;

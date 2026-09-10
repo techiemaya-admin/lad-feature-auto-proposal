@@ -93,6 +93,11 @@ export function App() {
   useEffect(() => {
     if (!activeCompanyId) return;
     let ignore = false;
+    setActiveVariables([]);
+    setActiveCompoundTables([]);
+    setTemplateStats(null);
+    setTemplateFilesize(null);
+
     fetchCompany(activeCompanyId)
       .then((data) => {
         if (!ignore) {
@@ -256,10 +261,26 @@ export function App() {
     try {
       const reseeded = await importCompanySettings(currentCompany.company_id);
       setCurrentCompany(reseeded);
+      setActiveVariables([]);
+      setActiveCompoundTables([]);
+      setTemplateStats(null);
+      setTemplateFilesize(null);
       setNotification({
         type: "success",
         message: `Settings & spec imported for ${reseeded.company_name}.`,
       });
+      setCompanies((prev: CompanySummary[]) =>
+        prev.map((c: CompanySummary) =>
+          c.company_id === reseeded.company_id
+            ? {
+                ...c,
+                pricing_spec: reseeded.pricing_spec,
+                briefing_locked: false,
+                quotation_filename: undefined,
+              }
+            : c
+        )
+      );
     } catch (err) {
       setNotification({
         type: "error",
@@ -273,12 +294,26 @@ export function App() {
     try {
       const reset = await resetCompany(currentCompany.company_id);
       setCurrentCompany(reset);
+      setActiveVariables([]);
+      setActiveCompoundTables([]);
       setTemplateStats(null);
       setTemplateFilesize(null);
       setNotification({
         type: "info",
         message: `Reset ${reset.company_name} to default.`,
       });
+      setCompanies((prev: CompanySummary[]) =>
+        prev.map((c: CompanySummary) =>
+          c.company_id === reset.company_id
+            ? {
+                ...c,
+                pricing_spec: reset.pricing_spec,
+                briefing_locked: false,
+                quotation_filename: undefined,
+              }
+            : c
+        )
+      );
     } catch (err) {
       setNotification({
         type: "error",

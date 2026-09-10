@@ -163,20 +163,20 @@ export interface FindTableAndRowOptions {
 }
 
 /**
- * Checks whether a variable name represents a high-entropy entity (e.g. client or company name)
+ * Checks whether a variable name or template tag represents a high-entropy entity (e.g. client or company name)
  */
-function isHighEntropyEntity(varName?: string): boolean {
-  if (!varName) return false;
-  const lower = varName.toLowerCase();
+function isHighEntropyEntity(varName?: string, tag?: string): boolean {
+  const candidate = (varName || tag || "").replace(/[{}]/g, "").trim().toLowerCase();
+  if (!candidate) return false;
   return (
-    lower === "client_name" ||
-    lower === "client_company_name" ||
-    lower === "company_name" ||
-    lower === "customer_name" ||
-    lower === "client_business_name" ||
-    lower === "prospective_client_name" ||
-    lower.endsWith("_client_name") ||
-    lower.endsWith("_company_name")
+    candidate === "client_name" ||
+    candidate === "client_company_name" ||
+    candidate === "company_name" ||
+    candidate === "customer_name" ||
+    candidate === "client_business_name" ||
+    candidate === "prospective_client_name" ||
+    candidate.endsWith("_client_name") ||
+    candidate.endsWith("_company_name")
   );
 }
 
@@ -333,7 +333,7 @@ export function executeReplaceTextRun(
   const allParagraphs = doc.getAllParagraphs();
 
   // Tier 1: High-Entropy Entities (client_name, client_company_name) -> Global replacement across all paragraphs
-  if (isHighEntropyEntity(varName)) {
+  if (isHighEntropyEntity(varName, tag)) {
     let globalReplacements = 0;
     const normSample = normalizeText(sample);
 
