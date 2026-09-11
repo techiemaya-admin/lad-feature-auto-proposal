@@ -1,0 +1,25 @@
+{
+  "variables": [
+    { "variable_name": "client_name", "category": "customer_input", "sample_text": "Bloom & Co Dental Group" },
+    { "variable_name": "proposal_date", "category": "customer_input", "sample_text": "September 7, 2026" },
+    { "variable_name": "proposal_valid_until", "category": "customer_input", "sample_text": "September 21, 2026 (14 days)" },
+    { "variable_name": "selected_tier", "category": "pricing", "sample_text": "Growth", "enum_options": ["Local", "Growth", "Authority"] },
+    { "variable_name": "selected_tier_rate", "category": "pricing", "sample_text": "$3,000/mo" },
+    { "variable_name": "contract_months", "category": "pricing", "sample_text": "12" },
+    { "variable_name": "base_investment_amount", "category": "pricing", "sample_text": "$36,000.00" },
+    { "variable_name": "annual_discount_percentage", "category": "pricing", "sample_text": "10%" },
+    { "variable_name": "annual_discount_amount", "category": "pricing", "sample_text": "$3,600.00", "condition_flag": "has_annual_discount" },
+    { "variable_name": "subtotal_amount", "category": "pricing", "sample_text": "$32,400.00" },
+    { "variable_name": "tax_jurisdiction", "category": "pricing", "sample_text": "Texas" },
+    { "variable_name": "tax_rate", "category": "pricing", "sample_text": "8.25%" },
+    { "variable_name": "tax_amount", "category": "pricing", "sample_text": "$2,673.00", "condition_flag": "has_tax" },
+    { "variable_name": "total_investment_amount", "category": "pricing", "sample_text": "$35,073.00" },
+    { "variable_name": "client_current_situation_narrative", "category": "paragraph", "sample_text": "Thanks for reaching out through our outreach campaign — you mentioned Bloom & Co now has two active clinic locations and isn't showing up when local patients search on Google. That's a common gap at your stage: single-location SEO tactics stop working once a second location enters the picture, because you're now competing for local pack visibility in two separate map areas at once. Below is the package built for exactly that situation, along with what it costs and what's included." },
+    { "variable_name": "recommended_package_justification_narrative", "category": "paragraph", "sample_text": "Based on your two locations, Growth is the right fit — Local only supports a single location, and Authority is built for franchise-scale accounts. Growth covers both of your clinics under one plan with room to add a third location later without changing tiers." },
+    { "variable_name": "scope_inclusions_narrative", "category": "paragraph", "sample_text": "Included: Google Business Profile management for both clinic locations\nIncluded: On-page SEO across your site, citation building across major directories\nIncluded: 4 content pieces/month, quarterly strategy call, monthly performance report\nNot included: Paid ad management (Google/Meta ads) — available as a separate engagement\nNot included: A dedicated 1:1 strategist — that begins at the Authority tier" },
+    { "variable_name": "payment_preference_narrative", "category": "paragraph", "sample_text": "You mentioned you'd rather pay annually than track a monthly invoice — that qualifies for our annual prepay discount, applied below." },
+    { "variable_name": "billing_schedule_narrative", "category": "paragraph", "sample_text": "Equivalent to $2,922.75/month, billed as a single annual payment. Minimum initial engagement is 3 months; month-to-month thereafter." },
+    { "variable_name": "upgrade_path_narrative", "category": "paragraph", "sample_text": "If you open a third clinic mid-year, Growth already covers it at no change in price. A fourth location would move you into Authority ($8,000/mo), which adds a dedicated strategist and weekly content — we'd re-quote at that point, not before." }
+  ],
+  "loop_tables": []
+}

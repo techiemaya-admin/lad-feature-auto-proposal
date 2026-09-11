@@ -1,10 +1,4 @@
-export type VariableCategory =
-  | "customer_input"
-  | "pricing"
-  | "paragraph"
-  | "table_loop"
-  | "comparison_matrix"
-  | "compound_table";
+export type VariableCategory = "customer_input" | "pricing" | "paragraph" | "table_loop";
 
 export type VariableDataType =
   | "string"
@@ -27,44 +21,6 @@ export interface ParagraphConfig {
   guidance?: string;
 }
 
-export type MutationAction =
-  | {
-      action: "replace_text_run";
-      sample_text: string;
-      context_anchor?: string;
-      template_tag?: string;
-    }
-  | {
-      action: "replace_table_cell";
-      table_index?: number;
-      row_identifier?: string;
-      col_index?: number;
-      sample_text?: string;
-      template_tag?: string;
-    }
-  | {
-      action: "wrap_conditional_row";
-      table_index?: number;
-      row_identifier?: string;
-      condition_tag?: string;
-      cells?: Array<{
-        col_index: number;
-        preserve_existing_label?: boolean;
-        template_tag: string;
-      }>;
-    }
-  | {
-      action: "collapse_repeating_table";
-      table_index?: number;
-      loop_tag?: string;
-      template_row_index?: number;
-      column_tags?: Array<{
-        col_index: number;
-        replacement_tag: string;
-      }>;
-      delete_sample_rows_from?: number;
-    };
-
 export interface VariableDescriptor {
   sample_value?: string;
   description?: string;
@@ -72,8 +28,8 @@ export interface VariableDescriptor {
   default_value?: string;
   visibility_rule?: VisibilityRule;
   paragraph_config?: ParagraphConfig;
-  mutation?: MutationAction;
-  columns?: string[];
+  /** Only when the same text appears elsewhere with a different meaning. */
+  context_text?: string;
 }
 
 export interface CompanyVariable {
@@ -91,16 +47,17 @@ export interface CompanyVariable {
   updated_at: string;
 }
 
+/** A loop table: located by its header row, `row_labels` rows collapse into one {#loop_tag} row. */
 export interface CompoundTable {
+  id: string;
   table_id: string;
   natural_name: string;
-  table_index: number;
-  type: "comparison_matrix" | "repeating_loop";
-  loop_tag?: string;
-  enum_options?: string[];
-  default_value?: string;
-  columns?: string[];
-  mutation?: MutationAction;
+  type: "repeating_loop";
+  loop_tag: string;
+  header_texts: string[];
+  row_labels: string[];
+  columns: string[];
+  is_deleted: boolean;
 }
 
 export interface VariablesResponse {

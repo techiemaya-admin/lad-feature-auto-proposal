@@ -213,6 +213,26 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
     }
   };
 
+  const handleUpdateSampleValue = async (id: string, sampleValue: string) => {
+    const updated = variables.map((v) =>
+      v.id === id
+        ? { ...v, descriptor: { ...v.descriptor, sample_value: sampleValue } }
+        : v
+    );
+    setVariables(updated);
+    if (onVariablesChange) onVariablesChange(updated, compoundTables);
+
+    try {
+      const target = updated.find((v) => v.id === id);
+      await updateVariables(companyId, {
+        variables: [{ id, descriptor: target?.descriptor }],
+      });
+      flashSaved("Fixed text updated");
+    } catch (err) {
+      console.error("Failed to persist sample value", err);
+    }
+  };
+
   const handleUpdateParagraphGuidance = async (id: string, guidance: string) => {
     const updated = variables.map((v) => {
       if (v.id !== id) return v;
@@ -262,23 +282,6 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
     }
   };
 
-  const handleUpdateDefaultTier = async (tableId: string, defaultTier: string) => {
-    const updated = compoundTables.map((t) =>
-      t.table_id === tableId ? { ...t, default_value: defaultTier } : t
-    );
-    setCompoundTables(updated);
-    if (onVariablesChange) onVariablesChange(variables, updated);
-
-    try {
-      await updateVariables(companyId, {
-        compound_tables: [{ id: tableId, descriptor: { default_value: defaultTier } }],
-      });
-      flashSaved(`Default tier: ${defaultTier}`);
-    } catch (err) {
-      console.error("Failed to persist default tier", err);
-    }
-  };
-
   const handleAddCustom = async (payload: {
     natural_name: string;
     category: VariableCategory;
@@ -305,10 +308,7 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
         return "Pricing";
       case "paragraph":
         return "Paragraph";
-      case "comparison_matrix":
-        return "Tier Matrix";
       case "table_loop":
-      case "compound_table":
         return "Repeating Table";
       default:
         return cat;
@@ -456,64 +456,10 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
               </Button>
             </div>
 
-            {/* Compound Cards: Tier Matrix & Repeating Tables */}
+            {/* Loop table cards */}
             {(filterTab === "all" || filterTab === "pricing") && compoundTables.length > 0 && (
               <div className="space-y-3 pt-1">
-                {compoundTables.map((table) => {
-                  if (table.type === "comparison_matrix") {
-                    const tiers =
-                      table.enum_options && table.enum_options.length > 0
-                        ? table.enum_options
-                        : ["Essential", "Standard", "Premium"];
-                    const currentDefault = table.default_value || tiers[1] || tiers[0];
-
-                    return (
-                      <div
-                        key={table.table_id}
-                        className="rounded-xl bg-muted/30 border border-border/50 p-3.5 space-y-2.5 transition-all hover:bg-muted/40"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="size-2 rounded-full bg-indigo-500 shrink-0" />
-                            <span className="text-xs font-semibold text-foreground">
-                              {table.natural_name || "Tier Comparison Matrix"}
-                            </span>
-                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
-                              3-Tier Matrix
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[11px] text-muted-foreground">Default:</span>
-                            <CustomDropdown
-                              value={currentDefault}
-                              onChange={(val) =>
-                                handleUpdateDefaultTier(table.table_id, val)
-                              }
-                              options={tiers.map((t) => ({
-                                value: t,
-                                label: t,
-                                dotColor: "bg-indigo-500",
-                              }))}
-                              size="xs"
-                              menuAlign="right"
-                              className="h-6 px-2 text-xs bg-background/90 font-medium"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 text-xs font-mono text-muted-foreground bg-muted/40 p-2 rounded-lg border border-border/40">
-                          <Layers className="size-3.5 text-indigo-500 shrink-0" />
-                          <span className="truncate">
-                            Detected Packages: {tiers.join(" • ")}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  if (table.type === "repeating_loop") {
-                    return (
+                {compoundTables.map((table) => (
                       <div
                         key={table.table_id}
                         className="rounded-xl bg-muted/30 border border-border/50 p-3.5 space-y-2 transition-all hover:bg-muted/40"
@@ -540,11 +486,7 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
                           </p>
                         )}
                       </div>
-                    );
-                  }
-
-                  return null;
-                })}
+                ))}
               </div>
             )}
 
@@ -717,10 +659,21 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
                           </div>
 
                           {paragraphMode === "fixed" ? (
-                            <p className="text-xs text-muted-foreground italic bg-muted/40 p-2 rounded-lg border border-border/20">
-                              {v.descriptor.sample_value ||
-                                "Original text remains verbatim in generated proposals."}
-                            </p>
+                            <div className="space-y-1">
+                              <label className="text-[10px] uppercase font-semibold tracking-wider text-muted-foreground">
+                                Fixed Text (used verbatim, not AI-drafted)
+                              </label>
+                              <textarea
+                                key={v.id}
+                                defaultValue={v.descriptor.sample_value || ""}
+                                onBlur={(e) =>
+                                  handleUpdateSampleValue(v.id, e.target.value)
+                                }
+                                rows={2}
+                                placeholder="Original text remains verbatim in generated proposals."
+                                className="w-full text-xs bg-transparent border border-border/40 rounded-lg p-2 focus:outline-hidden focus:border-border text-foreground resize-none"
+                              />
+                            </div>
                           ) : (
                             <div className="space-y-1">
                               <label className="text-[10px] uppercase font-semibold tracking-wider text-muted-foreground">

@@ -55,8 +55,9 @@ A zero-configuration, AI-assisted auto-proposal prototype that enables an agency
 
 ### 2. Document Mutation Seam: `docxmlater`
 - Word template creation is handled via `docxmlater` on the backend, mutating the OpenXML DOM tree.
-- Text replacements are performed on individual paragraph runs using context anchors to prevent accidental replacement of duplicate numbers across unrelated sections.
+- Gemini returns only verbatim `sample_text` (plus category / condition flag / rare `context_text`); it never emits table indexes, row identifiers or mutation actions. The engine locates every occurrence itself, applies longest-sample-first ordering, and narrows by `context_text` only when the same text appears with a different meaning (see `prototypes/new-auto-proposal/docs/plan.md` §4.2–4.3).
 - For repeating tables, row 0 (headers) and footer summary rows (subtotal, tax, grand total) are strictly preserved; intermediate sample item rows are pruned and collapsed into a single `{#items}...{/items}` loop row.
+- The tier comparison matrix is tagged positionally (`{tierN_name}`, `{tierN_rM}`) and its grid captured as `tier_matrix`; at render time the selected tier is rotated into the column the sample document highlighted, so the tenant's cell shading never has to move.
 
 ### 3. Document Rendering Seam: `easy-template-x`
 - Final proposal generation takes the templated `.docx` and a hydrated data payload, executing via `easy-template-x`.

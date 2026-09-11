@@ -9,6 +9,7 @@ service-account.json
 .agents
 skills-lock.json
 prototypes/new-auto-proposal/backend/storage/
+prototypes/new-auto-proposal/logs/
 coverage
 oauth2.keys.json
 client_secret_*.json

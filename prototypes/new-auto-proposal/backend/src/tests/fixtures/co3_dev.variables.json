@@ -1,0 +1,23 @@
+{
+  "variables": [
+    { "variable_name": "client_name", "category": "customer_input", "sample_text": "Rosewood Home Goods" },
+    { "variable_name": "proposal_date", "category": "customer_input", "sample_text": "September 7, 2026" },
+    { "variable_name": "proposal_valid_until", "category": "customer_input", "sample_text": "September 21, 2026 (14 days)" },
+    { "variable_name": "project_template_name", "category": "pricing", "sample_text": "E-Commerce Build" },
+    { "variable_name": "template_scope_summary", "category": "pricing", "sample_text": "up to 100 products" },
+    { "variable_name": "typical_delivery_timeline", "category": "pricing", "sample_text": "4–6 weeks" },
+    { "variable_name": "base_template_fee", "category": "pricing", "sample_text": "$9,500.00" },
+    { "variable_name": "addon_subtotal", "category": "pricing", "sample_text": "$1,050.00", "condition_flag": "has_addons" },
+    { "variable_name": "bundle_discount_percentage", "category": "pricing", "sample_text": "10%" },
+    { "variable_name": "bundle_discount_amount", "category": "pricing", "sample_text": "$105.00", "condition_flag": "has_bundle_discount" },
+    { "variable_name": "total_project_investment", "category": "pricing", "sample_text": "$10,445.00" },
+    { "variable_name": "project_intro_narrative", "category": "paragraph", "sample_text": "You reached out about moving Rosewood Home Goods into e-commerce — roughly 60 products, wanting product copy written for you and basic SEO set up rather than handling both in-house. That's a clean fit for our E-commerce template, with two add-ons layered in below. Here's exactly what happens, phase by phase, and what it costs." },
+    { "variable_name": "addon_menu_narrative", "category": "paragraph", "sample_text": "✓ Copywriting — product & category page copy written for you ($600)\n✓ Basic SEO Setup — metadata, sitemap, on-page basics ($450)\n○ CMS Integration — not needed, Shopify's built-in CMS covers this\n○ Extra Revision Round — not selected, 1 round already included\n○ Rush Delivery — not selected, standard 4–6 week timeline confirmed\nSelecting 2 or more add-ons automatically qualifies a project for our bundle discount, applied below." },
+    { "variable_name": "tax_treatment_disclaimer", "category": "paragraph", "sample_text": "No sales tax applies to this engagement under our standard services treatment." }
+  ],
+  "loop_tables": [
+    { "loop_tag": "milestones", "header_texts": ["Phase", "Milestone", "Deliverable"], "column_tags": ["phase_number", "milestone_title", "deliverable_summary"], "row_labels": ["1", "2", "3", "4", "5"] },
+    { "loop_tag": "addon_items", "header_texts": ["Line Item", "Amount"], "column_tags": ["addon_name", "addon_fee"], "row_labels": ["Copywriting add-on", "Basic SEO Setup add-on"] },
+    { "loop_tag": "payment_milestones", "header_texts": ["Milestone", "Trigger", "Amount"], "column_tags": ["milestone_name", "trigger_description", "payment_amount"], "row_labels": ["Deposit (50%)", "Final payment (50%)"] }
+  ]
+}

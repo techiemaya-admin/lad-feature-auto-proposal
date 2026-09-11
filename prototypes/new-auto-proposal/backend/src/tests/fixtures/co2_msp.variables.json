@@ -1,0 +1,29 @@
+{
+  "variables": [
+    { "variable_name": "client_name", "category": "customer_input", "sample_text": "Whitfield & Associates" },
+    { "variable_name": "proposal_date", "category": "customer_input", "sample_text": "September 7, 2026" },
+    { "variable_name": "proposal_valid_until", "category": "customer_input", "sample_text": "September 21, 2026 (14 days)" },
+    { "variable_name": "selected_tier", "category": "pricing", "sample_text": "Standard", "enum_options": ["Essential", "Standard", "Premium"] },
+    { "variable_name": "seat_count", "category": "customer_input", "sample_text": "42" },
+    { "variable_name": "base_rate_per_seat", "category": "pricing", "sample_text": "$65.00" },
+    { "variable_name": "volume_tier_band", "category": "pricing", "sample_text": "25–49 seat band" },
+    { "variable_name": "volume_discount_per_seat", "category": "pricing", "sample_text": "$5.00", "condition_flag": "has_volume_adjustment" },
+    { "variable_name": "adjusted_seat_rate", "category": "pricing", "sample_text": "$60.00" },
+    { "variable_name": "seat_subtotal", "category": "pricing", "sample_text": "$2,520.00" },
+    { "variable_name": "extra_device_count", "category": "customer_input", "sample_text": "5", "context_text": "Managed devices beyond 1:1" },
+    { "variable_name": "extra_device_rate", "category": "pricing", "sample_text": "$12.00" },
+    { "variable_name": "extra_device_subtotal", "category": "pricing", "sample_text": "$60.00", "context_text": "Managed devices beyond 1:1", "condition_flag": "has_extra_devices" },
+    { "variable_name": "monthly_recurring_subtotal", "category": "pricing", "sample_text": "$2,580.00" },
+    { "variable_name": "tax_jurisdiction", "category": "pricing", "sample_text": "Ohio" },
+    { "variable_name": "tax_rate", "category": "pricing", "sample_text": "6%" },
+    { "variable_name": "tax_amount", "category": "pricing", "sample_text": "$154.80", "condition_flag": "has_tax" },
+    { "variable_name": "total_monthly_recurring", "category": "pricing", "sample_text": "$2,734.80" },
+    { "variable_name": "onboarding_rate_per_seat", "category": "pricing", "sample_text": "$75.00" },
+    { "variable_name": "setup_fee_total", "category": "pricing", "sample_text": "$3,150.00" },
+    { "variable_name": "current_environment_risk_narrative", "category": "paragraph", "sample_text": "You noted Whitfield & Associates has grown to 42 employees across two offices with no dedicated IT support in place." },
+    { "variable_name": "recommended_tier_justification_narrative", "category": "paragraph", "sample_text": "Standard is built for firms your size that need faster-than-business-hours coverage and managed backups" },
+    { "variable_name": "minimum_commitment_note", "category": "paragraph", "sample_text": "Minimum billable commitment is 10 seats — your 42-seat count is well above the floor, so no minimum-commit adjustment applies." },
+    { "variable_name": "scope_inclusions_narrative", "category": "paragraph", "sample_text": "Onboarding of all 42 endpoints and 5 servers into 24/7 monitoring within weeks 1–2\nManaged backup configuration for both office locations\n4-hour response SLA during business hours; after-hours emergency line for critical outages\nNamed account engineer — not a rotating helpdesk queue" }
+  ],
+  "loop_tables": []
+}

@@ -3,6 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { getDatabase, getStorageDir } from "../db/database.js";
 import { mutateDocumentTemplate } from "../services/template-mutator.service.js";
+import { logPipelineArtifact } from "../services/pipeline-log.js";
+import { toMarkdown } from "@firecrawl/anydoc";
 import type { CompanyRow } from "./companies.js";
 
 const router = Router();
@@ -29,6 +31,11 @@ router.post("/:id/template/generate", async (req: Request, res: Response): Promi
     // Execute in-memory AST mutations
     const result = await mutateDocumentTemplate(id);
 
+    // Log anydoc markdown of the templated docx (best-effort, never blocks the response)
+    toMarkdown(path.join(getStorageDir(), id, "template.docx"))
+      .then((md) => logPipelineArtifact(id, "template.md", md))
+      .catch((err) => console.warn("[pipeline-log] anydoc conversion failed:", err));
+
     // Update company working_state_json in SQLite
     const now = new Date().toISOString();
     let workingState: any = {};
@@ -52,6 +59,7 @@ router.post("/:id/template/generate", async (req: Request, res: Response): Promi
         conditional_rows_wrapped_count: result.conditional_rows_wrapped_count,
         mutations_applied_count: result.mutations_applied_count,
         details: result.details,
+        tier_matrix: result.tier_matrix,
       },
     };
 

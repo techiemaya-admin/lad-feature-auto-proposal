@@ -1,55 +1,15 @@
 import { GoogleGenerativeAI, SchemaType, type ResponseSchema } from "@google/generative-ai";
-import { Document } from "docxmlater";
 
-export type MutationAction =
-  | {
-      action: "replace_text_run";
-      sample_text: string;
-      context_anchor?: string;
-      template_tag?: string;
-    }
-  | {
-      action: "replace_table_cell";
-      table_index?: number;
-      row_identifier?: string;
-      col_index?: number;
-      sample_text?: string;
-      template_tag?: string;
-      template_row_index?: number;
-      expected_headers?: string[] | string;
-    }
-  | {
-      action: "wrap_conditional_row";
-      table_index?: number;
-      row_identifier?: string;
-      condition_tag?: string;
-      col_index?: number;
-      sample_text?: string;
-      template_tag?: string;
-      cells?: Array<{
-        col_index: number;
-        preserve_existing_label?: boolean;
-        template_tag: string;
-      }>;
-    }
-  | {
-      action: "collapse_repeating_table";
-      table_index?: number;
-      row_identifier?: string;
-      loop_tag?: string;
-      template_row_index?: number;
-      column_tags?: Array<{
-        col_index: number;
-        replacement_tag: string;
-      }>;
-      delete_sample_rows_from?: number;
-      delete_sample_rows_count?: number;
-    };
-
-export interface VisibilityRule {
-  condition_flag?: string;
-  show_when?: string;
-}
+/**
+ * The AI contract is TEXT-ONLY on purpose.
+ *
+ * Gemini is reliable at reading a document and saying "this exact text is the
+ * client's name / the tax amount / a client-specific paragraph". It is not
+ * reliable at positional bookkeeping (table 2, row "Subtotal", column 1), and
+ * every locator it emits is something the mutation engine has to re-verify
+ * against the real .docx anyway. So the model only tells us WHAT is dynamic
+ * and the verbatim text; the engine (template-mutator.service.ts) finds WHERE.
+ */
 
 export interface ParagraphConfig {
   mode: "fixed" | "ai_generated";
@@ -58,39 +18,44 @@ export interface ParagraphConfig {
   length_guideline?: string;
 }
 
-export interface ExtractionVariable {
+export interface ExtractedVariable {
   variable_name: string;
   natural_name: string;
   category: "customer_input" | "pricing" | "paragraph";
   data_type: "string" | "number" | "currency" | "enum" | "paragraph";
-  sample_value: string;
+  /** Verbatim text copied from the quotation. Multi-line for paragraph blocks. */
+  sample_text: string;
   description: string;
+  /**
+   * Only when the same sample_text appears elsewhere with a different meaning:
+   * the row label / nearby words that identify the right occurrence. "" = replace everywhere.
+   */
+  context_text: string;
+  /** "has_tax", "has_annual_discount"… wraps the containing table row in {#flag}…{/flag}. "" = always shown. */
+  condition_flag: string;
   enum_options?: string[];
-  default_value?: string;
-  visibility_rule?: VisibilityRule;
   paragraph_config?: ParagraphConfig;
-  mutation: MutationAction;
 }
 
-export interface CompoundTableExtraction {
-  table_id: string;
+export interface ExtractedLoopTable {
+  loop_tag: string;
   natural_name: string;
-  table_index: number;
-  type: "comparison_matrix" | "repeating_loop";
-  loop_tag?: string;
-  enum_options?: string[];
-  default_value?: string;
-  columns?: string[];
-  mutation?: MutationAction;
+  /** Exact header cell texts of the table's first row, left to right. Used to find the table. */
+  header_texts: string[];
+  /** One tag name per column, left to right. */
+  column_tags: string[];
+  /** Exact first-cell text of every row that repeats (not subtotal/total rows). */
+  row_labels: string[];
 }
 
 export interface ExtractionResponse {
   document_summary: string;
-  variables: ExtractionVariable[];
-  compound_tables: CompoundTableExtraction[];
+  variables: ExtractedVariable[];
+  loop_tables: ExtractedLoopTable[];
 }
 
-// Flattened schema to prevent 400 discriminated union errors in Gemini structured output
+// Gemini reliably fills `required` fields and routinely skips optional ones, so
+// anything the engine depends on is required (empty string = "not applicable").
 export const extractionResponseSchema: ResponseSchema = {
   type: SchemaType.OBJECT,
   properties: {
@@ -112,20 +77,11 @@ export const extractionResponseSchema: ResponseSchema = {
             format: "enum",
             enum: ["string", "number", "currency", "enum", "paragraph"],
           },
-          sample_value: { type: SchemaType.STRING },
+          sample_text: { type: SchemaType.STRING },
           description: { type: SchemaType.STRING },
-          enum_options: {
-            type: SchemaType.ARRAY,
-            items: { type: SchemaType.STRING },
-          },
-          default_value: { type: SchemaType.STRING },
-          visibility_rule: {
-            type: SchemaType.OBJECT,
-            properties: {
-              condition_flag: { type: SchemaType.STRING },
-              show_when: { type: SchemaType.STRING },
-            },
-          },
+          context_text: { type: SchemaType.STRING },
+          condition_flag: { type: SchemaType.STRING },
+          enum_options: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
           paragraph_config: {
             type: SchemaType.OBJECT,
             properties: {
@@ -134,33 +90,7 @@ export const extractionResponseSchema: ResponseSchema = {
               tone: { type: SchemaType.STRING },
               length_guideline: { type: SchemaType.STRING },
             },
-          },
-          mutation: {
-            type: SchemaType.OBJECT,
-            properties: {
-              action: {
-                type: SchemaType.STRING,
-                format: "enum",
-                enum: [
-                  "replace_text_run",
-                  "replace_table_cell",
-                  "wrap_conditional_row",
-                  "collapse_repeating_table",
-                ],
-              },
-              sample_text: { type: SchemaType.STRING },
-              context_anchor: { type: SchemaType.STRING },
-              template_tag: { type: SchemaType.STRING },
-              table_index: { type: SchemaType.NUMBER },
-              row_identifier: { type: SchemaType.STRING },
-              col_index: { type: SchemaType.NUMBER },
-              condition_tag: { type: SchemaType.STRING },
-              loop_tag: { type: SchemaType.STRING },
-              template_row_index: { type: SchemaType.NUMBER },
-              delete_sample_rows_from: { type: SchemaType.NUMBER },
-              delete_sample_rows_count: { type: SchemaType.NUMBER },
-            },
-            required: ["action"],
+            required: ["mode"],
           },
         },
         required: [
@@ -168,93 +98,30 @@ export const extractionResponseSchema: ResponseSchema = {
           "natural_name",
           "category",
           "data_type",
-          "sample_value",
+          "sample_text",
           "description",
-          "mutation",
+          "context_text",
+          "condition_flag",
         ],
       },
     },
-    compound_tables: {
+    loop_tables: {
       type: SchemaType.ARRAY,
       items: {
         type: SchemaType.OBJECT,
         properties: {
-          table_id: { type: SchemaType.STRING },
-          natural_name: { type: SchemaType.STRING },
-          table_index: { type: SchemaType.NUMBER },
-          type: {
-            type: SchemaType.STRING,
-            format: "enum",
-            enum: ["comparison_matrix", "repeating_loop"],
-          },
           loop_tag: { type: SchemaType.STRING },
-          columns: {
-            type: SchemaType.ARRAY,
-            items: { type: SchemaType.STRING },
-          },
+          natural_name: { type: SchemaType.STRING },
+          header_texts: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+          column_tags: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
+          row_labels: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
         },
-        required: ["table_id", "natural_name", "table_index", "type"],
+        required: ["loop_tag", "natural_name", "header_texts", "column_tags", "row_labels"],
       },
     },
   },
-  required: ["document_summary", "variables", "compound_tables"],
+  required: ["document_summary", "variables", "loop_tables"],
 };
-
-function normalizeManifestText(text: string): string {
-  return text.replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim();
-}
-
-/**
- * Pre-inspects an OpenXML Word Document (.docx) buffer or Document instance
- * to generate a ground-truth Table Manifest for Gemini context grounding.
- */
-export async function generateTableManifest(docInput: Buffer | Document): Promise<string> {
-  const doc = docInput instanceof Document ? docInput : await Document.loadFromBuffer(docInput);
-  const tables = doc.getTables();
-  if (!tables || tables.length === 0) {
-    return "No tables detected in document.";
-  }
-
-  const manifestLines: string[] = [];
-  for (let i = 0; i < tables.length; i++) {
-    const table = tables[i];
-    const rowCount = table.getRowCount();
-    const rows = table.getRows();
-    const headerCells = rows[0]?.getCells().map((c) => normalizeManifestText(c.getText())) || [];
-    const colCount = rows[0]?.getCellCount() || headerCells.length;
-    const headerStr = headerCells.join(" | ");
-
-    manifestLines.push(`- Table ${i}: [${headerStr}] (${rowCount} rows, ${colCount} cols)`);
-
-    const sampleRows: string[] = [];
-    const maxSampleRows = Math.min(rowCount, 8);
-    for (let r = 1; r < maxSampleRows; r++) {
-      const row = rows[r];
-      if (!row) continue;
-      const col0Text = normalizeManifestText(row.getCell(0)?.getText() || "");
-      if (colCount === 2) {
-        const col1Text = normalizeManifestText(row.getCell(1)?.getText() || "");
-        if (col0Text || col1Text) {
-          sampleRows.push(`  Row ${r}: "${col0Text}" -> "${col1Text}"`);
-        }
-      } else {
-        const cellsText = row.getCells().map((c) => normalizeManifestText(c.getText())).filter(Boolean);
-        if (cellsText.length > 0) {
-          sampleRows.push(`  Row ${r}: [${cellsText.join(" | ")}]`);
-        }
-      }
-    }
-
-    if (sampleRows.length > 0) {
-      manifestLines.push(...sampleRows);
-    }
-    if (rowCount > maxSampleRows) {
-      manifestLines.push(`  ... (${rowCount - maxSampleRows} more rows)`);
-    }
-  }
-
-  return manifestLines.join("\n");
-}
 
 export interface ExtractVariablesParams {
   markdown: string;
@@ -268,21 +135,72 @@ export interface ExtractVariablesParams {
     website?: string;
   };
   industry?: string | null;
-  tableManifest?: string;
+}
+
+export function buildExtractionPrompt(params: ExtractVariablesParams): string {
+  const b = params.companyBasics;
+  return `
+You are converting a one-off sales quotation into a reusable proposal template.
+List every piece of text that would change for a different client, so the engine can replace it with a {tag}.
+You only identify WHAT changes and copy its exact text. You never describe WHERE it is — the engine locates text itself.
+
+==================== QUOTATION (markdown parsed from the Word file) ====================
+${params.markdown}
+
+==================== AGENCY PRICING NOTES ====================
+${params.pricingSpec}
+
+==================== THE SELLING AGENCY (never a variable) ====================
+Name: "${params.companyName}"  Location: "${b?.location || ""}"  Email: "${b?.email || ""}"  Phone: "${b?.phone || ""}"  Industry: "${params.industry || ""}"
+
+==================== RULES ====================
+1. sample_text must be copied character-for-character from the quotation: same punctuation, currency symbols, dashes (— vs -), minus signs (−), "/mo" suffixes. The engine does an exact search; if the text is not verbatim the variable is silently lost.
+
+2. Never extract the agency's own name, team name, address, phone, email, the "Next Steps" paragraph, or the closing legal disclaimer. Only extract things about the CLIENT, the chosen package, prices, dates, and client-specific prose.
+
+3. category:
+   - "customer_input": facts the client supplies — client company name, dates, headcount/seat count, number of locations, number of products, servers, etc.
+   - "pricing": every money amount, rate, percentage, and the selected tier/package name.
+     * The chosen tier gets variable_name "selected_tier", data_type "enum", enum_options = all tiers offered. Its sample_text is just the tier name (e.g. "Growth"). Do not create tier-specific names like "growth_monthly_rate" — use role names like "selected_tier_rate".
+   - "paragraph": prose written for THIS client — the intro describing their situation, why the recommended tier fits, their payment preference, the upgrade path, an add-on menu with ✓/○ selections, a "what's included" bullet list, tax or minimum-commitment notes that depend on their numbers. If a salesperson would rewrite it for the next lead, it is a paragraph variable. Set data_type "paragraph" and paragraph_config { mode: "ai_generated", purpose, tone, length_guideline }.
+     * For a block of several lines or bullets, sample_text is the WHOLE block: one line per paragraph/bullet, each copied exactly, joined with newlines.
+     * Static boilerplate that reads identically for any client is NOT a variable.
+
+4. condition_flag: set it on the amount variable of any table row that may not apply to every client — sales tax ("has_tax"), prepay/bundle/volume discounts ("has_annual_discount", "has_bundle_discount", "has_volume_adjustment"), optional fees ("has_extra_devices"). The engine wraps that whole row so it disappears when the flag is false. Otherwise "".
+
+5. Labels that contain arithmetic, e.g. "Seat subtotal (42 seats × $60.00)" or "Growth Package — 12 months × $3,000/mo": do NOT extract the label. Extract each number inside it as its own variable ("42" → seat_count, "$60.00" → adjusted_seat_rate, "12" → contract_months). Each value is extracted ONCE and the engine replaces every occurrence, so the label becomes "Seat subtotal ({seat_count} seats × {adjusted_seat_rate})" automatically.
+   * When a cell reads "$65.00 / seat / mo", sample_text is "$65.00", not the whole cell.
+   * Money ALWAYS keeps its currency symbol in sample_text ("$2,520.00", never "2,520.00"); percentages keep "%" ("8.25%").
+   * A leading minus/dash ("−$5.00") is NOT part of the value: sample_text is "$5.00".
+
+6. context_text: almost always "". An empty context means "replace this text everywhere it appears", which is what you want for the client name, the tier name, seat counts, rates that are reused in labels, etc. "selected_tier" MUST have context_text "".
+   Fill it ONLY when the identical text also appears somewhere else with a DIFFERENT meaning. Two cases:
+   * A value that collides with another variable: "$60.00" is both the adjusted seat rate and the managed-devices subtotal → the managed-devices one gets context_text "Managed devices beyond 1:1"; the seat-rate one stays "".
+   * A bare small number that also occurs in ordinary sentences: "5" (servers) also appears in "within 5 business days" → context_text "Managed devices beyond 1:1".
+   Give the row label or a few words from the same table row / sentence. Never invent context for values that appear only once.
+
+7. loop_tables: tables whose data rows are repeated line items of the same shape — project milestones, payment schedules, itemised add-on lines. Give:
+   * header_texts = the exact header cell texts of the table, left to right.
+   * loop_tag ("milestones", "payment_milestones", "addon_items").
+   * column_tags = one snake_case tag per column, left to right.
+   * row_labels = the exact FIRST-cell text of every row that repeats (e.g. ["1","2","3","4","5"] or ["Copywriting add-on","Basic SEO Setup add-on"]). Base-fee, subtotal, discount and total rows in the same table are NOT repeating rows — leave them out and they stay as-is.
+   * Amounts inside loop rows are covered by the loop's column_tags — do not also extract them as variables.
+   * A tier comparison matrix (columns = tiers, rows = features) is NOT a loop table. Do not extract its cells; the selected tier's rate is already covered by "selected_tier_rate".
+
+8. Never extract the same text twice. One variable per distinct value. Never extract a lone symbol or checkmark ("✓", "○", "—") — a selected/unselected add-on menu is ONE paragraph variable (rule 3), not per-line checkbox variables.
+`;
 }
 
 export async function extractVariablesWithGemini(
-  params: ExtractVariablesParams
+  params: ExtractVariablesParams,
+  modelName = "gemini-2.5-flash"
 ): Promise<ExtractionResponse> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY environment variable is not set");
   }
 
-  const modelName = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-  const genAI = new GoogleGenerativeAI(apiKey);
-
-  const model = genAI.getGenerativeModel({
+  const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({
     model: modelName,
     generationConfig: {
       responseMimeType: "application/json",
@@ -291,116 +209,11 @@ export async function extractVariablesWithGemini(
     },
   });
 
-  const prompt = `
-You are an expert document analysis and quotation templating engine.
-Analyze the quotation markdown and natural pricing specification to extract all dynamic variables,
-table structures, and mutation instructions needed to convert this document into a reusable Word proposal template.
-
-======================================================================
-LAYER 1: QUOTATION MARKDOWN (PARSED FROM WORD DOCUMENT)
-======================================================================
-${params.markdown}
-
-======================================================================
-LAYER 1.5: DOCUMENT TABLE MANIFEST (WORD OPENXML AST)
-======================================================================
-${params.tableManifest || "No explicit Word AST table manifest available."}
-
-======================================================================
-LAYER 2: NATURAL PRICING SPECIFICATION
-======================================================================
-${params.pricingSpec}
-
-======================================================================
-LAYER 3: SELLING AGENCY IDENTITY CONTEXT (CRITICAL NEGATIVE CONSTRAINT)
-======================================================================
-Agency Name: "${params.companyName}"
-Location: "${params.companyBasics?.location || ""}"
-Email: "${params.companyBasics?.email || ""}"
-Phone: "${params.companyBasics?.phone || ""}"
-Industry: "${params.industry || ""}"
-
-### MANDATORY EXTRACTION DIRECTIVES & RULES:
-
-1. CRITICAL AGENCY IDENTITY COLLISION GUARD (STRICT NEGATIVE CONSTRAINT):
-   - The quotation was authored by the service agency: "${params.companyName}".
-   - DO NOT extract variables for "${params.companyName}" or its staff, team names ("Northstar Digital Strategy Team"), email, address, or phone numbers (e.g. "${params.companyBasics?.phone || ""}").
-   - Any mention of "${params.companyName}" and its company details must remain STATIC original text in the Word document.
-   - The proposal disclaimer at the bottom (*"This document is a proposal, not a signed contract..."*) is static boilerplate and must NEVER be extracted.
-   - ONLY extract variables for the PROSPECTIVE CLIENT / BUYER (e.g. client company name, contact person, client locations/seats, project start date).
-
-2. CRITICAL GROUND-TRUTH TABLE INDEXING (STRICT CONSTRAINT):
-   - You MUST use the exact 0-based OpenXML table indexes provided in LAYER 1.5: DOCUMENT TABLE MANIFEST for all "table_index" fields in both "mutation" and "compound_tables".
-   - Table 0 in the manifest is table_index 0, Table 1 is table_index 1, Table 2 is table_index 2, Table 3 is table_index 3.
-   - Example: Proposal metadata fields (such as Proposal Date, Prepared By, Proposal Valid Until) located in Table 0 of LAYER 1.5 MUST use table_index: 0 (NEVER table_index: 1).
-   - Never guess or offset table indexes.
-
-3. TIER-AGNOSTIC VARIABLE NAMING:
-   - When tiered packages exist (e.g. Local/Growth/Authority or Essential/Standard/Premium):
-     a) Extract "selected_tier" as an enum variable with all tier options and the default anchor tier.
-     b) DO NOT embed a specific tier name into dynamic pricing variables (e.g. avoid "growth_package_monthly_rate").
-     c) Use canonical role-based variable names: "selected_tier_rate" (or "monthly_rate"), "tier_base_investment", and "total_investment".
-     d) In table calculations, template the line item label dynamically: "{selected_tier} Package — {billing_period_description}".
-
-4. DYNAMIC SCOPE INCLUSIONS VS. FIXED BOILERPLATE:
-   - If a bulleted list or paragraph describes scope deliverables, included features, or SLA response times that vary by tier or headcount (e.g. "Included vs. Not Included — Growth Tier" or "04 What's Included This Cycle"):
-     - You MUST classify it as category: "paragraph".
-     - You MUST set paragraph_config: { mode: "ai_generated" }.
-     - You MUST set purpose: "Draft scope deliverables, SLA commitments, and location coverage strictly aligned with {selected_tier} and the lead's device/headcount footprint."
-   - Standard static business legal terms remain mode: "fixed".
-
-5. EMBEDDED CALCULATIONS IN TABLE LABELS:
-   - If a table row label cell contains arithmetic (e.g. "Seat subtotal (42 seats × $60.00)" or "Growth Package — 12 months × $3,000/mo"):
-     - Specify a composite template pattern for the label cell:
-       e.g. sample_text: "42 seats × $60.00", template_tag: "{seat_count} seats × {adjusted_seat_rate}".
-
-6. DERIVED VISIBILITY RULES & CONDITIONAL ROWS:
-   - Do NOT extract standalone technical booleans like "has_tax" or "has_volume_discount".
-   - Instead, attach a visibility_rule directly on the monetary variable:
-     e.g., for sales tax: variable_name: "sales_tax_amount", category: "pricing", visibility_rule: { condition_flag: "has_tax", show_when: "value > 0" }.
-     e.g., for annual prepay discount: variable_name: "annual_discount_amount", category: "pricing", visibility_rule: { condition_flag: "has_annual_discount", show_when: "value > 0" }.
-   - MANDATORY CONDITIONAL ROW MUTATION: Any variable that carries a visibility_rule (such as sales taxes, state taxes, prepay discounts, or bundle discounts) MUST use mutation action: "wrap_conditional_row" (NEVER "replace_table_cell").
-   - For every "wrap_conditional_row" mutation, you MUST provide:
-     a) condition_tag: The exact flag name matching visibility_rule.condition_flag (e.g. "has_tax", "has_annual_discount", "has_bundle_discount").
-     b) table_index: The exact 0-based table index from LAYER 1.5 containing this row.
-     c) row_identifier: The exact text of the Row's Column 0 label (e.g. "Texas Sales Tax (8.25%)" or "Annual prepay discount (10%)").
-     d) col_index: The 0-based column index of the amount cell to replace (e.g. 1).
-     e) template_tag: The tag for the variable (e.g. "{sales_tax_amount}" or "{annual_discount_amount}").
-     f) sample_text: The exact amount text from the quotation (e.g. "$2,673.00" or "−$3,600.00").
-
-7. COMPOUND TABLES & REPEATING LOOPS:
-   - Multi-tier comparison package matrix tables MUST be extracted in compound_tables with type: "comparison_matrix".
-   - Repeating sample deliverables or milestone tables MUST be extracted in compound_tables with type: "repeating_loop" and loop_tag: "milestones" (or "items").
-     * You MUST provide columns: string[] containing the exact variable tag names for each column in left-to-right order:
-       e.g., for Phase | Milestone | Deliverable -> columns: ["phase_number", "milestone_title", "deliverable_summary"].
-   - Dynamic optional add-on sections in tables MUST be modeled as repeating loops with type: "repeating_loop" and loop_tag: "addon_items" (using collapse_repeating_table) rather than static conditional rows:
-     * You MUST provide columns: ["addon_name", "addon_fee"].
-     * table_index must be the exact table index from LAYER 1.5 containing the add-on rows (e.g. Table 2).
-   - Repeating payment schedule tables MUST be extracted in compound_tables with type: "repeating_loop" and loop_tag: "payment_milestones":
-     * You MUST provide columns: ["milestone_name", "trigger_description", "payment_amount"].
-
-8. DETERMINISTIC MUTATION LOCATORS (FOR WORD MUTATION):
-   - For every variable, specify a valid mutation action ("replace_text_run", "replace_table_cell", "wrap_conditional_row", or "collapse_repeating_table").
-   - Include sample_text (the exact snippet from the markdown), context_anchor, and template_tag (e.g. "{client_name}" or "{monthly_total}").
-   - CRITICAL REQUIREMENT FOR TABLE MUTATIONS ("replace_table_cell" and "wrap_conditional_row"):
-     You MUST ALWAYS include BOTH "row_identifier" AND "col_index":
-     a) table_index MUST strictly match the OpenXML Table index from LAYER 1.5: DOCUMENT TABLE MANIFEST.
-     b) row_identifier: MUST be provided as the Column 0 label or header text of the target row (e.g. "Proposal Valid Until", "Date", "Subtotal", "Total employees / seats", "Texas Sales Tax (8.25%)", "Annual prepay discount (10%)"). NEVER omit row_identifier.
-     c) col_index: MUST be provided as the 0-based column number containing the cell to mutate (e.g. 1 for value cells in 2-column tables, or 0/2 for column 1/3). NEVER omit col_index.
-     d) sample_text: The exact sample text from the cell (e.g. "$2,673.00", "−$3,600.00", "September 7, 2026").
-   - Concrete Examples:
-     * replace_table_cell: { "action": "replace_table_cell", "table_index": 2, "row_identifier": "Subtotal", "col_index": 1, "sample_text": "$32,400.00", "template_tag": "{subtotal_amount}" }
-     * wrap_conditional_row: { "action": "wrap_conditional_row", "condition_tag": "has_annual_discount", "table_index": 2, "row_identifier": "Annual prepay discount (10%)", "col_index": 1, "sample_text": "−$3,600.00", "template_tag": "{annual_discount_amount}" }
-     * metadata replace_table_cell: { "action": "replace_table_cell", "table_index": 0, "row_identifier": "Date", "col_index": 0, "sample_text": "September 7, 2026", "template_tag": "{proposal_date}" }
-   - For variables in body paragraphs outside tables (like client name in intro headings or paragraphs), use action: "replace_text_run".
-`;
-
-  const result = await model.generateContent(prompt);
+  const result = await model.generateContent(buildExtractionPrompt(params));
   const responseText = result.response.text();
 
   try {
-    const parsed = JSON.parse(responseText) as ExtractionResponse;
-    return parsed;
+    return JSON.parse(responseText) as ExtractionResponse;
   } catch (error) {
     throw new Error(
       `Failed to parse Gemini structured output JSON: ${
@@ -409,4 +222,3 @@ Industry: "${params.industry || ""}"
     );
   }
 }
-

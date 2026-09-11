@@ -41,7 +41,7 @@ The system runs a **5-stage sequential pipeline** anchored by an **ambient shell
             │
             ▼
 [STAGE 3: MINIMAL TEMPLATE CHECKPOINT]
-  docxmlater performs AST text-run replacements & line-item loop collapsing
+  docxmlater finds every occurrence of each verbatim sample_text and derives the mutation (text / paragraph block / conditional row / loop)
   ├── Inline status card: tag replacement count + loop collapse verification
   ├── Optional "Quick Preview (.docx)" modal via docx-preview
   └── [Proceed to Pricing Engine ➔]
@@ -89,18 +89,39 @@ The underlying engine classifies variables into four architectural tiers, mapped
 - Markdown output exposes headings, list items, and table syntax without sending heavy XML to the LLM.
 - Displayed in the UI inside a collapsible Reviewer Dropdown.
 
-### 4.2 Template Mutation with `docxmlater`
-- Operates on the underlying OpenXML DOM AST without corrupting styling, typography, colors, or page margins.
-- **Anchor Replacement:** Locates specific text runs using sample text and context anchors, replacing them with `{variable_name}` tags.
-- **Smart Table Loop Collapse:**
-  - Identifies repeating line-item rows (e.g., Row 1 to Row N-K).
-  - Converts Row 1 into a template loop row: `{#line_items} {item_name} | {item_price} {/line_items}`.
-  - Deletes redundant static sample rows (Row 2 through Row N-K).
-  - Preserves table header (Row 0) and summary footer rows (Subtotal, Tax, Total, Terms).
+### 4.2 Variable Extraction Contract (Gemini) — text only
+Gemini is reliable at *reading* ("this exact text is the tax amount") and unreliable at *positional bookkeeping* ("table 2, row `Subtotal`, column 1"). The extraction contract (`backend/src/services/gemini.service.ts`) therefore contains no locators and no mutation instructions:
 
-### 4.3 Proposal Hydration with `easy-template-x`
+| Field | Meaning |
+| :--- | :--- |
+| `sample_text` | Verbatim text copied from the quotation. Multi-line for paragraph/bullet blocks. The engine searches for exactly this. |
+| `category` | `customer_input` / `pricing` / `paragraph`. `paragraph` = client-specific prose the salesperson would rewrite per lead (intro, tier justification, add-on menu, what's-included list, tax/commitment notes). |
+| `condition_flag` | `has_tax`, `has_annual_discount`, … — the engine wraps the containing table row (or, for a `paragraph` variable, the paragraph itself) in `{#flag}…{/flag}`. `""` = always shown. |
+| `enum_options` | On the tier selector (`selected_tier`): every tier offered. The engine uses these names to find the tier comparison matrix — no locator needed. |
+| `context_text` | Almost always `""` (= replace everywhere). Only when the identical text appears elsewhere with a different meaning: the row label / nearby words of the right occurrence. |
+| `loop_tables[]` | `header_texts` (exact row-0 cell texts), `loop_tag`, `column_tags`, `row_labels` (exact first-cell text of each repeating row). No table indexes. |
+
+Every field the engine depends on is `required` in the Gemini response schema — optional schema fields get skipped by `gemini-2.5-flash` regardless of prompt wording.
+
+### 4.3 Template Mutation with `docxmlater`
+`backend/src/services/template-mutator.service.ts` owns **all** location logic and derives the mutation from the variable itself:
+
+- Every paragraph (body or table cell) containing `sample_text` is a hit. Matching tolerates NBSP/run-on whitespace, `-`/`−`/`–` and straight/curly quote variants, and stripped `- `/`• ` list markers; bare-word samples match whole words only.
+- `category: paragraph` → the hit paragraph becomes `{tag}`; following siblings in the same list (`numId`) or listed in the multi-line `sample_text` are pruned. Formatting is kept only when the paragraph is uniformly formatted.
+- `condition_flag` set → value replaced **and** the row wrapped with `{#flag}` in cell 0 / `{/flag}` in the last cell (easy-template-x row loop). On a `paragraph` variable the paragraph becomes `{#flag}{tag}{/flag}` and is dropped when the flag is false.
+- Otherwise → text replaced in place at every hit, preserving run formatting via `replaceTextCrossRun`.
+- A bare number (`5`, `42`) without `context_text` only replaces inside table cells when any table hit exists (a `5` in "within 5 business days" is not the variable).
+- **Ordering:** variables are applied longest `sample_text` first, and a context-narrowed variable before an equal-length global one — this is what makes `Growth Package — 12 months × $3,000/mo` survive `$3,000/mo`, and lets `$60.00` (managed devices, with context) and `$60.00` (adjusted rate, global) coexist.
+- **Loop collapse:** table located by `header_texts` (position-wise), loop rows by `row_labels`; the first loop row gets `{column_tags}` and `{#loop}…{/loop}`, the rest are removed. Header, base-fee, subtotal, discount and total rows are untouched because they are not in `row_labels`.
+- Every variable yields a `details[]` entry (`applied`, `info`) surfaced in the Template Checkpoint, including `N other occurrence(s) skipped by context_text` and `"…" not found in document` — the review deck is where model variance gets caught.
+- **Tier comparison matrix** (columns = tiers, rows = features): easy-template-x has no column loops and the "recommended" highlight is cell shading the engine never touches, so the matrix is tagged **positionally** and the selected tier is *rotated into the highlighted column* at hydration. Detection: the table whose header row names ≥2 of the selector's `enum_options` including its `sample_text`. Every tier column's cells become `{tierN_name}` (header text outside the name, e.g. ` — Recommended`, stays) and `{tierN_rM}`; label columns stay static. The captured grid + `recommended_index` are returned as `tier_matrix` and persisted in `template_stats`; `buildTierMatrixPayload(matrix, selectedTier)` produces the flat tag values with the selected tier in the highlighted column and the others in their original order (Local → `Growth | Local — Recommended | Authority`). Runs before the global replacements so `{selected_tier}` / `{selected_tier_rate}` do not touch the matrix.
+
+Golden test: `backend/src/tests/template-mutator.test.ts` + `tests/fixtures/*.variables.json` (an ideal Gemini response per company) must reproduce the tag layout of `Mock Data/templated_markdown/*.md`, plus the matrix rotation, conditional-paragraph and "a miss is reported, never dropped" cases. Live extraction quality is measured by `npm run test:live` (`tests/gemini.live.ts`, needs `GEMINI_API_KEY`, not part of `npm test`) as "every `sample_text` is verbatim in the quotation markdown".
+
+### 4.4 Proposal Hydration with `easy-template-x`
 - Ingests the templated `.docx` binary and a hydrated JSON data payload.
 - Expands table loops dynamically to match the lead's exact line items.
+- Payload keys equal `variable_name`; conditionals need boolean `has_*` keys; loops need arrays keyed by `loop_tag`; the tier matrix values come from `buildTierMatrixPayload(template_stats.tier_matrix, selected_tier)`.
 - Outputs the finalized proposal document ready for download and browser preview.
 
 ---

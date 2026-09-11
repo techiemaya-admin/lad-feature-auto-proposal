@@ -9,6 +9,7 @@ import {
   X,
   Layers,
   Sparkles,
+  AlertTriangle,
 } from "lucide-react";
 import { renderAsync } from "docx-preview";
 import { Button } from "./ui/button";
@@ -94,6 +95,8 @@ export const TemplateCheckpointCard: React.FC<TemplateCheckpointCardProps> = ({
   }, [isPreviewOpen]);
 
   const downloadUrl = getTemplateDownloadUrl(companyId);
+  // The engine never drops a variable silently: misses and context-skips arrive here as details[].
+  const warnings = (stats.details ?? []).filter((d) => !d.applied || d.info?.includes("skipped"));
 
   return (
     <>
@@ -176,6 +179,24 @@ export const TemplateCheckpointCard: React.FC<TemplateCheckpointCardProps> = ({
             </div>
           )}
         </div>
+
+        {warnings.length > 0 && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 space-y-1.5">
+            <div className="flex items-center gap-2 text-xs font-semibold text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="size-3.5" />
+              <span>{warnings.length} variable{warnings.length > 1 ? "s" : ""} need attention — fix the chip or the sample text, then regenerate</span>
+            </div>
+            <ul className="space-y-0.5 text-[11px] font-mono text-muted-foreground">
+              {warnings.map((d) => (
+                <li key={d.target} className="flex gap-2">
+                  <span className={d.applied ? "text-amber-600" : "text-red-500"}>{d.applied ? "partial" : "missed"}</span>
+                  <span className="text-foreground">{d.target}</span>
+                  <span className="truncate">{d.info}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {/* Action Controls & Primary CTA */}
         <div className="pt-2 flex items-center justify-between border-t border-border/40">

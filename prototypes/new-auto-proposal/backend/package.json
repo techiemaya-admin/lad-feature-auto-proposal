@@ -10,7 +10,8 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test src/tests/**/*.test.ts",
-    "test:template": "tsx --test src/tests/template-mutator.test.ts"
+    "test:template": "tsx --test src/tests/template-mutator.test.ts",
+    "test:live": "tsx --test src/tests/gemini.live.ts"
   },
   "dependencies": {
     "@firecrawl/anydoc": "^0.2.4",

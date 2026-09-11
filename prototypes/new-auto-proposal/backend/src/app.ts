@@ -5,6 +5,7 @@ import companiesRouter from "./routes/companies.js";
 import briefingRouter from "./routes/briefing.js";
 import variablesRouter from "./routes/variables.js";
 import templateRouter from "./routes/template.js";
+import settingsRouter from "./routes/settings.js";
 
 dotenv.config();
 
@@ -29,6 +30,7 @@ export function createApp(): Express {
   app.use("/api/companies", variablesRouter);
   app.use("/api/companies", templateRouter);
   app.use("/api/companies", companiesRouter);
+  app.use("/api/settings", settingsRouter);
 
   return app;
 }

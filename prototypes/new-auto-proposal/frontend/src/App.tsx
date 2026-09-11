@@ -9,6 +9,9 @@ import {
   unlockBriefing,
   generateTemplate,
   fetchTemplateStatus,
+  fetchAISettings,
+  updateAISettings,
+  type AISettings,
 } from "./services/api";
 import type { Company, CompanySummary } from "./types/company";
 import type { CompanyVariable, CompoundTable } from "./types/variable";
@@ -16,6 +19,7 @@ import type { TemplateStats } from "./types/template";
 import { CompanyProfileCard } from "./components/CompanyProfileCard";
 import { DevDock } from "./components/DevDock";
 import { Button } from "./components/ui/button";
+import { CustomDropdown } from "./components/ui/custom-dropdown";
 import { useTheme } from "./components/theme-provider";
 import {
   Sun,
@@ -43,6 +47,8 @@ export function App() {
     type: "success" | "error" | "info";
     message: string;
   } | null>(null);
+  const [aiSettings, setAiSettings] = useState<AISettings | null>(null);
+  const [aiModels, setAiModels] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
     if (notification) {
@@ -50,6 +56,30 @@ export function App() {
       return () => clearTimeout(timer);
     }
   }, [notification]);
+
+  useEffect(() => {
+    fetchAISettings()
+      .then(({ settings, models }) => {
+        setAiSettings(settings);
+        setAiModels(models);
+      })
+      .catch((err) => console.error("Failed to load AI settings", err));
+  }, []);
+
+  // value is "<provider>::<model>" — one option per provider+model combo
+  const handleAIOptionChange = async (value: string) => {
+    const [provider, model] = value.split("::");
+    try {
+      const settings = await updateAISettings({ provider: provider as AISettings["provider"], model });
+      setAiSettings(settings);
+      setNotification({ type: "info", message: `AI switched to ${settings.provider} · ${settings.model}` });
+    } catch (err) {
+      setNotification({
+        type: "error",
+        message: err instanceof Error ? err.message : "Failed to switch AI provider/model",
+      });
+    }
+  };
 
   const loadCompanies = async () => {
     try {
@@ -362,6 +392,22 @@ export function App() {
 
             {/* Right Controls */}
             <div className="flex items-center gap-2">
+              {aiSettings && (
+                <CustomDropdown
+                  size="xs"
+                  menuAlign="right"
+                  className="hidden md:inline-flex max-w-32"
+                  value={`${aiSettings.provider}::${aiSettings.model}`}
+                  onChange={handleAIOptionChange}
+                  options={(["gemini", "deepseek"] as const).flatMap((provider) =>
+                    (aiModels[provider] || []).map((model) => ({
+                      value: `${provider}::${model}`,
+                      label: `${provider === "gemini" ? "Gemini" : "DeepSeek"} · ${model}`,
+                    }))
+                  )}
+                />
+              )}
+
               <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground px-2 py-0.5 rounded-full bg-secondary/50">
                 <span className="size-1.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
                 <span className="hidden sm:inline">SQLite Synced</span>

@@ -38,9 +38,9 @@ test("Briefing & Quotation Ingestion Suite", async (t) => {
     const docxSub = path.join(mockDataDir, "docx", name);
     return fs.existsSync(docxSub) ? docxSub : path.join(mockDataDir, name);
   };
-  const northstarDocx = findDocx("Proposal_Northstar_BloomAndCo.docx");
-  const fortressDocx = findDocx("Proposal_FortressIT_WhitfieldAssociates.docx");
-  const fieldstoneDocx = findDocx("Proposal_Fieldstone_RosewoodHomeGoods.docx");
+  const northstarDocx = findDocx("Co1_Proposal_Northstar_BloomAndCo.docx");
+  const fortressDocx = findDocx("Co2_Proposal_FortressIT_WhitfieldAssociates.docx");
+  const fieldstoneDocx = findDocx("Co3_Proposal_Fieldstone_RosewoodHomeGoods.docx");
 
   t.after(() => {
     closeDatabase();
@@ -51,38 +51,20 @@ test("Briefing & Quotation Ingestion Suite", async (t) => {
     }
   });
 
-  await t.test("POST /briefing/submit rejects request missing both file and existing file", async () => {
-    const res = await request(app)
-      .post("/api/companies/co1_seo/briefing/submit")
-      .field("prompt", "My custom pricing prompt");
-
-    assert.equal(res.status, 400);
-    assert.equal(res.body.success, false);
-    assert.ok(res.body.error.includes("quotation document is required"));
-  });
-
-  await t.test("POST /briefing/submit rejects request missing prompt text", async () => {
-    const res = await request(app)
-      .post("/api/companies/co1_seo/briefing/submit")
-      .attach("file", northstarDocx);
-
-    assert.equal(res.status, 400);
-    assert.equal(res.body.success, false);
-    assert.ok(res.body.error.includes("prompt cannot be empty"));
-  });
-
-  await t.test("POST /briefing/submit rejects non-.docx uploads", async () => {
+  await t.test("POST /briefing/submit rejects a missing file, an empty prompt, and a non-.docx upload", async () => {
     const fakeTxt = path.join(testDir, "test.txt");
     fs.writeFileSync(fakeTxt, "hello world");
-
-    const res = await request(app)
-      .post("/api/companies/co1_seo/briefing/submit")
-      .field("prompt", "Some pricing notes")
-      .attach("file", fakeTxt);
-
-    assert.equal(res.status, 400);
-    assert.equal(res.body.success, false);
-    assert.ok(res.body.error.includes(".docx"));
+    const url = "/api/companies/co1_seo/briefing/submit";
+    const cases = [
+      { req: request(app).post(url).field("prompt", "My custom pricing prompt"), error: "quotation document is required" },
+      { req: request(app).post(url).attach("file", northstarDocx), error: "prompt cannot be empty" },
+      { req: request(app).post(url).field("prompt", "Some pricing notes").attach("file", fakeTxt), error: ".docx" },
+    ];
+    for (const c of cases) {
+      const res = await c.req;
+      assert.equal(res.status, 400);
+      assert.ok(res.body.error.includes(c.error), res.body.error);
+    }
   });
 
   await t.test("POST /briefing/submit ingests Northstar docx, converts via AnyDoc, and locks briefing", async () => {
@@ -98,7 +80,7 @@ test("Briefing & Quotation Ingestion Suite", async (t) => {
     assert.equal(res.body.company.briefing_locked, true);
     assert.equal(res.body.company.pricing_spec, customPrompt);
     assert.ok(res.body.company.document_metadata);
-    assert.equal(res.body.company.document_metadata.filename, "Proposal_Northstar_BloomAndCo.docx");
+    assert.equal(res.body.company.document_metadata.filename, "Co1_Proposal_Northstar_BloomAndCo.docx");
     assert.ok(res.body.company.document_metadata.filesize > 0);
 
     // Markdown assertions
@@ -117,7 +99,7 @@ test("Briefing & Quotation Ingestion Suite", async (t) => {
     const res = await request(app).get("/api/companies/co1_seo/briefing/markdown");
     assert.equal(res.status, 200);
     assert.equal(res.body.success, true);
-    assert.equal(res.body.filename, "Proposal_Northstar_BloomAndCo.docx");
+    assert.equal(res.body.filename, "Co1_Proposal_Northstar_BloomAndCo.docx");
     assert.equal(res.body.briefing_locked, true);
     assert.ok(res.body.markdown.includes("SEO & Local Visibility Proposal"));
   });

@@ -247,3 +247,33 @@ export async function fetchTemplateBlob(companyId: string): Promise<Blob> {
 export function getTemplateDownloadUrl(companyId: string): string {
   return `${API_BASE}/companies/${companyId}/template/download`;
 }
+
+export interface AISettings {
+  provider: "gemini" | "deepseek";
+  model: string;
+}
+
+export async function fetchAISettings(): Promise<{
+  settings: AISettings;
+  models: Record<string, string[]>;
+}> {
+  const res = await fetch(`${API_BASE}/settings/ai`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch AI settings: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function updateAISettings(payload: Partial<AISettings>): Promise<AISettings> {
+  const res = await fetch(`${API_BASE}/settings/ai`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(errorData.error || `Failed to update AI settings: ${res.statusText}`);
+  }
+  const data = await res.json();
+  return data.settings;
+}

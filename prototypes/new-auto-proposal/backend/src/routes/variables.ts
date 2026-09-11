@@ -1,14 +1,9 @@
 import { Router, Request, Response } from "express";
 import crypto from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
-import { Document } from "docxmlater";
-import { getDatabase, getStorageDir } from "../db/database.js";
-import {
-  extractVariablesWithGemini,
-  generateTableManifest,
-  ExtractionResponse,
-} from "../services/gemini.service.js";
+import { getDatabase } from "../db/database.js";
+import { extractVariables } from "../services/ai-extraction.service.js";
+import type { ExtractionResponse } from "../services/gemini.service.js";
+import { logPipelineArtifact } from "../services/pipeline-log.js";
 import type { CompanyRow } from "./companies.js";
 
 const router = Router();
@@ -27,6 +22,9 @@ export interface VariableRow {
   created_at: string;
   updated_at: string;
 }
+
+const CATEGORIES = ["customer_input", "pricing", "paragraph"];
+const DATA_TYPES = ["string", "number", "currency", "enum", "paragraph"];
 
 function normalizeWhitespace(text: string): string {
   return text.replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim();
@@ -56,7 +54,7 @@ function formatVariableRow(row: VariableRow) {
   };
 }
 
-// GET /api/companies/:id/variables - Retrieve all persisted variables and compound tables
+// GET /api/companies/:id/variables - Retrieve all persisted variables and loop tables
 router.get("/:id/variables", (req: Request, res: Response): void => {
   try {
     const { id } = req.params;
@@ -75,28 +73,8 @@ router.get("/:id/variables", (req: Request, res: Response): void => {
 
     for (const row of rows) {
       const formatted = formatVariableRow(row);
-      if (
-        formatted.category === "comparison_matrix" ||
-        formatted.category === "table_loop" ||
-        formatted.category === "compound_table" ||
-        formatted.data_type === "table"
-      ) {
-        compound_tables.push({
-          id: formatted.id,
-          table_id: formatted.variable_name,
-          natural_name: formatted.natural_name,
-          table_index: (formatted.descriptor as any).table_index ?? 0,
-          type:
-            formatted.category === "comparison_matrix"
-              ? "comparison_matrix"
-              : (formatted.descriptor as any).type ?? "repeating_loop",
-          loop_tag: (formatted.descriptor as any).loop_tag,
-          columns: (formatted.descriptor as any).columns ?? [],
-          enum_options: (formatted.descriptor as any).enum_options ?? [],
-          default_value: (formatted.descriptor as any).default_value,
-          mutation: (formatted.descriptor as any).mutation,
-          is_deleted: formatted.is_deleted,
-        });
+      if (formatted.category === "table_loop") {
+        compound_tables.push({ id: formatted.id, ...formatted.descriptor, is_deleted: formatted.is_deleted });
       } else {
         variables.push(formatted);
       }
@@ -122,15 +100,12 @@ router.post("/:id/variables/extract", async (req: Request, res: Response): Promi
     const { id } = req.params;
     const db = getDatabase();
 
-    // Verify company session exists
-    const selectStmt = db.prepare("SELECT * FROM company_sessions WHERE company_id = ?");
-    const company = selectStmt.get(id) as unknown as CompanyRow | undefined;
+    const company = db
+      .prepare("SELECT * FROM company_sessions WHERE company_id = ?")
+      .get(id) as unknown as CompanyRow | undefined;
 
     if (!company) {
-      res.status(404).json({
-        success: false,
-        error: `Company "${id}" not found`,
-      });
+      res.status(404).json({ success: false, error: `Company "${id}" not found` });
       return;
     }
 
@@ -149,233 +124,46 @@ router.post("/:id/variables/extract", async (req: Request, res: Response): Promi
       parsedData = {};
     }
 
-    const companyBasics = parsedData.company_basics || {
-      company_name: company.company_name,
-      location: company.location,
-      email: company.email,
-      phone: company.phone,
-    };
-
-    // Pre-inspect original_quotation.docx to generate ground-truth Table Manifest (LAYER 1.5)
-    let tableManifest: string | undefined;
-    const storageDir = getStorageDir();
-    const companyDir = path.join(storageDir, id);
-    const sourceFilePath = path.join(companyDir, "original_quotation.docx");
-
-    let docBuffer: Buffer | null = null;
-    if (fs.existsSync(sourceFilePath)) {
-      docBuffer = fs.readFileSync(sourceFilePath);
-    } else {
-      // Mock Data fallback if original_quotation.docx is not yet in storage
-      const mockFileMap: Record<string, string> = {
-        co1_seo: "Proposal_Northstar_BloomAndCo.docx",
-        co2_msp: "Proposal_FortressIT_WhitfieldAssociates.docx",
-        co3_dev: "Proposal_Fieldstone_RosewoodHomeGoods.docx",
-      };
-      const mockFilename = mockFileMap[id];
-      if (mockFilename) {
-        const candidateMockDirs = [
-          path.resolve(process.cwd(), "Mock Data/docx"),
-          path.resolve(process.cwd(), "../Mock Data/docx"),
-          path.resolve(process.cwd(), "prototypes/new-auto-proposal/Mock Data/docx"),
-        ];
-        const foundDir = candidateMockDirs.find((d) => fs.existsSync(path.join(d, mockFilename)));
-        if (foundDir) {
-          const mockPath = path.join(foundDir, mockFilename);
-          if (!fs.existsSync(companyDir)) {
-            fs.mkdirSync(companyDir, { recursive: true });
-          }
-          fs.copyFileSync(mockPath, sourceFilePath);
-          docBuffer = fs.readFileSync(sourceFilePath);
-        }
-      }
-    }
-
-    if (docBuffer) {
-      try {
-        tableManifest = await generateTableManifest(docBuffer);
-      } catch (err) {
-        console.error("Failed to generate table manifest from docx:", err);
-      }
-    }
-
-    // Extract using Gemini structured outputs
-    const extraction: ExtractionResponse = await extractVariablesWithGemini({
+    const extraction: ExtractionResponse = await extractVariables({
       markdown: company.quotation_markdown,
       pricingSpec: company.pricing_spec,
       companyName: company.company_name,
-      companyBasics,
+      companyBasics: parsedData.company_basics || {
+        company_name: company.company_name,
+        location: company.location,
+        email: company.email,
+        phone: company.phone,
+      },
       industry: company.industry,
-      tableManifest,
     });
-
-    // AST Grounding & Normalization: Guarantee complete row_identifier, col_index, and sample_text
-    // for all table cell and conditional row mutations using the inspected docx AST
-    if (docBuffer) {
-      try {
-        const doc = await Document.loadFromBuffer(docBuffer);
-        const tables = doc.getTables();
-
-        for (const v of extraction.variables) {
-          const m = v.mutation;
-          if (m.action === "replace_table_cell" || m.action === "wrap_conditional_row") {
-            const tIdx = m.table_index ?? 0;
-            const targetTable = tables[tIdx];
-            if (targetTable) {
-              const rows = targetTable.getRows();
-
-              // If col_index or row_identifier is missing, scan table rows to locate exact cell
-              if (m.col_index === undefined || !m.row_identifier) {
-                const sampleToFind = (m.sample_text || v.sample_value || "").trim();
-                let foundRowIdx = -1;
-                let foundColIdx = -1;
-
-                if (sampleToFind) {
-                  for (let r = 0; r < rows.length; r++) {
-                    const cells = rows[r].getCells();
-                    for (let c = 0; c < cells.length; c++) {
-                      if (cells[c].getText().includes(sampleToFind)) {
-                        foundRowIdx = r;
-                        foundColIdx = c;
-                        break;
-                      }
-                    }
-                    if (foundRowIdx >= 0) break;
-                  }
-                }
-
-                if (foundRowIdx >= 0) {
-                  if (m.col_index === undefined) m.col_index = foundColIdx;
-                  if (!m.row_identifier) {
-                    const col0 = rows[foundRowIdx].getCell(0)?.getText().trim();
-                    m.row_identifier = col0 || rows[0].getCell(foundColIdx)?.getText().trim() || v.natural_name;
-                  }
-                } else {
-                  // Fallback based on table row structure
-                  const colCount = rows[0]?.getCellCount() || 2;
-                  if (m.col_index === undefined) m.col_index = colCount === 2 ? 1 : 0;
-                  if (!m.row_identifier) m.row_identifier = v.natural_name || v.variable_name;
-                }
-              }
-
-              // Ensure sample_text is populated
-              if (!m.sample_text && v.sample_value) {
-                m.sample_text = v.sample_value;
-              }
-
-              // Ensure template_tag is populated
-              if (!m.template_tag) {
-                m.template_tag = `{${v.variable_name}}`;
-              }
-
-              // Ensure condition_tag is populated for wrap_conditional_row
-              if (m.action === "wrap_conditional_row" && !m.condition_tag) {
-                m.condition_tag = v.visibility_rule?.condition_flag || `has_${v.variable_name}`;
-              }
-            }
-          }
-        }
-
-        // Guarantee columns array and mutations for repeating loop compound tables
-        for (const t of extraction.compound_tables) {
-          const tableName = (t.natural_name || t.table_id || "").toLowerCase();
-          const loopTag = typeof t.loop_tag === "string" ? t.loop_tag.toLowerCase() : "";
-          const targetTable = tables[t.table_index];
-          const hasAddonInTable = targetTable
-            ? targetTable.getRows().some((r) => {
-                const txt = r.getText().toLowerCase();
-                return txt.includes("add-on") || txt.includes("addon");
-              })
-            : false;
-
-          const isAddonLoop =
-            loopTag === "addon_items" ||
-            loopTag.includes("addon") ||
-            tableName.includes("add-on") ||
-            tableName.includes("addon") ||
-            hasAddonInTable;
-
-          if (t.type === "repeating_loop" && (!t.columns || t.columns.length === 0)) {
-            if (t.loop_tag === "milestones" || t.loop_tag === "project_phases" || t.table_index === 1) {
-              t.columns = ["phase_number", "milestone_title", "deliverable_summary"];
-            } else if (isAddonLoop) {
-              t.columns = ["addon_name", "addon_fee"];
-            } else if (t.loop_tag === "payment_milestones" || t.table_index === 3) {
-              t.columns = ["milestone_name", "trigger_description", "payment_amount"];
-            }
-          }
-
-          if (t.type === "repeating_loop" && isAddonLoop) {
-            if (!t.mutation) {
-              t.mutation = {
-                action: "collapse_repeating_table",
-                table_index: t.table_index,
-                loop_tag: t.loop_tag || "addon_items",
-                template_row_index: 2,
-                row_identifier: "add-on",
-              };
-            } else if (t.mutation.action === "collapse_repeating_table") {
-              if (t.mutation.template_row_index === undefined) {
-                t.mutation.template_row_index = 2;
-              }
-              if (!t.mutation.row_identifier) {
-                t.mutation.row_identifier = "add-on";
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.error("Failed to ground variables against document AST:", err);
-      }
-    }
+    logPipelineArtifact(id, "variables-raw.json", extraction);
 
     const now = new Date().toISOString();
 
     // Idempotent re-scan: delete previous non-custom variables, preserving user-added custom variables
-    const deleteNonCustomStmt = db.prepare(`
-      DELETE FROM company_variables
-      WHERE company_id = ? AND is_custom = 0
-    `);
-    deleteNonCustomStmt.run(id);
+    db.prepare("DELETE FROM company_variables WHERE company_id = ? AND is_custom = 0").run(id);
 
-    // Insert atomic variables
     const insertStmt = db.prepare(`
       INSERT INTO company_variables (
         id, company_id, variable_name, natural_name, category, data_type,
         is_custom, is_deleted, sort_order, descriptor_json, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?)
     `);
 
-    let sortIndex = 0;
     const insertedVariables: ReturnType<typeof formatVariableRow>[] = [];
-
-    for (const v of extraction.variables) {
+    extraction.variables.forEach((v, sortIndex) => {
       const varId = crypto.randomUUID();
-      const descriptorJson = JSON.stringify({
-        sample_value: v.sample_value,
+      // Descriptor keys are what the review deck reads (sample_value, visibility_rule, paragraph_config)
+      const descriptor = {
+        sample_value: v.sample_text,
         description: v.description,
+        context_text: v.context_text || undefined,
         enum_options: v.enum_options,
-        default_value: v.default_value,
-        visibility_rule: v.visibility_rule,
+        visibility_rule: v.condition_flag ? { condition_flag: v.condition_flag } : undefined,
         paragraph_config: v.paragraph_config,
-        mutation: v.mutation,
-      });
-
-      insertStmt.run(
-        varId,
-        id,
-        v.variable_name,
-        v.natural_name,
-        v.category,
-        v.data_type,
-        0, // is_custom
-        0, // is_deleted
-        sortIndex++,
-        descriptorJson,
-        now,
-        now
-      );
-
+      };
+      const descriptorJson = JSON.stringify(descriptor);
+      insertStmt.run(varId, id, v.variable_name, v.natural_name, v.category, v.data_type, sortIndex, descriptorJson, now, now);
       insertedVariables.push({
         id: varId,
         company_id: id,
@@ -385,76 +173,35 @@ router.post("/:id/variables/extract", async (req: Request, res: Response): Promi
         data_type: v.data_type,
         is_custom: false,
         is_deleted: false,
-        sort_order: sortIndex - 1,
+        sort_order: sortIndex,
         descriptor: JSON.parse(descriptorJson),
         created_at: now,
         updated_at: now,
       });
-    }
+    });
 
-    // Insert compound tables
     const insertedCompoundTables: Array<Record<string, unknown>> = [];
-    let tableIndex = 100;
-
-    for (const t of extraction.compound_tables) {
+    extraction.loop_tables.forEach((t, i) => {
       const tableRowId = crypto.randomUUID();
-      const category =
-        t.type === "comparison_matrix"
-          ? "comparison_matrix"
-          : "table_loop";
-
-      const descriptorJson = JSON.stringify({
-        table_id: t.table_id,
+      const descriptor = {
+        table_id: t.loop_tag,
         natural_name: t.natural_name,
-        table_index: t.table_index,
-        type: t.type,
+        type: "repeating_loop",
         loop_tag: t.loop_tag,
-        columns: t.columns || [],
-        enum_options: t.enum_options || [],
-        default_value: t.default_value,
-        mutation: t.mutation,
-      });
+        header_texts: t.header_texts,
+        row_labels: t.row_labels,
+        columns: t.column_tags,
+      };
+      insertStmt.run(tableRowId, id, t.loop_tag, t.natural_name, "table_loop", "table", 100 + i, JSON.stringify(descriptor), now, now);
+      insertedCompoundTables.push({ id: tableRowId, ...descriptor, is_deleted: false });
+    });
 
-      insertStmt.run(
-        tableRowId,
-        id,
-        t.table_id,
-        t.natural_name,
-        category,
-        "table",
-        0, // is_custom
-        0, // is_deleted
-        tableIndex++,
-        descriptorJson,
-        now,
-        now
-      );
-
-      insertedCompoundTables.push({
-        id: tableRowId,
-        table_id: t.table_id,
-        natural_name: t.natural_name,
-        table_index: t.table_index,
-        type: t.type,
-        loop_tag: t.loop_tag,
-        columns: t.columns || [],
-        enum_options: t.enum_options || [],
-        default_value: t.default_value,
-        mutation: t.mutation,
-        is_deleted: false,
-      });
-    }
-
-    // Update working_state_json on company_sessions
     let workingState: any = {};
-    if (company.working_state_json) {
-      try {
-        workingState = JSON.parse(company.working_state_json);
-      } catch {
-        workingState = {};
-      }
+    try {
+      workingState = JSON.parse(company.working_state_json || "{}");
+    } catch {
+      workingState = {};
     }
-
     workingState = {
       ...workingState,
       stage: "variable_review",
@@ -462,18 +209,16 @@ router.post("/:id/variables/extract", async (req: Request, res: Response): Promi
         document_summary: extraction.document_summary,
         extracted_at: now,
         variables_count: extraction.variables.length,
-        compound_tables_count: extraction.compound_tables.length,
-        variables: extraction.variables,
-        compound_tables: extraction.compound_tables,
+        compound_tables_count: extraction.loop_tables.length,
+        variables: insertedVariables,
+        compound_tables: insertedCompoundTables,
       },
     };
-
-    const updateSessionStmt = db.prepare(`
-      UPDATE company_sessions
-      SET working_state_json = ?, updated_at = ?
-      WHERE company_id = ?
-    `);
-    updateSessionStmt.run(JSON.stringify(workingState), now, id);
+    db.prepare("UPDATE company_sessions SET working_state_json = ?, updated_at = ? WHERE company_id = ?").run(
+      JSON.stringify(workingState),
+      now,
+      id
+    );
 
     res.json({
       success: true,
@@ -486,7 +231,7 @@ router.post("/:id/variables/extract", async (req: Request, res: Response): Promi
   } catch (error) {
     res.status(500).json({
       success: false,
-      error: error instanceof Error ? error.message : "Failed to extract variables via Gemini",
+      error: error instanceof Error ? error.message : "Failed to extract variables",
     });
   }
 });
@@ -516,6 +261,10 @@ router.put("/:id/variables", (req: Request, res: Response): void => {
 
       for (const item of variables) {
         if (!item.id) continue;
+        if (item.category != null && !CATEGORIES.includes(item.category)) {
+          res.status(400).json({ success: false, error: `Unknown category "${item.category}"` });
+          return;
+        }
 
         let descriptorJson: string | null = null;
         if (item.descriptor) {
@@ -659,6 +408,11 @@ router.post("/:id/variables/custom", (req: Request, res: Response): void => {
       return;
     }
 
+    if (!CATEGORIES.includes(category) || !DATA_TYPES.includes(data_type)) {
+      res.status(400).json({ success: false, error: `Unknown category "${category}" or data_type "${data_type}"` });
+      return;
+    }
+
     if (!exact_quotation_snippet || !exact_quotation_snippet.trim()) {
       res.status(400).json({
         success: false,
@@ -694,12 +448,7 @@ router.post("/:id/variables/custom", (req: Request, res: Response): void => {
     const descriptor = {
       sample_value: exact_quotation_snippet.trim(),
       description: description || `Custom variable bound from quotation text: "${exact_quotation_snippet.trim()}"`,
-      mutation: {
-        action: "replace_text_run",
-        sample_text: exact_quotation_snippet.trim(),
-        context_anchor: context_anchor || exact_quotation_snippet.trim(),
-        template_tag: `{${cleanVarName}}`,
-      },
+      context_text: context_anchor || undefined,
     };
 
     const insertStmt = db.prepare(`

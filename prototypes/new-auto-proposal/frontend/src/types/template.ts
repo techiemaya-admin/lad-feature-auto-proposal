@@ -1,3 +1,10 @@
+/** Captured tier comparison table; hydration rotates the selected tier into `recommended_index`. */
+export interface TierMatrix {
+  selector: string;
+  recommended_index: number;
+  tiers: { name: string; cells: string[] }[];
+}
+
 export interface TemplateStats {
   template_path: string;
   tags_placed_count: number;
@@ -10,6 +17,7 @@ export interface TemplateStats {
     applied: boolean;
     info?: string;
   }>;
+  tier_matrix?: TierMatrix;
 }
 
 export interface TemplateGenerationResponse {
