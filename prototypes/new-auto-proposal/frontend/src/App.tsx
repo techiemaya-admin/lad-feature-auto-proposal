@@ -253,6 +253,14 @@ export function App() {
     setActiveCompoundTables(tables);
   };
 
+  // Any edit to a variable makes the generated template stale: drop it and stay on the deck
+  const handleVariablesEdited = () => {
+    if (!templateStats) return;
+    setTemplateStats(null);
+    setTemplateFilesize(null);
+    setNotification({ type: "info", message: "Variables changed. Generate the template again when you're done." });
+  };
+
   const handleGenerateTemplate = async () => {
     if (!currentCompany) return;
     setIsGeneratingTemplate(true);
@@ -267,7 +275,7 @@ export function App() {
 
       setNotification({
         type: "success",
-        message: `Template generated for ${currentCompany.company_name}: ${result.tags_placed_count} tags placed, ${result.loops_collapsed_count} loop collapsed.`,
+        message: `Template ready for ${currentCompany.company_name}.`,
       });
     } catch (err) {
       setNotification({
@@ -486,6 +494,7 @@ export function App() {
             onSubmitBriefing={handleBriefingSubmit}
             onUnlockBriefing={handleBriefingUnlock}
             onVariablesChange={handleVariablesChange}
+            onVariablesEdited={handleVariablesEdited}
             onGenerateTemplate={handleGenerateTemplate}
             templateStats={templateStats}
             templateFilesize={templateFilesize}

@@ -1,16 +1,17 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from "react";
 import {
   Sparkles,
+  CheckCircle2,
   RefreshCw,
   Plus,
-  Trash2,
   AlertCircle,
   Check,
   ChevronRight,
-  Layers,
-  FileText,
-  Eye,
-  EyeOff,
+  Loader2,
+  Table2,
+  WandSparkles,
+  Quote,
+  X,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { CustomDropdown } from "./ui/custom-dropdown";
@@ -33,28 +34,74 @@ interface VariableReviewDeckProps {
   companyId: string;
   companyName: string;
   quotationMarkdown?: string | null;
+  isGenerating?: boolean;
+  /** A template exists for the current variables, so this step reads as settled. */
+  isComplete?: boolean;
+  /** variable_name / loop_tag values the last template run could not place. */
+  attentionTargets?: string[];
+  /** Open this variable_name in the tray; a fresh object per tap so repeat taps re-open it. */
+  focusRequest?: { target: string } | null;
   onGenerateTemplate?: () => void;
   onVariablesChange?: (variables: CompanyVariable[], tables: CompoundTable[]) => void;
+  /** Fired on every user edit, so the parent can drop a now-stale template. */
+  onVariablesEdited?: () => void;
 }
 
-type FilterTab = "all" | "customer_input" | "pricing" | "paragraph";
+type VariablePatch = Partial<
+  Pick<CompanyVariable, "natural_name" | "category" | "data_type" | "descriptor" | "is_deleted">
+> & { id: string };
+
+const GROUPS: { category: VariableCategory; label: string }[] = [
+  { category: "customer_input", label: "Customer inputs" },
+  { category: "pricing", label: "Pricing" },
+  { category: "paragraph", label: "Paragraphs" },
+];
+
+const CATEGORY_OPTIONS = [
+  { value: "customer_input", label: "Customer input" },
+  { value: "pricing", label: "Pricing" },
+  { value: "paragraph", label: "Paragraph" },
+];
+
+// ponytail: the backend is one opaque call, so the trace advances on a timer, not on events.
+// Upgrade path: stream progress from /variables/extract and drive `traceStep` from it.
+const SCAN_TRACE = [
+  "Reading the quotation",
+  "Finding what changes per client",
+  "Sorting into customer inputs, pricing and paragraphs",
+  "Checking for repeating tables",
+];
+const TRACE_STEP_MS = 1800;
+const GHOST_ROWS = [[88, 64, 112, 72], [96, 120, 80, 68, 104, 76], [140, 92, 116]];
+
+const tableKey = (t: CompoundTable) => `table:${t.table_id}`;
 
 export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
   companyId,
   companyName,
   quotationMarkdown,
+  isGenerating = false,
+  isComplete = false,
+  attentionTargets = [],
+  focusRequest,
   onGenerateTemplate,
   onVariablesChange,
+  onVariablesEdited,
 }) => {
   const [variables, setVariables] = useState<CompanyVariable[]>([]);
   const [compoundTables, setCompoundTables] = useState<CompoundTable[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isExtracting, setIsExtracting] = useState<boolean>(false);
+  const [traceStep, setTraceStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [filterTab, setFilterTab] = useState<FilterTab>("all");
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
-  const [showDeleted, setShowDeleted] = useState<boolean>(false);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const [dealKey, setDealKey] = useState(0);
+  const [connectorLeft, setConnectorLeft] = useState<number | null>(null);
+
+  const ledgerRef = useRef<HTMLDivElement>(null);
+  const chipRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
   // If companyId changes without remounting, reset loading state during render
   // avoiding cascading renders caused by setting state synchronously inside an effect
@@ -63,33 +110,50 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
     setPrevCompanyId(companyId);
     setIsLoading(true);
     setError(null);
+    setSelectedKey(null);
   }
 
-  // Stable ref for parent callback to avoid unnecessary effect re-runs
+  // Stable refs for parent callbacks to avoid unnecessary effect re-runs
   const onVariablesChangeRef = useRef(onVariablesChange);
+  const onVariablesEditedRef = useRef(onVariablesEdited);
   useEffect(() => {
     onVariablesChangeRef.current = onVariablesChange;
+    onVariablesEditedRef.current = onVariablesEdited;
   });
 
   const runExtraction = useCallback(async () => {
     setIsExtracting(true);
+    setTraceStep(0);
     setError(null);
+    setSelectedKey(null);
     try {
       const result = await extractVariables(companyId);
       setVariables(result.variables);
       setCompoundTables(result.compound_tables);
+      setDealKey((k) => k + 1);
       onVariablesChangeRef.current?.(result.variables, result.compound_tables);
+      onVariablesEditedRef.current?.();
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
-          : "Failed to extract variables. Please check your connection or retry."
+          : "Couldn't scan the quotation. Check your connection and try again."
       );
     } finally {
       setIsExtracting(false);
       setIsLoading(false);
     }
   }, [companyId]);
+
+  // Walk the scan trace while extracting; the last step holds until the call returns
+  useEffect(() => {
+    if (!isExtracting) return;
+    const id = setInterval(
+      () => setTraceStep((s) => Math.min(s + 1, SCAN_TRACE.length - 1)),
+      TRACE_STEP_MS
+    );
+    return () => clearInterval(id);
+  }, [isExtracting]);
 
   // Load variables on company change
   useEffect(() => {
@@ -105,13 +169,14 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
             setVariables(data.variables);
             setCompoundTables(data.compound_tables);
             setIsLoading(false);
+            setDealKey((k) => k + 1);
             onVariablesChangeRef.current?.(data.variables, data.compound_tables);
           }
         }
       })
       .catch((err) => {
         if (!ignore) {
-          setError(err instanceof Error ? err.message : "Failed to load variables");
+          setError(err instanceof Error ? err.message : "Couldn't load variables");
           setIsLoading(false);
         }
       });
@@ -121,165 +186,151 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
     };
   }, [companyId, runExtraction]);
 
-  const handleUpdateNaturalName = async (id: string, newName: string) => {
-    if (!newName.trim()) return;
-    const updated = variables.map((v) =>
-      v.id === id ? { ...v, natural_name: newName.trim() } : v
-    );
-    setVariables(updated);
-    if (onVariablesChange) onVariablesChange(updated, compoundTables);
+  // A warning chip in the template card asks us to open a specific variable (adjust during render)
+  const [handledFocus, setHandledFocus] = useState(focusRequest);
+  const [scrollToKey, setScrollToKey] = useState<string | null>(null);
+  if (focusRequest !== handledFocus) {
+    setHandledFocus(focusRequest);
+    const v = variables.find((x) => x.variable_name === focusRequest?.target);
+    const t = compoundTables.find((x) => x.loop_tag === focusRequest?.target);
+    const key = v ? v.id : t ? tableKey(t) : null;
+    if (key) {
+      setSelectedKey(key);
+      setScrollToKey(key);
+    }
+  }
 
+  // Point the tray's connector at the selected chip; re-measure on resize
+  useLayoutEffect(() => {
+    const measure = () => {
+      const chip = selectedKey ? chipRefs.current.get(selectedKey) : null;
+      const ledger = ledgerRef.current;
+      if (!chip || !ledger) return setConnectorLeft(null);
+      const c = chip.getBoundingClientRect();
+      const l = ledger.getBoundingClientRect();
+      setConnectorLeft(c.left - l.left + c.width / 2);
+      if (scrollToKey === selectedKey) {
+        setScrollToKey(null);
+        chip.scrollIntoView({ block: "center", behavior: "smooth" });
+      }
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [selectedKey, scrollToKey, variables, compoundTables]);
+
+  // Escape closes the tray
+  useEffect(() => {
+    if (!selectedKey) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setSelectedKey(null);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedKey]);
+
+  const flash = (msg: string) => {
+    setSaveStatus(msg);
+    setTimeout(() => setSaveStatus(null), 2500);
+  };
+
+  /** Optimistic local update + parent notification; every edit invalidates the template. */
+  const commit = (updated: CompanyVariable[]) => {
+    setVariables(updated);
+    onVariablesChange?.(updated, compoundTables);
+    onVariablesEdited?.();
+  };
+
+  const persist = async (patch: VariablePatch, msg: string) => {
     try {
-      await updateVariables(companyId, {
-        variables: [{ id, natural_name: newName.trim() }],
-      });
-      flashSaved("Name updated");
-    } catch (err) {
-      console.error("Failed to persist natural name", err);
+      await updateVariables(companyId, { variables: [patch] });
+      flash(msg);
+    } catch {
+      flash("Couldn't save, try again");
     }
   };
 
-  const handleUpdateCategory = async (id: string, newCategory: VariableCategory) => {
+  const handleRename = (id: string, name: string) => {
+    const natural_name = name.trim();
+    const current = variables.find((v) => v.id === id);
+    if (!natural_name || !current || current.natural_name === natural_name) return;
+    commit(variables.map((v) => (v.id === id ? { ...v, natural_name } : v)));
+    persist({ id, natural_name }, "Renamed");
+  };
+
+  const handleCategory = (id: string, category: VariableCategory) => {
     const updated = variables.map((v) => {
       if (v.id !== id) return v;
-      const updatedDescriptor = { ...v.descriptor };
-      if (newCategory === "paragraph" && !updatedDescriptor.paragraph_config) {
-        updatedDescriptor.paragraph_config = {
-          mode: "fixed",
-          purpose: "Original quotation paragraph",
-        };
+      const descriptor = { ...v.descriptor };
+      if (category === "paragraph" && !descriptor.paragraph_config) {
+        descriptor.paragraph_config = { mode: "fixed", purpose: "Original quotation paragraph" };
       }
       return {
         ...v,
-        category: newCategory,
-        data_type: (newCategory === "paragraph" ? "paragraph" : v.data_type) as VariableDataType,
-        descriptor: updatedDescriptor,
+        category,
+        data_type: (category === "paragraph" ? "paragraph" : v.data_type) as VariableDataType,
+        descriptor,
       };
     });
-
-    setVariables(updated);
-    if (onVariablesChange) onVariablesChange(updated, compoundTables);
-
-    try {
-      const target = updated.find((v) => v.id === id);
-      await updateVariables(companyId, {
-        variables: [
-          {
-            id,
-            category: newCategory,
-            data_type: newCategory === "paragraph" ? "paragraph" : undefined,
-            descriptor: target?.descriptor,
-          },
-        ],
-      });
-      flashSaved(`Moved to ${formatCategoryLabel(newCategory)}`);
-    } catch (err) {
-      console.error("Failed to persist category update", err);
-    }
+    commit(updated);
+    const target = updated.find((v) => v.id === id);
+    persist(
+      {
+        id,
+        category,
+        data_type: category === "paragraph" ? "paragraph" : undefined,
+        descriptor: target?.descriptor,
+      },
+      `Moved to ${CATEGORY_OPTIONS.find((o) => o.value === category)?.label}`
+    );
   };
 
-  const handleToggleParagraphMode = async (
+  const patchDescriptor = (
     id: string,
-    mode: "fixed" | "ai_generated"
+    fn: (v: CompanyVariable) => CompanyVariable["descriptor"],
+    msg: string
   ) => {
-    const updated = variables.map((v) => {
-      if (v.id !== id) return v;
-      return {
-        ...v,
-        descriptor: {
-          ...v.descriptor,
-          paragraph_config: {
-            mode,
-            purpose: v.descriptor.paragraph_config?.purpose || "Executive overview and scope",
-            tone: v.descriptor.paragraph_config?.tone || "Professional and consultative",
-            length_guideline: v.descriptor.paragraph_config?.length_guideline || "2-3 sentences",
-            guidance: v.descriptor.paragraph_config?.guidance || "",
-          },
+    const updated = variables.map((v) => (v.id === id ? { ...v, descriptor: fn(v) } : v));
+    commit(updated);
+    persist({ id, descriptor: updated.find((v) => v.id === id)?.descriptor }, msg);
+  };
+
+  const handleParagraphMode = (id: string, mode: "fixed" | "ai_generated") =>
+    patchDescriptor(
+      id,
+      (v) => ({
+        ...v.descriptor,
+        paragraph_config: {
+          mode,
+          purpose: v.descriptor.paragraph_config?.purpose || "Executive overview and scope",
+          tone: v.descriptor.paragraph_config?.tone || "Professional and consultative",
+          length_guideline: v.descriptor.paragraph_config?.length_guideline || "2-3 sentences",
+          guidance: v.descriptor.paragraph_config?.guidance || "",
         },
-      };
-    });
-
-    setVariables(updated);
-    if (onVariablesChange) onVariablesChange(updated, compoundTables);
-
-    try {
-      const target = updated.find((v) => v.id === id);
-      await updateVariables(companyId, {
-        variables: [{ id, descriptor: target?.descriptor }],
-      });
-      flashSaved(`Paragraph mode: ${mode === "fixed" ? "Fixed" : "AI Drafted"}`);
-    } catch (err) {
-      console.error("Failed to persist paragraph mode", err);
-    }
-  };
-
-  const handleUpdateSampleValue = async (id: string, sampleValue: string) => {
-    const updated = variables.map((v) =>
-      v.id === id
-        ? { ...v, descriptor: { ...v.descriptor, sample_value: sampleValue } }
-        : v
+      }),
+      mode === "fixed" ? "Kept as fixed text" : "Will be drafted per client"
     );
-    setVariables(updated);
-    if (onVariablesChange) onVariablesChange(updated, compoundTables);
 
-    try {
-      const target = updated.find((v) => v.id === id);
-      await updateVariables(companyId, {
-        variables: [{ id, descriptor: target?.descriptor }],
-      });
-      flashSaved("Fixed text updated");
-    } catch (err) {
-      console.error("Failed to persist sample value", err);
-    }
-  };
+  const handleSampleValue = (id: string, sample_value: string) =>
+    patchDescriptor(id, (v) => ({ ...v.descriptor, sample_value }), "Text updated");
 
-  const handleUpdateParagraphGuidance = async (id: string, guidance: string) => {
-    const updated = variables.map((v) => {
-      if (v.id !== id) return v;
-      return {
-        ...v,
-        descriptor: {
-          ...v.descriptor,
-          paragraph_config: {
-            mode: v.descriptor.paragraph_config?.mode || "ai_generated",
-            purpose: v.descriptor.paragraph_config?.purpose || "",
-            tone: v.descriptor.paragraph_config?.tone || "",
-            length_guideline: v.descriptor.paragraph_config?.length_guideline || "",
-            guidance,
-          },
+  const handleGuidance = (id: string, guidance: string) =>
+    patchDescriptor(
+      id,
+      (v) => ({
+        ...v.descriptor,
+        paragraph_config: {
+          mode: v.descriptor.paragraph_config?.mode || "ai_generated",
+          purpose: v.descriptor.paragraph_config?.purpose || "",
+          tone: v.descriptor.paragraph_config?.tone || "",
+          length_guideline: v.descriptor.paragraph_config?.length_guideline || "",
+          guidance,
         },
-      };
-    });
-
-    setVariables(updated);
-    if (onVariablesChange) onVariablesChange(updated, compoundTables);
-
-    try {
-      const target = updated.find((v) => v.id === id);
-      await updateVariables(companyId, {
-        variables: [{ id, descriptor: target?.descriptor }],
-      });
-      flashSaved("Guidance saved");
-    } catch (err) {
-      console.error("Failed to persist paragraph guidance", err);
-    }
-  };
-
-  const handleToggleDelete = async (id: string, currentDeleted: boolean) => {
-    const updated = variables.map((v) =>
-      v.id === id ? { ...v, is_deleted: !currentDeleted } : v
+      }),
+      "Focus saved"
     );
-    setVariables(updated);
-    if (onVariablesChange) onVariablesChange(updated, compoundTables);
 
-    try {
-      await updateVariables(companyId, {
-        variables: [{ id, is_deleted: !currentDeleted }],
-      });
-      flashSaved(currentDeleted ? "Variable restored" : "Excluded (kept as static Word text)");
-    } catch (err) {
-      console.error("Failed to toggle delete", err);
-    }
+  const handleToggleLeaveOut = (id: string, is_deleted: boolean) => {
+    commit(variables.map((v) => (v.id === id ? { ...v, is_deleted } : v)));
+    persist({ id, is_deleted }, is_deleted ? "Left out, original wording stays" : "Back in");
   };
 
   const handleAddCustom = async (payload: {
@@ -289,53 +340,49 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
     context_anchor?: string;
   }) => {
     const result = await addCustomVariable(companyId, payload);
-    const updated = [result.variable, ...variables];
-    setVariables(updated);
-    if (onVariablesChange) onVariablesChange(updated, compoundTables);
-    flashSaved(`Added "${payload.natural_name}"`);
+    commit([result.variable, ...variables]);
+    setSelectedKey(result.variable.id);
+    flash(`Added "${payload.natural_name}"`);
   };
 
-  const flashSaved = (msg: string) => {
-    setSaveStatus(msg);
-    setTimeout(() => setSaveStatus(null), 2500);
+  const inUse = variables.filter((v) => !v.is_deleted).length + compoundTables.length;
+  const leftOut = variables.filter((v) => v.is_deleted).length;
+  const selectedVariable = variables.find((v) => v.id === selectedKey) || null;
+  const selectedTable = compoundTables.find((t) => tableKey(t) === selectedKey) || null;
+  const isScanning = isExtracting || (isLoading && variables.length === 0);
+
+  const registerChip = (key: string) => (el: HTMLButtonElement | null) => {
+    if (el) chipRefs.current.set(key, el);
+    else chipRefs.current.delete(key);
   };
 
-  const formatCategoryLabel = (cat: VariableCategory): string => {
-    switch (cat) {
-      case "customer_input":
-        return "Customer Input";
-      case "pricing":
-        return "Pricing";
-      case "paragraph":
-        return "Paragraph";
-      case "table_loop":
-        return "Repeating Table";
-      default:
-        return cat;
-    }
-  };
+  const chipClass = (selected: boolean, leftOutChip = false) =>
+    `inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-xs font-medium border transition-all duration-150 select-none outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+      selected
+        ? "bg-foreground text-background border-foreground shadow-xs"
+        : leftOutChip
+        ? "bg-transparent border-dashed border-border text-muted-foreground line-through hover:text-foreground"
+        : "bg-card border-border text-foreground shadow-xs hover:bg-muted/60 hover:-translate-y-px hover:shadow-sm active:translate-y-0 active:shadow-xs"
+    }`;
 
-  const activeVariables = variables.filter((v) => showDeleted || !v.is_deleted);
-  const displayedVariables = activeVariables.filter((v) => {
-    if (filterTab === "all") return true;
-    return v.category === filterTab;
-  });
-
-  const deletedCount = variables.filter((v) => v.is_deleted).length;
+  let dealIndex = 0;
 
   return (
     <div className="relative bg-card rounded-2xl border border-border/80 shadow-xs overflow-hidden transition-all duration-200">
-      {/* Ambient Top Shimmer Bar during extraction */}
-      {isExtracting && (
-        <div className="h-0.5 w-full bg-linear-to-r from-sky-500 via-emerald-500 to-violet-500 animate-pulse" />
-      )}
+      {isExtracting && <div className="shimmer-bar" />}
 
       <div className="p-5 sm:p-6 space-y-5">
-        {/* Header Bar: Minimal & Unbloated */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="flex size-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <Sparkles className="size-4" />
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2.5">
+            <div
+              className={`flex size-7 items-center justify-center rounded-lg shrink-0 transition-colors duration-300 ${
+                isComplete && !isScanning
+                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                  : "bg-primary/10 text-primary"
+              }`}
+            >
+              {isComplete && !isScanning ? <CheckCircle2 className="size-4" /> : <Sparkles className="size-4" />}
             </div>
             <div>
               <h2 className="text-sm font-semibold text-foreground tracking-tight flex items-center gap-2">
@@ -348,45 +395,31 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
                 )}
               </h2>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Dynamic placeholders and structures scanned from {companyName}&apos;s quotation
+                {isScanning ? (
+                  `Scanning ${companyName}'s quotation for what changes per client.`
+                ) : (
+                  <>
+                    {inUse} spots in {companyName}&apos;s quotation will change for each client.{" "}
+                    <span className="text-foreground font-medium">Tap one to check it.</span>
+                  </>
+                )}
               </p>
             </div>
           </div>
 
-          {/* Right Toolbar Controls */}
-          <div className="flex items-center gap-2">
-            {deletedCount > 0 && (
-              <button
-                onClick={() => setShowDeleted(!showDeleted)}
-                className={`flex items-center gap-1 text-[11px] px-2 py-1 rounded-md transition-all ${
-                  showDeleted
-                    ? "bg-muted text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-                title="Toggle visibility of excluded/static placeholders"
-              >
-                {showDeleted ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
-                <span>
-                  {showDeleted ? "Hide Excluded" : `${deletedCount} Excluded`}
-                </span>
-              </button>
-            )}
-
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={runExtraction}
-              disabled={isExtracting}
-              className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-              title="Re-scan quotation via Gemini"
-            >
-              <RefreshCw className={`size-3 mr-1 ${isExtracting ? "animate-spin" : ""}`} />
-              <span>{isExtracting ? "Scanning..." : "Re-scan"}</span>
-            </Button>
-          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={runExtraction}
+            disabled={isExtracting}
+            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground shrink-0"
+            title="Scan the quotation again"
+          >
+            <RefreshCw className={`size-3 mr-1 ${isExtracting ? "animate-spin" : ""}`} />
+            <span>{isExtracting ? "Scanning" : "Re-scan"}</span>
+          </Button>
         </div>
 
-        {/* Error / Retry Banner */}
         {error && (
           <div className="p-3.5 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div className="flex items-center gap-2">
@@ -400,329 +433,209 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
               className="h-7 text-xs border-destructive/30 hover:bg-destructive/10 text-destructive"
             >
               <RefreshCw className="size-3 mr-1" />
-              Retry Analysis
+              Try again
             </Button>
           </div>
         )}
 
-        {/* Loading Skeletons */}
-        {isExtracting || (isLoading && variables.length === 0) ? (
-          <div className="space-y-3 py-4">
-            <div className="flex items-center gap-2 text-xs text-muted-foreground animate-pulse">
-              <Sparkles className="size-3.5 text-primary" />
-              <span>Scanning quotation structure, pricing tiers, and placeholders...</span>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="h-20 rounded-xl bg-muted/50 animate-pulse" />
-              <div className="h-20 rounded-xl bg-muted/50 animate-pulse" />
-              <div className="h-20 rounded-xl bg-muted/50 animate-pulse" />
+        {isScanning ? (
+          /* Agent trace + ghost ledger while the scan runs */
+          <div className="space-y-4">
+            <ol className="space-y-1.5" aria-live="polite">
+              {SCAN_TRACE.map((label, i) => {
+                const done = i < traceStep;
+                const active = i === traceStep;
+                return (
+                  <li
+                    key={label}
+                    className={`flex items-center gap-2 text-xs transition-colors duration-300 ${
+                      active ? "text-foreground" : done ? "text-muted-foreground" : "text-muted-foreground/40"
+                    }`}
+                  >
+                    <span className="size-4 flex items-center justify-center shrink-0">
+                      {done ? (
+                        <Check className="size-3 text-emerald-500 animate-in zoom-in-50 duration-200" />
+                      ) : active ? (
+                        <Loader2 className="size-3 text-primary animate-spin" />
+                      ) : (
+                        <span className="size-1 rounded-full bg-current" />
+                      )}
+                    </span>
+                    <span>{label}{active ? "…" : ""}</span>
+                  </li>
+                );
+              })}
+            </ol>
+
+            <div className="space-y-2.5 pt-1" aria-hidden="true">
+              {GROUPS.map((g, gi) => (
+                <div key={g.category} className="flex items-start gap-3">
+                  <span className="w-28 shrink-0 text-xs text-muted-foreground/60 pt-1.5">{g.label}</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {GHOST_ROWS[gi].map((w, i) => (
+                      <span
+                        key={i}
+                        className="h-7 rounded-md bg-muted/60 animate-pulse"
+                        style={{ width: w, animationDelay: `${(gi * 4 + i) * 90}ms` }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         ) : (
           <>
-            {/* Filter Pill Tray + [+ Add] ghost button */}
-            <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1">
-              <nav className="flex items-center rounded-lg bg-muted/60 p-0.5 border border-border/40 text-xs">
-                {(
-                  [
-                    { id: "all", label: "All" },
-                    { id: "customer_input", label: "Customer Inputs" },
-                    { id: "pricing", label: "Pricing" },
-                    { id: "paragraph", label: "Paragraphs" },
-                  ] as const
-                ).map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setFilterTab(tab.id)}
-                    className={`px-3 py-1 rounded-md font-medium transition-all select-none ${
-                      filterTab === tab.id
-                        ? "bg-background text-foreground shadow-xs"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </nav>
-
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsAddModalOpen(true)}
-                className="h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/80 rounded-lg border border-border/40 shrink-0"
-              >
-                <Plus className="size-3 mr-1 text-primary" />
-                <span>Add</span>
-              </Button>
-            </div>
-
-            {/* Loop table cards */}
-            {(filterTab === "all" || filterTab === "pricing") && compoundTables.length > 0 && (
-              <div className="space-y-3 pt-1">
-                {compoundTables.map((table) => (
-                      <div
-                        key={table.table_id}
-                        className="rounded-xl bg-muted/30 border border-border/50 p-3.5 space-y-2 transition-all hover:bg-muted/40"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="size-2 rounded-full bg-teal-500 shrink-0" />
-                            <span className="text-xs font-semibold text-foreground">
-                              {table.natural_name || "Repeating Line Items"}
-                            </span>
-                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
-                              Dynamic Loop
-                            </span>
-                          </div>
-
-                          <div className="text-[11px] font-mono text-muted-foreground bg-muted/50 px-2 py-0.5 rounded border border-border/40">
-                            {`{#${table.loop_tag || "items"}}...{/${table.loop_tag || "items"}}`}
-                          </div>
-                        </div>
-
-                        {table.columns && table.columns.length > 0 && (
-                          <p className="text-[11px] text-muted-foreground">
-                            Columns: {table.columns.join(", ")}
-                          </p>
-                        )}
-                      </div>
-                ))}
-              </div>
-            )}
-
-            {/* Atomic Variable Cards */}
-            {displayedVariables.length === 0 ? (
-              <div className="py-10 text-center text-muted-foreground space-y-2">
-                <FileText className="size-6 mx-auto opacity-30 text-primary" />
-                <p className="text-xs font-medium">No variables in this category</p>
-                <p className="text-[11px]">
-                  Click [+ Add] to define custom placeholders from the quotation.
-                </p>
-              </div>
-            ) : (
+            {/* Ledger: one row per category, chips fill the width */}
+            <div ref={ledgerRef} className="relative">
               <div className="space-y-2.5">
-                {displayedVariables.map((v) => {
-                  const isParagraph = v.category === "paragraph";
-                  const paragraphMode =
-                    v.descriptor.paragraph_config?.mode || "fixed";
-                  const hasVisibility = Boolean(
-                    v.descriptor.visibility_rule?.condition_flag
-                  );
-
+                {GROUPS.map((g, gi) => {
+                  const rowVars = variables
+                    .filter((v) => v.category === g.category)
+                    .sort((a, b) => a.sort_order - b.sort_order);
+                  const rowTables = g.category === "pricing" ? compoundTables : [];
+                  const isLast = gi === GROUPS.length - 1;
                   return (
-                    <div
-                      key={v.id}
-                      className={`group rounded-xl p-3.5 border transition-colors ${
-                        v.is_deleted
-                          ? "bg-muted/20 border-border/20 opacity-50"
-                          : "bg-muted/40 hover:bg-muted/60 border-border/40 hover:border-border/60"
-                      }`}
-                    >
-                      {/* Top Row */}
-                      <div className="flex items-center justify-between gap-3">
-                        {/* Dot + Category + Inline Editable Natural Name */}
-                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                          {/* Semantic Color Dot */}
-                          <span
-                            className={`size-2 rounded-full shrink-0 ${
-                              v.category === "customer_input"
-                                ? "bg-sky-500"
-                                : v.category === "pricing"
-                                ? "bg-emerald-500"
-                                : "bg-violet-500"
-                            }`}
-                          />
-
-                          {/* Borderless Inline Editable Name */}
-                          <input
-                            type="text"
-                            defaultValue={v.natural_name}
-                            onBlur={(e) =>
-                              handleUpdateNaturalName(v.id, e.target.value)
-                            }
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.currentTarget.blur();
+                    <div key={g.category} className="flex items-start gap-3">
+                      <span className="w-28 shrink-0 text-xs text-muted-foreground pt-1.5">
+                        {g.label}
+                      </span>
+                      <div className="flex flex-wrap gap-1.5 min-w-0">
+                        {rowVars.length + rowTables.length === 0 && !isLast && (
+                          <span className="text-xs text-muted-foreground/60 pt-1.5">None found</span>
+                        )}
+                        {rowVars.map((v) => {
+                          const selected = v.id === selectedKey;
+                          const needsAttention = attentionTargets.includes(v.variable_name);
+                          const drafted = v.descriptor.paragraph_config?.mode === "ai_generated";
+                          const i = dealIndex++;
+                          return (
+                            <button
+                              key={`${dealKey}-${v.id}`}
+                              ref={registerChip(v.id)}
+                              type="button"
+                              onClick={() => setSelectedKey(selected ? null : v.id)}
+                              aria-pressed={selected}
+                              title={
+                                v.category === "paragraph"
+                                  ? drafted ? "Drafted per client" : "Fixed text"
+                                  : undefined
                               }
-                            }}
-                            className="text-xs font-semibold text-foreground bg-transparent hover:bg-muted/50 focus:bg-background rounded px-1.5 py-0.5 border border-transparent focus:border-border/60 outline-hidden transition-all truncate"
-                            title="Click to rename"
-                          />
-
-                          {/* Category Reclassifier Dropdown */}
-                          <CustomDropdown
-                            value={v.category}
-                            onChange={(val) =>
-                              handleUpdateCategory(
-                                v.id,
-                                val as VariableCategory
-                              )
-                            }
-                            options={[
-                              { value: "customer_input", label: "Customer Input", dotColor: "bg-sky-500" },
-                              { value: "pricing", label: "Pricing", dotColor: "bg-emerald-500" },
-                              { value: "paragraph", label: "Paragraph", dotColor: "bg-violet-500" },
-                            ]}
-                            size="xs"
-                            className="h-5 px-1.5 text-[10px] bg-muted/50 hover:bg-muted border-border/30 rounded-md font-normal"
-                          />
-
-                          {/* Custom Variable Indicator */}
-                          {v.is_custom && (
-                            <span className="text-[10px] text-sky-600 dark:text-sky-400 bg-sky-500/10 px-1.5 py-0.2 rounded border border-sky-500/20 font-mono">
-                              Custom
-                            </span>
-                          )}
-
-                          {/* Conditional Row Indicator */}
-                          {hasVisibility && (
-                            <span className="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
-                              [Conditional: Hidden if $0]
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Soft Remove Button */}
-                        <div className="flex items-center gap-1 shrink-0">
+                              className={`${chipClass(selected, v.is_deleted)} animate-in fade-in slide-in-from-bottom-1 duration-300 motion-reduce:animate-none`}
+                              style={{ animationDelay: `${i * 20}ms`, animationFillMode: "backwards" }}
+                            >
+                              {v.category === "paragraph" &&
+                                (drafted ? (
+                                  <WandSparkles className={`size-3 ${selected ? "" : "text-primary"}`} />
+                                ) : (
+                                  <Quote className={`size-3 ${selected ? "" : "text-muted-foreground"}`} />
+                                ))}
+                              <span className="truncate max-w-56">{v.natural_name}</span>
+                              {needsAttention && !v.is_deleted && (
+                                <span className="size-1.5 rounded-full bg-amber-500" title="Didn't land in the last template" />
+                              )}
+                            </button>
+                          );
+                        })}
+                        {rowTables.map((t) => {
+                          const key = tableKey(t);
+                          const selected = key === selectedKey;
+                          const i = dealIndex++;
+                          return (
+                            <button
+                              key={`${dealKey}-${key}`}
+                              ref={registerChip(key)}
+                              type="button"
+                              onClick={() => setSelectedKey(selected ? null : key)}
+                              aria-pressed={selected}
+                              title="Repeating table"
+                              className={`${chipClass(selected)} animate-in fade-in slide-in-from-bottom-1 duration-300 motion-reduce:animate-none`}
+                              style={{ animationDelay: `${i * 20}ms`, animationFillMode: "backwards" }}
+                            >
+                              <Table2 className={`size-3 ${selected ? "" : "text-muted-foreground"}`} />
+                              <span className="truncate max-w-56">{t.natural_name || "Line items"}</span>
+                              {attentionTargets.includes(t.loop_tag) && (
+                                <span className="size-1.5 rounded-full bg-amber-500" />
+                              )}
+                            </button>
+                          );
+                        })}
+                        {isLast && (
                           <button
-                            onClick={() => handleToggleDelete(v.id, v.is_deleted)}
-                            className={`size-6 rounded flex items-center justify-center transition-all ${
-                              v.is_deleted
-                                ? "text-emerald-500 hover:bg-emerald-500/10"
-                                : "text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                            }`}
-                            title={
-                              v.is_deleted
-                                ? "Restore placeholder"
-                                : "Exclude placeholder (retains original text as static Word content)"
-                            }
+                            type="button"
+                            onClick={() => setIsAddModalOpen(true)}
+                            className="inline-flex items-center gap-1 h-7 px-2.5 rounded-md text-xs font-medium border border-dashed border-border text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
                           >
-                            {v.is_deleted ? (
-                              <Check className="size-3.5" />
-                            ) : (
-                              <Trash2 className="size-3" />
-                            )}
+                            <Plus className="size-3" />
+                            <span>Add one</span>
                           </button>
-                        </div>
-                      </div>
-
-                      {/* Bottom Row: Tag + Verbatim Sample Snippet */}
-                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                        <span className="font-mono text-[11px] text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded border border-border/40">
-                          {`{${v.variable_name}}`}
-                        </span>
-
-                        {v.descriptor.sample_value && (
-                          <span className="text-[11px] text-muted-foreground/80 truncate max-w-md">
-                            &ldquo;{v.descriptor.sample_value}&rdquo;
-                          </span>
                         )}
                       </div>
-
-                      {/* Paragraph Well Pattern */}
-                      {isParagraph && (
-                        <div className="mt-3 rounded-xl bg-muted/30 border border-border/30 p-3 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-medium text-muted-foreground">
-                              Paragraph Drafting Mode
-                            </span>
-
-                            {/* Mode Toggle: Fixed vs AI Drafted */}
-                            <div className="flex items-center rounded-lg bg-muted p-0.5 border border-border/40 text-xs">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleToggleParagraphMode(v.id, "fixed")
-                                }
-                                className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition-all ${
-                                  paragraphMode === "fixed"
-                                    ? "bg-card text-foreground shadow-xs"
-                                    : "text-muted-foreground hover:text-foreground"
-                                }`}
-                              >
-                                Fixed
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleToggleParagraphMode(v.id, "ai_generated")
-                                }
-                                className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition-all ${
-                                  paragraphMode === "ai_generated"
-                                    ? "bg-card text-foreground shadow-xs"
-                                    : "text-muted-foreground hover:text-foreground"
-                                }`}
-                              >
-                                AI Drafted
-                              </button>
-                            </div>
-                          </div>
-
-                          {paragraphMode === "fixed" ? (
-                            <div className="space-y-1">
-                              <label className="text-[10px] uppercase font-semibold tracking-wider text-muted-foreground">
-                                Fixed Text (used verbatim, not AI-drafted)
-                              </label>
-                              <textarea
-                                key={v.id}
-                                defaultValue={v.descriptor.sample_value || ""}
-                                onBlur={(e) =>
-                                  handleUpdateSampleValue(v.id, e.target.value)
-                                }
-                                rows={2}
-                                placeholder="Original text remains verbatim in generated proposals."
-                                className="w-full text-xs bg-transparent border border-border/40 rounded-lg p-2 focus:outline-hidden focus:border-border text-foreground resize-none"
-                              />
-                            </div>
-                          ) : (
-                            <div className="space-y-1">
-                              <label className="text-[10px] uppercase font-semibold tracking-wider text-muted-foreground">
-                                Guidance for AI Lead Customization
-                              </label>
-                              <textarea
-                                defaultValue={
-                                  v.descriptor.paragraph_config?.guidance ||
-                                  v.descriptor.paragraph_config?.purpose ||
-                                  ""
-                                }
-                                onBlur={(e) =>
-                                  handleUpdateParagraphGuidance(v.id, e.target.value)
-                                }
-                                rows={2}
-                                placeholder="Explain client-tailored focus, tone, or specific talking points..."
-                                className="w-full text-xs bg-transparent border border-border/40 rounded-lg p-2 focus:outline-hidden focus:border-border text-foreground resize-none"
-                              />
-                            </div>
-                          )}
-                        </div>
-                      )}
                     </div>
                   );
                 })}
               </div>
-            )}
 
-            {/* Bottom Primary CTA */}
-            <div className="pt-2 flex items-center justify-between border-t border-border/40">
-              <div className="text-[11px] text-muted-foreground">
-                <span>{activeVariables.length} active variables</span>
-                {deletedCount > 0 && <span> • {deletedCount} excluded</span>}
-              </div>
+              {/* Detail tray, docked under the ledger with a connector pointing at the chip */}
+              {(selectedVariable || selectedTable) && (
+                <div className="relative mt-4 animate-in fade-in slide-in-from-top-1 duration-200 motion-reduce:animate-none">
+                  {connectorLeft !== null && (
+                    <span
+                      className="absolute -top-1.5 size-3 rotate-45 bg-muted border-l border-t border-border/70 transition-[left] duration-200 ease-out"
+                      style={{ left: connectorLeft - 6 }}
+                    />
+                  )}
+                  <div
+                    key={selectedKey}
+                    className="rounded-xl bg-muted border border-border/70 p-3.5 space-y-2.5 animate-in fade-in duration-150 motion-reduce:animate-none"
+                  >
+                    {selectedVariable ? (
+                      <VariableTray
+                        v={selectedVariable}
+                        onClose={() => setSelectedKey(null)}
+                        onRename={handleRename}
+                        onCategory={handleCategory}
+                        onParagraphMode={handleParagraphMode}
+                        onSampleValue={handleSampleValue}
+                        onGuidance={handleGuidance}
+                        onToggleLeaveOut={handleToggleLeaveOut}
+                      />
+                    ) : selectedTable ? (
+                      <TableTray t={selectedTable} onClose={() => setSelectedKey(null)} />
+                    ) : null}
+                  </div>
+                </div>
+              )}
+            </div>
 
+            {/* Footer */}
+            <div className="pt-3 flex items-center justify-between border-t border-border/40">
+              <span className="text-[11px] text-muted-foreground">
+                {inUse} in use{leftOut > 0 ? `, ${leftOut} left out` : ""}
+              </span>
               <Button
                 onClick={onGenerateTemplate}
+                disabled={isGenerating || inUse === 0}
                 size="sm"
                 className="h-8 px-4 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-xs btn-tactile"
               >
-                <span>Generate Template</span>
-                <ChevronRight className="size-3.5 ml-1" />
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="size-3.5 mr-1.5 animate-spin" />
+                    <span>Generating</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Generate template</span>
+                    <ChevronRight className="size-3.5 ml-1" />
+                  </>
+                )}
               </Button>
             </div>
           </>
         )}
       </div>
 
-      {/* Add Custom Chip Modal */}
       <AddCustomChipModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
@@ -733,4 +646,222 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
   );
 };
 
-export default VariableReviewDeck;
+/* ---------- Tray contents ---------- */
+
+/** Label over value, so terms and values line up across the grid. */
+const Fact: React.FC<{ label: string; className?: string; children: React.ReactNode }> = ({
+  label,
+  className = "",
+  children,
+}) => (
+  <div className={`min-w-0 ${className}`}>
+    <div className="text-[11px] text-muted-foreground leading-none mb-1">{label}</div>
+    <div className="text-xs text-foreground leading-snug break-words">{children}</div>
+  </div>
+);
+
+const TrayHeader: React.FC<{
+  name: React.ReactNode;
+  actions?: React.ReactNode;
+  onClose: () => void;
+}> = ({ name, actions, onClose }) => (
+  <div className="flex items-center justify-between gap-3">
+    <div className="min-w-0 flex-1">{name}</div>
+    <div className="flex items-center gap-1 shrink-0">
+      {actions}
+      <button
+        type="button"
+        onClick={onClose}
+        className="size-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-background/70 flex items-center justify-center transition-colors"
+        title="Close (Esc)"
+      >
+        <X className="size-3.5" />
+      </button>
+    </div>
+  </div>
+);
+
+const Tag: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <code className="font-mono text-[11px] text-muted-foreground">{children}</code>
+);
+
+interface VariableTrayProps {
+  v: CompanyVariable;
+  onClose: () => void;
+  onRename: (id: string, name: string) => void;
+  onCategory: (id: string, c: VariableCategory) => void;
+  onParagraphMode: (id: string, mode: "fixed" | "ai_generated") => void;
+  onSampleValue: (id: string, text: string) => void;
+  onGuidance: (id: string, text: string) => void;
+  onToggleLeaveOut: (id: string, is_deleted: boolean) => void;
+}
+
+const VariableTray: React.FC<VariableTrayProps> = ({
+  v,
+  onClose,
+  onRename,
+  onCategory,
+  onParagraphMode,
+  onSampleValue,
+  onGuidance,
+  onToggleLeaveOut,
+}) => {
+  const isParagraph = v.category === "paragraph";
+  const mode = v.descriptor.paragraph_config?.mode || "fixed";
+  const d = v.descriptor;
+  const condition = d.visibility_rule?.show_when || d.visibility_rule?.condition_flag;
+
+  return (
+    <>
+      <TrayHeader
+        onClose={onClose}
+        name={
+          <input
+            type="text"
+            defaultValue={v.natural_name}
+            onBlur={(e) => onRename(v.id, e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+            className="w-full text-[13px] font-semibold text-foreground bg-transparent hover:bg-background/60 focus:bg-background rounded px-1.5 py-0.5 -mx-1.5 border border-transparent focus:border-border/60 outline-hidden transition-colors"
+            title="Click to rename"
+          />
+        }
+        actions={
+          <>
+            <CustomDropdown
+              value={v.category}
+              onChange={(val) => onCategory(v.id, val as VariableCategory)}
+              options={CATEGORY_OPTIONS}
+              size="xs"
+              menuAlign="right"
+              className="h-7 px-2 text-[11px] bg-background/70 hover:bg-background border-border/50 rounded-md font-normal"
+            />
+            <button
+              type="button"
+              onClick={() => onToggleLeaveOut(v.id, !v.is_deleted)}
+              className={`h-7 px-2 rounded-md text-[11px] transition-colors ${
+                v.is_deleted
+                  ? "text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
+                  : "text-muted-foreground hover:text-red-500 hover:bg-background/70"
+              }`}
+              title={v.is_deleted ? "Use this spot again" : "Keep the original wording in every proposal"}
+            >
+              {v.is_deleted ? "Bring back" : "Leave out"}
+            </button>
+          </>
+        }
+      />
+
+      {v.is_deleted && (
+        <p className="text-xs text-muted-foreground">
+          Left out. The original wording stays in every proposal.
+        </p>
+      )}
+
+      {!isParagraph && (
+        <div className="space-y-3 pt-3 border-t border-border/50">
+          {d.sample_value && (
+            <Fact label="In the quotation">
+              <span className="text-[13px] font-medium">&ldquo;{d.sample_value}&rdquo;</span>
+            </Fact>
+          )}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3">
+            {d.enum_options && d.enum_options.length > 0 && (
+              <Fact label="One of">{d.enum_options.join(", ")}</Fact>
+            )}
+            {condition && <Fact label="Shown only when">{condition.replace(/_/g, " ")}</Fact>}
+            <Fact label="Template tag">
+              <Tag>{`{${v.variable_name}}`}</Tag>
+            </Fact>
+            {v.is_custom && <Fact label="Source">Added by you</Fact>}
+          </div>
+          {d.description && <p className="text-xs text-muted-foreground">{d.description}</p>}
+        </div>
+      )}
+
+      {isParagraph && (
+        <div className="space-y-3 pt-3 border-t border-border/50">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3">
+            <Fact label="How it's filled" className="col-span-2">
+              <div className="flex items-center rounded-lg bg-background/70 p-0.5 border border-border/40 w-fit mt-0.5">
+                {(
+                  [
+                    { id: "fixed", label: "Fixed text", Icon: Quote },
+                    { id: "ai_generated", label: "Drafted per client", Icon: WandSparkles },
+                  ] as const
+                ).map(({ id, label, Icon }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => onParagraphMode(v.id, id)}
+                    aria-pressed={mode === id}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium transition-all ${
+                      mode === id ? "bg-foreground text-background shadow-xs" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    <Icon className="size-3" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </Fact>
+            <Fact label="Template tag">
+              <Tag>{`{${v.variable_name}}`}</Tag>
+            </Fact>
+          </div>
+
+          {mode === "fixed" ? (
+            <Fact label="Text used in every proposal">
+              <textarea
+                key={`${v.id}-fixed`}
+                defaultValue={d.sample_value || ""}
+                onBlur={(e) => onSampleValue(v.id, e.target.value)}
+                rows={3}
+                placeholder="This exact wording goes into every proposal."
+                className="mt-0.5 w-full text-xs leading-relaxed bg-background/60 border border-border/40 rounded-lg p-2.5 focus:outline-hidden focus:border-border text-foreground resize-none"
+              />
+            </Fact>
+          ) : (
+            <>
+              {d.sample_value && (
+                <Fact label="In the quotation">
+                  <span className="text-muted-foreground line-clamp-2">&ldquo;{d.sample_value}&rdquo;</span>
+                </Fact>
+              )}
+              <Fact label="What should the draft focus on?">
+                <textarea
+                  key={`${v.id}-guidance`}
+                  defaultValue={d.paragraph_config?.guidance || d.paragraph_config?.purpose || ""}
+                  onBlur={(e) => onGuidance(v.id, e.target.value)}
+                  rows={2}
+                  placeholder="e.g. Tie the recommendation to the client's number of locations"
+                  className="mt-0.5 w-full text-xs leading-relaxed bg-background/60 border border-border/40 rounded-lg p-2.5 focus:outline-hidden focus:border-border text-foreground resize-none"
+                />
+              </Fact>
+            </>
+          )}
+        </div>
+      )}
+    </>
+  );
+};
+
+const TableTray: React.FC<{ t: CompoundTable; onClose: () => void }> = ({ t, onClose }) => (
+  <>
+    <TrayHeader
+      onClose={onClose}
+      name={<p className="text-[13px] font-semibold text-foreground">{t.natural_name || "Line items"}</p>}
+    />
+    <div className="pt-3 border-t border-border/50 grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3">
+      <Fact label="Repeats for">each line item on the proposal</Fact>
+      {t.columns?.length > 0 && <Fact label="Columns">{t.columns.join(", ")}</Fact>}
+      {t.row_labels?.length > 0 && (
+        <Fact label="In the quotation">
+          {t.row_labels.length} rows, starting with &ldquo;{t.row_labels[0]}&rdquo;
+        </Fact>
+      )}
+      <Fact label="Template tag">
+        <Tag>{`{#${t.loop_tag}} … {/${t.loop_tag}}`}</Tag>
+      </Fact>
+    </div>
+  </>
+);

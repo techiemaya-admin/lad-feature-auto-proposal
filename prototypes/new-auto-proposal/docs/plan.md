@@ -33,18 +33,19 @@ The system runs a **5-stage sequential pipeline** anchored by an **ambient shell
             └── Gemini extracts dynamic variables
             │
             ▼
-[STAGE 2: CATEGORIZED VARIABLE CHIP-DECK]
-  Interactive cards in 3 buckets: [Customer Inputs] [Pricing Placeholders] [Paragraphs]
-  ├── Inline rename, type/bucket dropdown, AST-verified custom chip injection
-  ├── Paragraph mode toggle: [Fixed Boilerplate] vs [AI-Generated + Prompt Tip]
-  └── [Confirm Variables & Generate Template ➔]
+[STAGE 2: VARIABLE LEDGER]
+  Chips grouped in 3 rows: [Customer inputs] [Pricing] [Paragraphs]; tap a chip to open its detail tray
+  ├── Tray: inline rename, category dropdown, leave out / bring back, AST-verified custom chip via [+ Add one]
+  ├── Paragraph mode: [Fixed text] vs [Drafted per client] (glyph on the chip)
+  ├── Any edit or re-scan drops the Stage 3 template until regenerated
+  └── [Generate template ➔]
             │
             ▼
-[STAGE 3: MINIMAL TEMPLATE CHECKPOINT]
+[STAGE 3: TEMPLATE CHECKPOINT]
   docxmlater finds every occurrence of each verbatim sample_text and derives the mutation (text / paragraph block / conditional row / loop)
-  ├── Inline status card: tag replacement count + loop collapse verification
-  ├── Optional "Quick Preview (.docx)" modal via docx-preview
-  └── [Proceed to Pricing Engine ➔]
+  ├── Preview-first card: clipped docx-preview thumbnail (click → full modal) + one-line summary
+  ├── Unplaced fields listed as chips; tapping one opens that variable's tray in Stage 2
+  └── [Set up pricing ➔]
             │
             ▼
 [STAGE 4: PRICING ENGINE & RULE CARDS]

@@ -18,6 +18,7 @@ interface CompanyProfileCardProps {
   onSubmitBriefing: (prompt: string, file: File | null) => Promise<void>;
   onUnlockBriefing: () => Promise<void>;
   onVariablesChange?: (variables: CompanyVariable[], tables: CompoundTable[]) => void;
+  onVariablesEdited?: () => void;
   onGenerateTemplate?: () => void;
   templateStats?: TemplateStats | null;
   templateFilesize?: number | null;
@@ -34,6 +35,7 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
   onSubmitBriefing,
   onUnlockBriefing,
   onVariablesChange,
+  onVariablesEdited,
   onGenerateTemplate,
   templateStats,
   templateFilesize,
@@ -42,6 +44,22 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
 }) => {
   const [isImporting, setIsImporting] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  // Chips and template warnings share names: tapping a warning opens that chip's tray
+  const [naturalNames, setNaturalNames] = useState<Record<string, string>>({});
+  const [focusRequest, setFocusRequest] = useState<{ target: string } | null>(null);
+
+  const handleVariablesChange = (variables: CompanyVariable[], tables: CompoundTable[]) => {
+    setNaturalNames(
+      Object.fromEntries([
+        ...variables.map((v) => [v.variable_name, v.natural_name]),
+        ...tables.map((t) => [t.loop_tag, t.natural_name]),
+      ])
+    );
+    onVariablesChange?.(variables, tables);
+  };
+  const attentionTargets = (templateStats?.details ?? [])
+    .filter((d) => !d.applied || d.info?.includes("skipped"))
+    .map((d) => d.target);
 
   const handleImport = async () => {
     setIsImporting(true);
@@ -132,7 +150,12 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
           companyId={company.company_id}
           companyName={basics.company_name}
           quotationMarkdown={company.document_metadata?.extracted_markdown}
-          onVariablesChange={onVariablesChange}
+          isGenerating={isGeneratingTemplate}
+          isComplete={Boolean(templateStats)}
+          attentionTargets={attentionTargets}
+          focusRequest={focusRequest}
+          onVariablesChange={handleVariablesChange}
+          onVariablesEdited={onVariablesEdited}
           onGenerateTemplate={onGenerateTemplate}
         />
       )}
@@ -145,8 +168,10 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
           companyName={basics.company_name}
           stats={templateStats}
           filesize={templateFilesize}
+          naturalNames={naturalNames}
           onProceedToPricing={onProceedToPricing}
           onRegenerate={onGenerateTemplate}
+          onFixVariable={(target) => setFocusRequest({ target })}
           isRegenerating={isGeneratingTemplate}
         />
       )}

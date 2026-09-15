@@ -29,29 +29,31 @@ The Rush Away Auto-Proposal onboarding workflow is an **agentic configuration wo
                          (AnyDoc Markdown + Gemini Variable Extraction)
                                       ▼
 ┌───────────────────────────────────────────────────────────────────────────┐
-│  STAGE 2: CATEGORIZED VARIABLE REVIEW CHIP-DECK                           │
-│  - 3 Category Buckets:                                                    │
-│    • Customer Inputs (client name, location count, seats, state)          │
-│    • Pricing Placeholders (rate, tier, subtotal, tax, total)              │
-│    • Narrative Paragraphs (scope of work, SLA, terms)                     │
-│  - Category Filter Pills with counts + [+] Add Chip button                │
-│  - Add Chip: User enters exact quote text snippet (Backend verifies AST)  │
-│  - Move Bucket: Type dropdown moves chip (Moving to Paragraph = Fixed)    │
-│  - Delete Chip: Keeps original text as static Word content                │
-│  - Paragraph Mode Toggle: [Fixed Boilerplate] vs [AI-Generated + Tip]    │
+│  STAGE 2: VARIABLE LEDGER (grouped chips + docked detail tray)            │
+│  - 3 rows, one per category, chips fill the width:                        │
+│    • Customer inputs (client name, dates, contract length)                │
+│    • Pricing (tier, rate, subtotal, tax, total; loop tables as ⊞ chips)   │
+│    • Paragraphs (chip glyph: ❝ fixed text / ✦ drafted per client)         │
+│  - Tap a chip → detail tray docks under the ledger, connector points at it│
+│  - Tray: name (rename inline), "In the quotation" hero, fact grid,        │
+│    category dropdown, [Leave out] / [Bring back] (chip stays, dashed)     │
+│  - [+ Add one] dashed chip at the end of the ledger                       │
+│  - Any edit or re-scan invalidates the Stage 3 template (card removed)    │
 │  - Pure placeholders (no math evaluation at this step)                    │
 └───────────────────────────────────────────────────────────────────────────┘
                                       │
-               User clicks [Confirm Variables & Generate Template ➔]
+                     User clicks [Generate template ➔]
                                       ▼
 ┌───────────────────────────────────────────────────────────────────────────┐
-│  STAGE 3: MINIMAL TEMPLATE CHECKPOINT                                     │
-│  - Compact inline card: "14 tags placed, 1 line-item loop configured"     │
-│  - Optional "Quick Preview (.docx)" modal using docx-preview              │
-│  - Fast confirmation checkpoint, not a heavy blocking step                │
+│  STAGE 3: TEMPLATE CHECKPOINT (preview-first)                             │
+│  - Header "Template ready" + one-line summary of fields / tables / rows   │
+│  - Body: clipped, scaled render of the real .docx (click → full preview)  │
+│  - Fields the engine could not place appear as chips; tapping one opens   │
+│    that variable's tray in Stage 2                                        │
+│  - [Download .docx] + size, primary [Set up pricing ➔]                    │
 └───────────────────────────────────────────────────────────────────────────┘
                                       │
-               User clicks [Proceed to Pricing Engine ➔]
+               User clicks [Set up pricing ➔]
                                       ▼
 ┌───────────────────────────────────────────────────────────────────────────┐
 │  STAGE 4: PRICING ENGINE (Rule Cards + Deterministic Math)                │
@@ -107,60 +109,43 @@ A top prompt container with all rounded edges and an integrated blue Send button
 
 ---
 
-### 3.2 Stage 2: Categorized Variable Review Chip-Deck (`VariableReviewDeck.tsx`)
+### 3.2 Stage 2: Variable Ledger (`VariableReviewDeck.tsx`)
 
-Rather than an administrative data table, dynamic variables appear as modular, interactive cards grouped into 3 intuitive buckets, adhering to the elevated card design system:
+The purpose of this step is an **overview first, detail on demand**: the user should be able to read every variable in one glance and open one only when they want to check it. Editing is possible but never promoted.
 
-#### Applied Design System Rules for Stage 2
-- **Surface Elevation:** The deck container and individual variable cards are elevated pure white surfaces (`bg-card` / `#ffffff`) with crisp borders (`border-border/80`) and `shadow-xs`.
-- **Slid-Down Filter Shelf:** The category filter pill tray sits connected under the header with a darker subtle tint (`zinc-200/50` / `zinc-900/70`), matching the connected shelf pattern established in Stage 1.
-- **Component Primitives:** Built strictly using `@/components/ui` (`Card`, `Badge`, `Button`, `Input`, `Textarea`).
-- **Human Copywriting:** Replace backend engine terms with clear terms: "Snippet found in quotation" (instead of "AST anchor verified"), "Category" (instead of "Taxonomy Bucket").
+#### Layout
+- **Header:** icon (indigo sparkle while the step is open, emerald tick once a template exists — same "settled" signal as Stages 1 and 3), title `Variables`, subtitle `N spots in <Company>'s quotation will change for each client.` followed by the one instruction in foreground weight: `Tap one to check it.` Right: ghost `Re-scan`.
+- **Ledger:** three rows, one per category, label column left (`w-28`, muted) and chips wrapping to fill the rest of the width. No filter tabs, no "All" view.
+  - `Customer inputs` · `Pricing` (loop tables appear here as chips with a table glyph) · `Paragraphs` (chips carry a glyph: quote mark = fixed text, wand = drafted per client, so the mode decision is visible from the overview).
+  - `+ Add one` is a dashed chip at the end of the last row.
+- **Chip anatomy:** `h-7 px-2.5 rounded-md text-xs font-medium`, `bg-card border-border shadow-xs`, hover lifts 1px. States: selected = inverted (`bg-foreground text-background`); left out = dashed border + strikethrough, stays in place; needs attention (template missed it) = 6px amber dot.
+- **Detail tray:** docks under the ledger with a connector that slides to the selected chip. Opaque `bg-muted` surface, `rounded-xl`, hairline below the header row.
+  - Header row: name (inline rename) left; `Category ▾`, `Leave out` / `Bring back`, `×` grouped right.
+  - Hero: `In the quotation` → the verbatim sample text at 13px medium.
+  - Fact grid (`grid-cols-2 sm:grid-cols-3`, label 11px muted over value 12px foreground): `One of`, `Shown only when`, `Template tag` (`{variable_name}` in mono, so the generated template is readable), `Source` (Added by you).
+  - Paragraphs: `How it's filled` segmented control (`Fixed text | Drafted per client`) spans two columns; fixed mode shows `Text used in every proposal`, drafted mode shows the quotation excerpt and `What should the draft focus on?`.
+- **Footer:** `N in use, M left out` left; primary `[ Generate template ➔ ]` right (`bg-blue-600 hover:bg-blue-500 text-white`).
 
-#### The 3 Categories
-1. **Customer Inputs (`customer_input`):** Variables that change with every new lead inquiry (e.g. `client_name`, `num_locations`, `seat_count`, `client_state`). Styled with Sky badge token.
-2. **Pricing Placeholders (`pricing`):** Computed monetary fields and rates generated by the pricing engine (e.g. `package_tier`, `monthly_rate`, `setup_fee`, `tax_amount`, `grand_total`). Styled with Emerald badge token.
-3. **Narrative Paragraphs (`paragraph`):** Multi-sentence clauses that can be fixed boilerplate or drafted dynamically by AI (e.g. `scope_of_work`, `support_sla`, `payment_milestones`). Styled with Violet badge token.
+#### Colour rule
+Category no longer gets a hue. Colour is spent on **state only**: inverted = selected, dashed = left out, amber dot = needs attention, emerald = step settled, blue = the one primary action.
 
-#### Standard Chip Anatomy (Customer & Pricing)
-```
-┌───────────────────────────────────────────────────────────────────────────┐
-│ Number of Locations           {{num_locations}}       [Customer Input ▾]  │
-│ Sample in quotation: "2 locations"                     [Edit]    [Remove] │
-└───────────────────────────────────────────────────────────────────────────┘
-```
-- **Inline Rename:** Clean inline text input without intrusive borders.
-- **Category Switcher:** Native select or dropdown that re-categorizes the chip instantly.
-- **Quotation Snippet:** Displays the verbatim sample text found in the original quotation.
+#### State discipline
+Every user edit in the tray (rename, category, mode, text, leave out / bring back, add, re-scan) calls `onVariablesEdited`; `App` drops `templateStats`, the Stage 3 card disappears and the header icon reverts to the sparkle until the user generates again.
 
-#### Narrative Paragraph Card Anatomy
-```
-┌───────────────────────────────────────────────────────────────────────────┐
-│ Scope of Work Clause          {{scope_of_work}}             [Paragraph ▾] │
-│                                                                           │
-│ Mode: (●) AI-Generated    ( ) Fixed Boilerplate                           │
-│                                                                           │
-│ Prompt tip for AI:                                                        │
-│ Emphasize local SEO audits, Google Business Profile, and weekly reports.  │
-│ (Auto-resizing, p-1, max-h-48 overflow-y-auto, no dividers)               │
-│                                                        [Edit]    [Remove] │
-└───────────────────────────────────────────────────────────────────────────┘
-```
-- **Fluid Prompt Tip Textarea:** Follows the Stage 1 rule—auto-resizes with content, comfortable padding (`p-1`), `max-h-48 overflow-y-auto` (no cut-off text or box-in-box borders), no dividers.
-- **Primary Advance Action:** Consistent theme-blue CTA: `[ Confirm Variables & Generate Template ➔ ]` (`bg-blue-600 hover:bg-blue-500 text-white font-medium shadow-xs`).
+#### Scanning state
+While extraction runs the card shows an agent trace (`Reading the quotation → Finding what changes per client → Sorting into customer inputs, pricing and paragraphs → Checking for repeating tables`, ticking on a timer) above a ghost ledger of pulsing chip placeholders, with the shimmer bar on the card's top edge. The trace is timer-driven because the backend is one opaque call (`ponytail:` comment in code names the upgrade path: stream progress from `/variables/extract`).
 
 ---
 
-### 3.3 Stage 3: Minimal Template Checkpoint (`TemplateCheckpointCard.tsx`)
+### 3.3 Stage 3: Template Checkpoint (`TemplateCheckpointCard.tsx`)
 
-Generating the template is an essential verification checkpoint, but must remain low-profile and avoid developer-centric bragging.
+The user needs three things here: did it work, is anything wrong, what's next. The memorable element is the document itself.
 
-#### Applied Design System Rules for Stage 3
-- **Surface:** Clean, elevated white card (`bg-card`) with `border-border/80` and `shadow-xs`.
-- **Anti-AI-Slop Copywriting:** Strip away internal engine mentions like "mutated the OpenXML AST" or "docxtemplater pipeline". Use human terms:
-  - Header: `Dynamic Template Generated Successfully`
-  - Subtitle: `14 dynamic fields and 1 repeating table configured`
-- **Actions:** Secondary button `[ Quick Preview (.docx) ]` (`variant="outline"`) paired with primary theme-blue advance button `[ Proceed to Pricing Engine ➔ ]` (`bg-blue-600 hover:bg-blue-500 text-white`).
+- **Header:** emerald tick, `Template ready`, one plain sentence built from the stats (`15 fields fill in per client, 1 repeating table, 4 rows hide when empty.`). Right: ghost `Regenerate`.
+- **Body:** a clipped, scaled (`scale-[0.62] sm:scale-[0.72]`) `docx-preview` render of the real template with a bottom fade; the whole thumbnail is a button that opens the full preview modal. One blob fetch feeds both. Loading copy: `Drawing your template`.
+- **Warnings:** if `details[]` contains misses or context-skips, an amber panel lists them as chips using the variable's natural name; `onFixVariable(target)` opens that chip's tray in Stage 2 and marks the chip with the amber dot.
+- **Footer:** ghost `[Download .docx]` with the file size beside it in muted 11px; primary `[ Set up pricing ➔ ]`.
+- **Copy rule:** no engine vocabulary (`AST`, `OpenXML`, `docx-preview`, `Pricing Engine`) anywhere the user reads.
 
 ---
 
@@ -236,7 +221,7 @@ Dynamic variables and UI states follow strict semantic color mappings for instan
 | **Pricing Placeholders** | Mint / Emerald | `bg-emerald-500/10 text-emerald-400 border-emerald-500/25` / `bg-emerald-50 text-emerald-700 border-emerald-200` | Computed monetary fields, unit rates, discounts, totals. Conveys financial precision. |
 | **Narrative Paragraphs** | Amethyst / Violet | `bg-violet-500/10 text-violet-400 border-violet-500/25` / `bg-violet-50 text-violet-700 border-violet-200` | Generative clauses, SOW, SLA, terms. Conveys AI language synthesis. |
 | **Static Original** | Muted Slate | `bg-zinc-800/50 text-zinc-400 border-zinc-700/50` / `bg-slate-100 text-slate-500 border-slate-200` | Unmodified Word content retained verbatim without dynamic tags. |
-| **Primary Actions / Glow** | Electric Indigo | `bg-gradient-to-r from-indigo-500 to-violet-600 shadow-indigo-500/20` | High-confidence advance buttons (`[Send ➔]`, `[Confirm Variables ➔]`). |
+| **Primary Actions / Glow** | Electric Indigo | `bg-gradient-to-r from-indigo-500 to-violet-600 shadow-indigo-500/20` | High-confidence advance buttons (`[Send ➔]`, `[Generate template ➔]`, `[Set up pricing ➔]`). |
 
 ### 5.3 Motion Choreography & Micro-Animations (<200ms GPU Accelerated)
 Zero heavy animation libraries; leverage native CSS transitions and `tw-animate-css`:
@@ -249,8 +234,9 @@ Zero heavy animation libraries; leverage native CSS transitions and `tw-animate-
    - On submission, textarea smoothly collapses into a locked status ribbon (`transition-all duration-200 ease-out`).
    - `[Send ➔]` transitions into `[Edit / Reset ✎]` with opacity fade.
    - Downstream stages reveal via `animate-in fade-in slide-in-from-bottom-3 duration-300`.
-3. **Staggered Cascade for Extracted Variable Chips:**
-   - Discovered chips cascade onto the deck sequentially via `style={{ animationDelay: \`${Math.min(idx * 25, 300)}ms\` }}` using `animate-in fade-in slide-in-from-bottom-2`.
+3. **One orchestrated moment for the Variable Ledger:**
+   - When a scan lands, chips deal in once with a 20 ms stagger (`animate-in fade-in slide-in-from-bottom-1 duration-300`, `animationFillMode: backwards`). Nothing else on the ledger moves unprompted.
+   - Tapping a chip inverts it (120 ms) and the tray's connector slides on the x-axis to it (`transition-[left] duration-200`); tray content crossfades. `motion-reduce` disables the stagger and slides.
 4. **Tactile Physics for Interactive Elements:**
    - Hover lift: `hover:-translate-y-0.5 transition-transform duration-100`.
    - Active press: `active:scale-[0.98] active:translate-y-0 duration-75`.
