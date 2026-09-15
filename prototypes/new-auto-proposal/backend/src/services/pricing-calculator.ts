@@ -458,7 +458,8 @@ export function validate(rules: PricingRules, stage2: Stage2Context): Validation
         const t = table(`${p}.table`, v, v.table);
         if (!t) break;
         conds(`${p}.where`, v, v.where, v.table);
-        column(`${p}.key_column`, v, v.table, v.key_column, "key");
+        // key_column only matters when rows are picked by the lead; models leave it "" for rows: "all".
+        if (v.rows === "selected" || v.key_column) column(`${p}.key_column`, v, v.table, v.key_column, "key");
         if (v.rows === "selected") {
           const s = v.selected_var ? vars.get(v.selected_var) : undefined;
           if (!v.selected_var) err(`${p}.selected_var`, `${v.name}: rows "selected" needs a selected_var`);

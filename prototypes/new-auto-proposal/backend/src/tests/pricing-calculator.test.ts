@@ -188,6 +188,9 @@ test("validate: domain-level errors with paths", () => {
   assert.match(messages(errs((r) => { (r.variables.find((v) => v.name === "tax_amount") as any).condition_flag = "tax_rate"; })), /condition_flag.*tax_rate.*not a condition/);
   assert.match(messages(errs((r) => { r.variables.push({ ...r.variables[0], name: "location_count" }); })), /duplicate.*location_count/i);
   assert.match(messages(errs((r) => { r.variables.push({ ...r.variables[0], name: "Bad Name" }); })), /identifier/);
+  // an aggregate over all rows needs no key column (the model leaves it "" — seen live on every first attempt)
+  assert.deepEqual(errs((r) => { (r.variables.find((v) => v.name === "tax_match_count") as any).key_column = ""; }), []);
+  assert.match(messages(errs((r) => { (r.variables.find((v) => v.name === "addon_items") as any).key_column = ""; }, "co3_dev")), /addon_items.*key column/);
 });
 
 test("formatLike renders a value in the sample's own notation", () => {
