@@ -193,10 +193,8 @@ Name: "${params.companyName}"  Location: "${b?.location || ""}"  Email: "${b?.em
 `;
 }
 
-export async function extractVariablesWithGemini(
-  params: ExtractVariablesParams,
-  modelName = "gemini-2.5-flash"
-): Promise<ExtractionResponse> {
+/** One structured-output call: prompt in, schema-shaped JSON out. Every Gemini feature goes through here. */
+export async function generateJsonWithGemini<T>(prompt: string, schema: ResponseSchema, modelName = "gemini-2.5-flash"): Promise<T> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY environment variable is not set");
@@ -206,16 +204,16 @@ export async function extractVariablesWithGemini(
     model: modelName,
     generationConfig: {
       responseMimeType: "application/json",
-      responseSchema: extractionResponseSchema,
+      responseSchema: schema,
       temperature: 0.1,
     },
   });
 
-  const result = await model.generateContent(buildExtractionPrompt(params));
+  const result = await model.generateContent(prompt);
   const responseText = result.response.text();
 
   try {
-    return JSON.parse(responseText) as ExtractionResponse;
+    return JSON.parse(responseText) as T;
   } catch (error) {
     throw new Error(
       `Failed to parse Gemini structured output JSON: ${
@@ -223,4 +221,8 @@ export async function extractVariablesWithGemini(
       }`
     );
   }
+}
+
+export function extractVariablesWithGemini(params: ExtractVariablesParams, modelName?: string): Promise<ExtractionResponse> {
+  return generateJsonWithGemini<ExtractionResponse>(buildExtractionPrompt(params), extractionResponseSchema, modelName);
 }

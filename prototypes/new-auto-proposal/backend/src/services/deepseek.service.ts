@@ -31,10 +31,8 @@ Respond with ONLY a single JSON object — no markdown fences, no commentary —
 Every field above without "(optional)" is required, use "" for not-applicable strings.
 `;
 
-export async function extractVariablesWithDeepSeek(
-  params: ExtractVariablesParams,
-  model = "deepseek-flash"
-): Promise<ExtractionResponse> {
+/** One JSON-mode chat completion: prompt + spelled-out shape in, parsed JSON out. Every DeepSeek feature goes through here. */
+export async function generateJsonWithDeepSeek<T>(prompt: string, jsonShapeSuffix: string, model = "deepseek-flash"): Promise<T> {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
     throw new Error("DEEPSEEK_API_KEY environment variable is not set");
@@ -50,7 +48,7 @@ export async function extractVariablesWithDeepSeek(
     },
     body: JSON.stringify({
       model,
-      messages: [{ role: "user", content: buildExtractionPrompt(params) + JSON_SHAPE_INSTRUCTIONS }],
+      messages: [{ role: "user", content: prompt + jsonShapeSuffix }],
       response_format: { type: "json_object" },
       temperature: 0.1,
     }),
@@ -68,7 +66,7 @@ export async function extractVariablesWithDeepSeek(
   }
 
   try {
-    return JSON.parse(content) as ExtractionResponse;
+    return JSON.parse(content) as T;
   } catch (error) {
     throw new Error(
       `Failed to parse DeepSeek structured output JSON: ${
@@ -76,4 +74,8 @@ export async function extractVariablesWithDeepSeek(
       }`
     );
   }
+}
+
+export function extractVariablesWithDeepSeek(params: ExtractVariablesParams, model?: string): Promise<ExtractionResponse> {
+  return generateJsonWithDeepSeek<ExtractionResponse>(buildExtractionPrompt(params), JSON_SHAPE_INSTRUCTIONS, model);
 }

@@ -235,6 +235,7 @@ router.post("/:id/briefing/unlock", (req: Request, res: Response): void => {
       unlocked_at: now,
       extracted_variables: null,
       template_generated: false,
+      pricing_rules: null,
     };
 
     const updateStmt = db.prepare(`

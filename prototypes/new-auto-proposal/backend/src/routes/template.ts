@@ -51,6 +51,7 @@ router.post("/:id/template/generate", async (req: Request, res: Response): Promi
       ...workingState,
       stage: "template_checkpoint",
       template_generated: true,
+      pricing_rules: null, // a new template resets Stage 4 (hard-reset policy)
       template_generated_at: now,
       template_stats: {
         template_path: result.template_path,
