@@ -34,7 +34,11 @@ test("Pricing rules routes", async (t) => {
     setRulesModelCall(null);
     process.chdir(cwd);
     closeDatabase();
-    fs.rmSync(testDir, { recursive: true, force: true });
+    try {
+      fs.rmSync(testDir, { recursive: true, force: true });
+    } catch {
+      // Windows may still hold the sqlite/docx handles for a moment; a leaked temp dir is not a failure.
+    }
   });
 
   /** Stage 1 for real (anydoc markdown), Stage 2 from the golden fixture, Stage 3 for real (tier matrix in template_stats). */
