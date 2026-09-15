@@ -108,16 +108,19 @@ Every field the engine depends on is `required` in the Gemini response schema �
 `backend/src/services/template-mutator.service.ts` owns **all** location logic and derives the mutation from the variable itself:
 
 - Every paragraph (body or table cell) containing `sample_text` is a hit. Matching tolerates NBSP/run-on whitespace, `-`/`−`/`–` and straight/curly quote variants, and stripped `- `/`• ` list markers; bare-word samples match whole words only.
-- `category: paragraph` → the hit paragraph becomes `{tag}`; following siblings in the same list (`numId`) or listed in the multi-line `sample_text` are pruned. Formatting is kept only when the paragraph is uniformly formatted.
+- `category: paragraph` → the hit paragraph becomes `{tag}`; following siblings in the same list (`numId`) or listed in the multi-line `sample_text` are pruned. Formatting is kept only when the paragraph is uniformly formatted. If the sample is only a sub-span of the paragraph (one sentence of it), just that span is replaced and the rest stays static — e.g. `Equivalent to {monthly_equivalent}/month … {minimum_commitment_note}`. `paragraph_config.mode: "fixed"` keeps the text as written; the client name / numbers inside it are separate variables and tag inline.
+- Sample cleanup (`sampleLines`): models copy from markdown, so list markers, `**bold**` / `*italic*` / `_x_` emphasis and `\_` escapes are stripped before matching — the Word file has none of them.
 - `condition_flag` set → value replaced **and** the row wrapped with `{#flag}` in cell 0 / `{/flag}` in the last cell (easy-template-x row loop). On a `paragraph` variable the paragraph becomes `{#flag}{tag}{/flag}` and is dropped when the flag is false.
 - Otherwise → text replaced in place at every hit, preserving run formatting via `replaceTextCrossRun`.
 - A bare number (`5`, `42`) without `context_text` only replaces inside table cells when any table hit exists (a `5` in "within 5 business days" is not the variable).
 - **Ordering:** variables are applied longest `sample_text` first, and a context-narrowed variable before an equal-length global one — this is what makes `Growth Package — 12 months × $3,000/mo` survive `$3,000/mo`, and lets `$60.00` (managed devices, with context) and `$60.00` (adjusted rate, global) coexist.
 - **Loop collapse:** table located by `header_texts` (position-wise), loop rows by `row_labels`; the first loop row gets `{column_tags}` and `{#loop}…{/loop}`, the rest are removed. Header, base-fee, subtotal, discount and total rows are untouched because they are not in `row_labels`.
-- Every variable yields a `details[]` entry (`applied`, `info`) surfaced in the Template Checkpoint, including `N other occurrence(s) skipped by context_text` and `"…" not found in document` — the review deck is where model variance gets caught.
+- Every variable yields a `details[]` entry (`applied`, `info`) surfaced in the Template Checkpoint, including `N other occurrence(s) skipped by context_text` and `"…" not found in document` — the review deck is where model variance gets caught. After all mutations `applyTemplate` checks every placed tag against the final text: a tag swallowed by a later paragraph/loop mutation, or a value that only ever lived inside one (`location_count` = "two" inside the intro paragraph), becomes `action: "covered"` (applied, no tag; the drafter of that block receives it as input); a tag that vanished for any other reason is flipped to a miss. The UI treats only `applied: false` as "didn't land".
 - **Tier comparison matrix** (columns = tiers, rows = features): easy-template-x has no column loops and the "recommended" highlight is cell shading the engine never touches, so the matrix is tagged **positionally** and the selected tier is *rotated into the highlighted column* at hydration. Detection: the table whose header row names ≥2 of the selector's `enum_options` including its `sample_text`. Every tier column's cells become `{tierN_name}` (header text outside the name, e.g. ` — Recommended`, stays) and `{tierN_rM}`; label columns stay static. The captured grid + `recommended_index` are returned as `tier_matrix` and persisted in `template_stats`; `buildTierMatrixPayload(matrix, selectedTier)` produces the flat tag values with the selected tier in the highlighted column and the others in their original order (Local → `Growth | Local — Recommended | Authority`). Runs before the global replacements so `{selected_tier}` / `{selected_tier_rate}` do not touch the matrix.
 
-Golden test: `backend/src/tests/template-mutator.test.ts` + `tests/fixtures/*.variables.json` (an ideal Gemini response per company) must reproduce the tag layout of `Mock Data/templated_markdown/*.md`, plus the matrix rotation, conditional-paragraph and "a miss is reported, never dropped" cases. Live extraction quality is measured by `npm run test:live` (`tests/gemini.live.ts`, needs `GEMINI_API_KEY`, not part of `npm test`) as "every `sample_text` is verbatim in the quotation markdown".
+Golden test: `backend/src/tests/template-mutator.test.ts` + `tests/fixtures/*.variables.json` (an ideal Gemini response per company) must reproduce the tag layout of `Mock Data/templated_markdown/*.md`, plus the matrix rotation, conditional-paragraph and "a miss is reported, never dropped" cases. `tests/fixtures/*.raw.json` are real model responses copied from `logs/` and must come through with zero losses (placed or covered) — the ideal fixtures alone never go red on model quirks. Live extraction quality is measured by `npm run test:live` (`tests/gemini.live.ts`, needs `GEMINI_API_KEY`, not part of `npm test`) as "every `sample_text` is verbatim in the quotation markdown".
+
+Model choice: provider/model are persisted in `app_settings` (default `deepseek-flash`) and stamped into every `variables-raw.json` log as `ai`. Measured on Co1 (2026-09-15, 2 runs each): `gemini-flash-lite-latest` dropped `$36,000.00` in 3 of 4 runs regardless of prompt; `gemini-2.5-flash` and `deepseek-flash` returned every amount.
 
 ### 4.4 Proposal Hydration with `easy-template-x`
 - Ingests the templated `.docx` binary and a hydrated JSON data payload.
@@ -148,6 +151,27 @@ Golden test: `backend/src/tests/template-mutator.test.ts` + `tests/fixtures/*.va
 - Add / remove conditions          - Calculates subtotals, taxes, totals
 - Reviewer JSON Inspector Dropdown - Guarantees 100% mathematical precision
 ```
+
+### What the Variable Ledger hands the Pricing Engine (read before building Stage 4)
+
+Verified against `logs/*/variables-raw.json` and `company_variables` on 2026-09-15 (24 / 25 / 17 rows for co1 / co2 / co3, every row with a `sample_value`, matching `Mock Data/templated_markdown/*.md` structurally).
+
+**What is there and reliable**
+- Every money amount in every table is a `pricing` / `currency` variable with a `{tag}` in the template. Optional rows carry a `condition_flag` on their amount variable (`has_annual_discount`, `has_tax`, `has_volume_adjustment`, `has_extra_devices`, `has_bundle_discount`); the payload needs the matching boolean.
+- `selected_tier` is `data_type: enum` with `enum_options` = every tier offered; `template_stats.tier_matrix` (in `working_state_json`) holds the comparison grid; `buildTierMatrixPayload(matrix, selectedTier)` produces its tags.
+- Customer inputs the math needs exist even when they have no tag of their own (`covered` — they live inside a drafted paragraph): `location_count` (co1, tier selection), `seat_count` / `managed_device_count` (co2), `product_count` (co3).
+- Loops (`co3`: `milestones`, `addon_items`, `payment_milestones`) expect an array keyed by `loop_tag` with one object per row keyed by `column_tags`.
+
+**What the engine must do itself**
+1. **Tag values are display strings, not numbers.** `selected_tier_rate` in co1 is `$3,000/mo`, `sales_tax_rate` is `8.25%`. Compute with numbers, then format each tag exactly like its `sample_value` (currency symbol, thousands separator, decimals, `/mo` suffix): one `formatLike(sample, value)` helper.
+2. **Parse percentages from the sample string**, not from `data_type` — the model types `10%` as `number` in one run and `string` in the next. `"8.25%"` → `0.0825`.
+3. **Add-on selection (co3) is not a customer input.** It is only present as the `addon_items` loop and the `addon_menu` paragraph. The rule schema must define the add-on multi-select itself and emit both the loop rows and the menu paragraph's inputs.
+4. **Drafted paragraphs get numbers as inputs, never compute them.** Every variable marked `covered` by a paragraph, plus every value that paragraph mentions (`$8,000/mo` upgrade price, `10 seats` floor), goes into the drafter's input set; the drafter returns text with `{tags}` for the program to fill — it never writes a number itself.
+5. **Words for numbers.** `location_count` is `"two"` in both co1 and co2; the lead form collects an integer, the drafter spells it.
+6. **Labels that encode a rule are not all tagged yet.** Known static text that depends on the rule outcome: co2 `Volume adjustment (25–49 seat band)` (add `volume_tier_band` as a custom chip), co2 `Ohio state tax` and co1 `{client_state}` (only co1 extracted the state), co3 `Base template: up to 100 products, … 4–6 weeks` and `(base template, up to 100 products)` (tier-dependent; add as a custom paragraph). Fix these in Variable Review, not in code.
+7. **co3 `enum_options` casing:** the option reads `E-commerce`, the sample and heading `E-Commerce`; compare tiers case-insensitively or fix the option in the review deck.
+8. **Minimum-commitment rules appear as prose, not rows.** co1 `minimum_engagement_months` = 3, co2 `minimum_seat_commitment` = 10 (covered by its note). The rule schema needs a floor/minimum concept; the template only displays it.
+9. **Benchmarks are the acceptance test.** The three totals below must come out of the interpreter to the cent before any UI work; `Mock Data/verification_guide.md` has the arithmetic.
 
 ### The Three Ground-Truth Test Profiles
 

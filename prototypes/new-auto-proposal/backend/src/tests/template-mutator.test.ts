@@ -32,8 +32,8 @@ const COMPANIES = {
   co3_dev: "Co3_Proposal_Fieldstone_RosewoodHomeGoods.docx",
 } as const;
 
-async function renderFixture(id: keyof typeof COMPANIES) {
-  const fx = JSON.parse(fs.readFileSync(path.join(fixturesDir, `${id}.variables.json`), "utf8"));
+async function renderFixture(id: keyof typeof COMPANIES, kind: "variables" | "raw" = "variables") {
+  const fx = JSON.parse(fs.readFileSync(path.join(fixturesDir, `${id}.${kind}.json`), "utf8"));
   const doc = await Document.loadFromBuffer(fs.readFileSync(path.join(mockDocxDir, COMPANIES[id])));
   const { details, tier_matrix } = applyTemplate(doc, fx.variables, fx.loop_tables);
   const buffer = await doc.toBuffer();
@@ -199,4 +199,69 @@ test("mutateDocumentTemplate reads descriptors from SQLite and writes template.d
     process.chdir(cwd);
     closeDatabase();
   }
+});
+
+/**
+ * Regression seam for model quirks: fixtures/*.raw.json are real Gemini responses (copied from logs/). The ideal
+ * fixtures above can never go red on markdown markers, sub-span paragraphs or facts that only live inside prose.
+ */
+for (const id of Object.keys(COMPANIES) as Array<keyof typeof COMPANIES>) {
+  test(`${id} (raw Gemini log): nothing is lost — every variable is placed or covered by a drafted block`, async () => {
+    const { details } = await renderFixture(id, "raw");
+    const missed = details.filter((d) => !d.applied).map((d) => `${d.target}: ${d.info}`);
+    assert.deepEqual(missed, []);
+  });
+}
+
+test("raw co1: a one-sentence paragraph sample replaces only that sentence, so the number beside it keeps its own tag", async () => {
+  const { markdown, details } = await renderFixture("co1_seo", "raw");
+  assert.match(markdown, /Equivalent to \{effective_monthly_rate\}\/month, billed as a single annual payment\. \{minimum_commitment_note\}/);
+  assert.match(details.find((d) => d.target === "minimum_commitment_note")!.info!, /placed inline/);
+});
+
+test("raw co2: a fact that only lives inside a drafted paragraph is reported as covered, not missed", async () => {
+  const { details } = await renderFixture("co2_msp", "raw");
+  const d = details.find((x) => x.target === "office_count")!;
+  assert.equal(d.applied, true);
+  assert.equal(d.action, "covered");
+  assert.match(d.info!, /inside \{environment_situation_paragraph\}/);
+});
+
+test("raw co3: markdown emphasis copied into sample_text is ignored; a tag swallowed by a loop collapse is reported as covered", async () => {
+  const { markdown, details } = await renderFixture("co3_dev", "raw");
+  assert.match(markdown, /\*\*Add-On Menu — Selected for This Project\*\*\n\n\{addon_menu\}\n\n\*Selecting 2 or more/); // "**✓** …" lines collapsed, static note kept
+  assert.doesNotMatch(markdown, /Copywriting — product|CMS Integration|Rush Delivery/);
+  assert.match(markdown, /\*\{tax_note\}\*/); // "*No sales tax…*" matched without the asterisks, italics kept
+  const d = details.find((x) => x.target === "product_count")!;
+  assert.equal(d.action, "covered");
+  assert.doesNotMatch(markdown, /\{product_count\}/);
+});
+
+test("a fixed paragraph keeps its text and the values inside it tag inline", async () => {
+  const doc = await Document.loadFromBuffer(fs.readFileSync(path.join(mockDocxDir, COMPANIES.co1_seo)));
+  const { details } = applyTemplate(
+    doc,
+    [
+      { variable_name: "upgrade_path", category: "paragraph", mode: "fixed", condition_flag: "has_upgrade", sample_text: "If you open a third clinic mid-year, Growth already covers it at no change in price. A fourth location would move you into Authority ($8,000/mo), which adds a dedicated strategist and weekly content — we'd re-quote at that point, not before." },
+      { variable_name: "selected_tier", category: "pricing", sample_text: "Growth", enum_options: ["Local", "Growth", "Authority"] },
+    ],
+    []
+  );
+  const text = doc.getAllParagraphs().map((p) => p.getText()).join("\n");
+  assert.equal(details.find((d) => d.target === "upgrade_path")!.action, "keep_paragraph");
+  assert.match(text, /\{#has_upgrade\}If you open a third clinic mid-year, \{selected_tier\} already covers it .* not before\.\{\/has_upgrade\}/);
+  assert.doesNotMatch(text, /\{upgrade_path\}/);
+});
+
+test("a tag that a later mutation removed is flipped back to a miss, never reported as placed", async () => {
+  const doc = await Document.loadFromBuffer(fs.readFileSync(path.join(mockDocxDir, COMPANIES.co3_dev)));
+  const { details } = applyTemplate(
+    doc,
+    [{ variable_name: "discovery", category: "customer_input", sample_text: "Discovery", context_text: "Requirements confirmed" }],
+    [{ loop_tag: "milestones", header_texts: ["Phase", "Milestone", "Deliverable"], column_tags: ["n", "m", "d"], row_labels: ["1", "2", "3", "4", "5"] }]
+  );
+  const d = details.find((x) => x.target === "discovery")!;
+  assert.equal(d.applied, true);
+  assert.equal(d.action, "covered"); // the milestone row it sat in became the {#milestones} template row
+  assert.match(d.info!, /inside \{#milestones\}/);
 });

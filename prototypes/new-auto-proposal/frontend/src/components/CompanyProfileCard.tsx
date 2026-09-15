@@ -58,7 +58,7 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
     onVariablesChange?.(variables, tables);
   };
   const attentionTargets = (templateStats?.details ?? [])
-    .filter((d) => !d.applied || d.info?.includes("skipped"))
+    .filter((d) => !d.applied)
     .map((d) => d.target);
 
   const handleImport = async () => {

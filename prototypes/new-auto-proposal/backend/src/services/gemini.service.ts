@@ -155,6 +155,7 @@ Name: "${params.companyName}"  Location: "${b?.location || ""}"  Email: "${b?.em
 
 ==================== RULES ====================
 1. sample_text must be copied character-for-character from the quotation: same punctuation, currency symbols, dashes (— vs -), minus signs (−), "/mo" suffixes. The engine does an exact search; if the text is not verbatim the variable is silently lost.
+   * Copy the WORDS only, never markdown: no "**", "*", "_" emphasis markers, no "- " / "• " bullet markers, no "\_" escapes. Bold and italics are formatting in the Word file, not characters.
 
 2. Never extract the agency's own name, team name, address, phone, email, the "Next Steps" paragraph, or the closing legal disclaimer. Only extract things about the CLIENT, the chosen package, prices, dates, and client-specific prose.
 
@@ -164,6 +165,7 @@ Name: "${params.companyName}"  Location: "${b?.location || ""}"  Email: "${b?.em
      * The chosen tier gets variable_name "selected_tier", data_type "enum", enum_options = all tiers offered. Its sample_text is just the tier name (e.g. "Growth"). Do not create tier-specific names like "growth_monthly_rate" — use role names like "selected_tier_rate".
    - "paragraph": prose written for THIS client — the intro describing their situation, why the recommended tier fits, their payment preference, the upgrade path, an add-on menu with ✓/○ selections, a "what's included" bullet list, tax or minimum-commitment notes that depend on their numbers. If a salesperson would rewrite it for the next lead, it is a paragraph variable. Set data_type "paragraph" and paragraph_config { mode: "ai_generated", purpose, tone, length_guideline }.
      * For a block of several lines or bullets, sample_text is the WHOLE block: one line per paragraph/bullet, each copied exactly, joined with newlines.
+     * Numbers, amounts and counts inside prose are STILL their own customer_input / pricing variables (the paragraph is drafted from them; the drafter never does arithmetic). A sentence whose only client-specific content is such values — "Equivalent to $2,922.75/month, billed as a single annual payment." — is NOT a paragraph variable: extract the values and leave the wording static.
      * Static boilerplate that reads identically for any client is NOT a variable.
 
 4. condition_flag: set it on the amount variable of any table row that may not apply to every client — sales tax ("has_tax"), prepay/bundle/volume discounts ("has_annual_discount", "has_bundle_discount", "has_volume_adjustment"), optional fees ("has_extra_devices"). The engine wraps that whole row so it disappears when the flag is false. Otherwise "".

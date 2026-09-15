@@ -92,6 +92,11 @@ export function initDatabase(dbPath?: string): DatabaseSync {
 
     CREATE INDEX IF NOT EXISTS idx_company_variables_lookup 
     ON company_variables (company_id, category, is_deleted);
+
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value_json TEXT NOT NULL
+    );
   `);
 
   // Non-destructive column migrations for existing databases

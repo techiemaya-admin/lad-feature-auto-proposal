@@ -12,7 +12,8 @@ import type { VariableRow } from "../routes/variables.js";
  * dynamic" (+ optional context / condition flag); the engine finds every
  * paragraph containing it — in the body or inside any table cell — and swaps it.
  * Which mutation to perform is derived from the variable itself:
- *   category "paragraph"  -> replace the whole paragraph block (bullets pruned)
+ *   category "paragraph"  -> replace the whole paragraph block (bullets pruned); a sub-span sample only replaces
+ *                            that span; mode "fixed" leaves the text and lets values inside it tag inline
  *   condition_flag set    -> replace the value AND wrap its table row (or the paragraph itself) in {#flag}…{/flag}
  *   otherwise             -> replace the text in place, everywhere it occurs
  * Loop tables are located by their header texts and their data rows by cell-0 labels.
@@ -27,7 +28,12 @@ export interface TemplateVariable {
   condition_flag?: string;
   /** All tiers offered; the variable whose sample is one of them selects the tier and locates the comparison matrix. */
   enum_options?: string[];
+  /** Paragraphs only: "fixed" keeps the text in place (values inside it still tag inline); default = drafted per client. */
+  mode?: "fixed" | "ai_generated";
 }
+
+/** Text a block/loop mutation removed, keyed by the tag that replaced it — so a value that lived inside is reported as covered, not lost. */
+type Consumed = { tag: string; text: string }[];
 
 /** Captured from the sample document so hydration can rotate the selected tier into the highlighted column. */
 export interface TierMatrix {
@@ -67,6 +73,25 @@ export interface MutationResult {
 
 const norm = (s: string) => s.replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim().toLowerCase();
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** norm plus the dash/quote tolerance of sampleRegex, for prefix comparisons. */
+const loose = (s: string) => norm(s).replace(/[-−–]/g, "-").replace(/['’‘]/g, "'").replace(/["“”]/g, '"');
+
+/**
+ * Lines of a sample as they read in the Word file. Models copy from markdown, so they add list markers
+ * ("- ", "• ", "1. "), emphasis ("**✓**", "*note*") and escapes ("\\_") the document never had.
+ */
+function sampleLines(sample: string): string[] {
+  return sample
+    .split(/\r?\n/)
+    .map((s) =>
+      s
+        .trim()
+        .replace(/^([-*•]|\d+[.)])\s+/, "")
+        .replace(/\\_/g, "_")
+        .replace(/(?<!\w)(\*\*|\*|__|_)(?=\S)(.+?)(?<=\S)\1(?!\w)/g, "$2")
+    )
+    .filter(Boolean);
+}
 
 /**
  * Matches `sample` inside real document text: tolerant of NBSP / run-on whitespace and of the
@@ -130,7 +155,7 @@ function replaceInParagraph(p: Paragraph, sample: string, tag: string): number {
 }
 
 /** Replaces a prose block: the hit paragraph plus following siblings that are in the same list or listed in `lines`. */
-function replaceBlock(doc: Document, first: Paragraph, lines: string[], tag: string, flag?: string): number {
+function replaceBlock(doc: Document, first: Paragraph, lines: string[], tag: string, flag: string | undefined, consumed: Consumed): number {
   const body = doc.getBodyElements();
   const start = body.indexOf(first);
   const removed: Paragraph[] = [];
@@ -149,6 +174,7 @@ function replaceBlock(doc: Document, first: Paragraph, lines: string[], tag: str
     }
   }
 
+  for (const p of [first, ...removed]) consumed.push({ tag, text: p.getText() });
   // Keep italics/bold only when the paragraph is uniformly formatted (a bold "✓" prefix must not bleed into the tag).
   const runs = first.getRuns();
   first.setText(flag ? `{#${flag}}${tag}{/${flag}}` : tag, runs.length === 1 ? runs[0].getFormatting() : undefined);
@@ -166,14 +192,10 @@ function wrapRow(row: TableRow, flag: string): void {
   if (last && !last.getText().includes(`{/${flag}}`)) last.wrap("", `{/${flag}}`);
 }
 
-export function applyVariable(doc: Document, v: TemplateVariable): MutationLogEntry {
+export function applyVariable(doc: Document, v: TemplateVariable, consumed: Consumed = []): MutationLogEntry {
   const tag = `{${v.variable_name}}`;
   const target = v.variable_name;
-  // Models like to add markdown list markers ("- ", "• ", "1. ") when copying bullets; the document has none.
-  const lines = v.sample_text
-    .split(/\r?\n/)
-    .map((s) => s.trim().replace(/^([-*•]|\d+[.)])\s+/, ""))
-    .filter(Boolean);
+  const lines = sampleLines(v.sample_text);
   if (lines.length === 0) return { action: "replace", target, applied: false, info: "empty sample_text" };
 
   // Paragraph blocks: the model may have trimmed a long first line, so a ~60-char prefix (cut at a word boundary) is enough to locate it.
@@ -190,14 +212,22 @@ export function applyVariable(doc: Document, v: TemplateVariable): MutationLogEn
   if (/^\d+$/.test(lines[0]) && !v.context_text?.trim() && hits.some(parentRow)) hits = hits.filter(parentRow);
 
   const flag = v.condition_flag?.trim();
+  const flagNote = flag ? `, wrapped in {#${flag}}` : "";
   if (v.category === "paragraph") {
-    const n = replaceBlock(doc, hits[0], lines, tag, flag);
-    return {
-      action: "replace_paragraph",
-      target,
-      applied: true,
-      info: `${tag} replaced ${n} paragraph(s)` + (flag ? `, wrapped in {#${flag}}` : ""),
-    };
+    const p = hits[0];
+    // Fixed text stays as written; the client name / numbers inside it are separate variables and tag inline.
+    if (v.mode === "fixed") {
+      if (flag) p.wrap(`{#${flag}}`, `{/${flag}}`);
+      return { action: "keep_paragraph", target, applied: true, info: `fixed text kept in place; values inside it tag inline${flagNote}` };
+    }
+    // The whole block when the sample is the paragraph (or a trimmed head of it). A sub-span sample — one sentence of a
+    // paragraph — replaces only that span, so the numbers in the sentence around it keep their own deterministic tags.
+    const whole = lines.length > 1 || loose(p.getText()).startsWith(loose(lines[0]));
+    if (!whole && replaceInParagraph(p, lines[0], flag ? `{#${flag}}${tag}{/${flag}}` : tag) > 0) {
+      return { action: "replace_text", target, applied: true, info: `${tag} placed inline; the rest of the paragraph stays${flagNote}` };
+    }
+    const n = replaceBlock(doc, p, lines, tag, flag, consumed);
+    return { action: "replace_paragraph", target, applied: true, info: `${tag} replaced ${n} paragraph(s)${flagNote}` };
   }
 
   let count = 0;
@@ -217,7 +247,7 @@ export function applyVariable(doc: Document, v: TemplateVariable): MutationLogEn
   };
 }
 
-export function collapseLoopTable(doc: Document, t: LoopTable): MutationLogEntry {
+export function collapseLoopTable(doc: Document, t: LoopTable, consumed: Consumed = []): MutationLogEntry {
   const target = t.loop_tag;
   const want = t.header_texts.map(norm).filter(Boolean);
   const table = doc.getTables().find((tb) => {
@@ -236,6 +266,7 @@ export function collapseLoopTable(doc: Document, t: LoopTable): MutationLogEntry
     .map(({ i }) => i);
   if (loopIdx.length === 0) loopIdx = rows.map((_, i) => i).slice(1); // no labels given: every data row
 
+  for (const i of loopIdx) consumed.push({ tag: `{#${t.loop_tag}}`, text: rows[i].getText() });
   const templateIdx = loopIdx[0];
   const row = rows[templateIdx];
   const cells = row.getCells();
@@ -338,7 +369,12 @@ export function orderVariables<T extends TemplateVariable>(vars: T[]): T[] {
   );
 }
 
-/** Matrix first so the tier name / rate inside it are already tags when the global replacements run. */
+/**
+ * Matrix first so the tier name / rate inside it are already tags when the global replacements run.
+ * Afterwards every placed tag is checked against the final text: one a later paragraph/loop mutation swallowed, or a
+ * value that only ever lived inside such a block, is reported as covered by that block — the per-client draft of the
+ * block receives it as an input — and a tag that vanished for any other reason is flipped back to a miss.
+ */
 export function applyTemplate(
   doc: Document,
   variables: TemplateVariable[],
@@ -346,14 +382,29 @@ export function applyTemplate(
 ): { details: MutationLogEntry[]; tier_matrix?: TierMatrix } {
   const selector = variables.find((v) => v.enum_options?.some((o) => norm(o) === norm(v.sample_text)));
   const matrix = selector ? tagTierMatrix(doc, selector) : undefined;
-  return {
-    tier_matrix: matrix?.matrix,
-    details: [
-      ...(matrix ? [matrix.entry] : []),
-      ...orderVariables(variables).map((v) => applyVariable(doc, v)),
-      ...loops.map((t) => collapseLoopTable(doc, t)),
-    ],
-  };
+  const consumed: Consumed = [];
+  const details = [
+    ...(matrix ? [matrix.entry] : []),
+    ...orderVariables(variables).map((v) => applyVariable(doc, v, consumed)),
+    ...loops.map((t) => collapseLoopTable(doc, t, consumed)),
+  ];
+
+  const text = doc.getAllParagraphs().map((p) => p.getText()).join("\n");
+  const byName = new Map(variables.map((v) => [v.variable_name, v]));
+  for (const d of details) {
+    const v = byName.get(d.target);
+    if (!v || !/^(replace|wrap_conditional_row)/.test(d.action)) continue;
+    const tag = `{${v.variable_name}}`;
+    if (text.includes(tag)) continue;
+    const first = sampleLines(v.sample_text)[0] ?? "";
+    const owner = consumed.find((c) => c.text.includes(tag) || (first && sampleRegex(first, "i").test(c.text)));
+    if (owner) {
+      Object.assign(d, { action: "covered", applied: true, info: `${tag} lives inside ${owner.tag}, which is drafted per client — no separate tag needed` });
+    } else if (d.applied) {
+      Object.assign(d, { applied: false, info: `${tag} was placed but a later mutation removed it` });
+    }
+  }
+  return { tier_matrix: matrix?.matrix, details };
 }
 
 /** Loads the company's active variables from SQLite, mutates the quotation, writes template.docx. */
@@ -392,6 +443,7 @@ export async function mutateDocumentTemplate(companyId: string): Promise<Mutatio
         context_text: d.context_text,
         condition_flag: d.visibility_rule?.condition_flag,
         enum_options: d.enum_options,
+        mode: d.paragraph_config?.mode,
       });
     }
   }

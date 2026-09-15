@@ -101,8 +101,9 @@ export const TemplateCheckpointCard: React.FC<TemplateCheckpointCardProps> = ({
   }, [isPreviewOpen]);
 
   const downloadUrl = getTemplateDownloadUrl(companyId);
-  // The engine never drops a variable silently: misses and context-skips arrive here as details[].
-  const warnings = (stats.details ?? []).filter((d) => !d.applied || d.info?.includes("skipped"));
+  // The engine never drops a variable silently: a miss arrives here as applied:false. A context_text skip
+  // ("2 other occurrences skipped") is the disambiguation working as intended, not a miss.
+  const warnings = (stats.details ?? []).filter((d) => !d.applied);
 
   const summary = [
     `${plural(stats.tags_placed_count, "field fills", "fields fill")} in per client`,

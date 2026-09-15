@@ -1,0 +1,257 @@
+{
+  "document_summary": "SEO & Local Visibility proposal from Northstar Digital for Bloom & Co Dental Group, recommending the Growth tier ($3,000/mo, up to 3 locations) for their two dental clinics, with a 10% annual prepay discount, Texas sales tax at 8.25%, and a total annual investment of $35,073.00 ($2,922.75/month equivalent).",
+  "variables": [
+    {
+      "variable_name": "client_company_name",
+      "natural_name": "Client Company Name",
+      "category": "customer_input",
+      "data_type": "string",
+      "sample_text": "Bloom & Co Dental Group",
+      "description": "Full name of the prospective client company, shown in the 'Prepared for' line of the proposal.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "proposal_date",
+      "natural_name": "Proposal Date",
+      "category": "customer_input",
+      "data_type": "string",
+      "sample_text": "September 7, 2026",
+      "description": "Date the proposal was issued and dated.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "valid_until_date",
+      "natural_name": "Proposal Valid Until Date",
+      "category": "customer_input",
+      "data_type": "string",
+      "sample_text": "September 21, 2026",
+      "description": "Calendar date the quoted pricing expires, shown in the Proposal Valid Until column.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "proposal_validity_days",
+      "natural_name": "Proposal Validity Period (Days)",
+      "category": "customer_input",
+      "data_type": "number",
+      "sample_text": "14",
+      "description": "Number of days the proposal stays valid, shown in parentheses after the valid-until date.",
+      "context_text": "September 21, 2026 (14 days)",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "selected_tier",
+      "natural_name": "Selected Package Tier",
+      "category": "pricing",
+      "data_type": "enum",
+      "sample_text": "Growth",
+      "description": "The package tier chosen for this client; drives tier name throughout the document (headings, table, prose).",
+      "context_text": "",
+      "condition_flag": "",
+      "enum_options": [
+        "Local",
+        "Growth",
+        "Authority"
+      ]
+    },
+    {
+      "variable_name": "selected_tier_rate",
+      "natural_name": "Selected Tier Monthly Rate",
+      "category": "pricing",
+      "data_type": "currency",
+      "sample_text": "$3,000/mo",
+      "description": "Monthly price of the selected tier as shown in the tier comparison table and the annual line item.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "contract_months",
+      "natural_name": "Contract Length in Months",
+      "category": "pricing",
+      "data_type": "number",
+      "sample_text": "12",
+      "description": "Number of months billed on the annual line item '12 months × $3,000/mo'.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "gross_annual_amount",
+      "natural_name": "Gross Annual Package Amount",
+      "category": "pricing",
+      "data_type": "currency",
+      "sample_text": "$36,000.00",
+      "description": "Pre-discount annual total for the package (12 months at the tier rate).",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "annual_prepay_discount_percent",
+      "natural_name": "Annual Prepay Discount Percentage",
+      "category": "pricing",
+      "data_type": "number",
+      "sample_text": "10%",
+      "description": "Discount percentage applied when the client prepays annually, shown in the discount row label.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "annual_prepay_discount_amount",
+      "natural_name": "Annual Prepay Discount Amount",
+      "category": "pricing",
+      "data_type": "currency",
+      "sample_text": "$3,600.00",
+      "description": "Dollar value of the annual prepay discount deducted from the gross annual amount.",
+      "context_text": "",
+      "condition_flag": "has_annual_discount"
+    },
+    {
+      "variable_name": "annual_subtotal",
+      "natural_name": "Subtotal After Discount",
+      "category": "pricing",
+      "data_type": "currency",
+      "sample_text": "$32,400.00",
+      "description": "Subtotal of the annual investment after the prepay discount, before tax.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "sales_tax_rate",
+      "natural_name": "Sales Tax Rate",
+      "category": "pricing",
+      "data_type": "number",
+      "sample_text": "8.25%",
+      "description": "Sales tax percentage applied for this client's jurisdiction, shown in the tax row label.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "sales_tax_amount",
+      "natural_name": "Sales Tax Amount",
+      "category": "pricing",
+      "data_type": "currency",
+      "sample_text": "$2,673.00",
+      "description": "Tax charged on the subtotal for clients in a taxable jurisdiction.",
+      "context_text": "",
+      "condition_flag": "has_tax"
+    },
+    {
+      "variable_name": "total_annual_investment",
+      "natural_name": "Total Annual Investment",
+      "category": "pricing",
+      "data_type": "currency",
+      "sample_text": "$35,073.00",
+      "description": "Final annual total including tax, shown in the Total Annual Investment row.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "effective_monthly_rate",
+      "natural_name": "Effective Monthly Rate",
+      "category": "pricing",
+      "data_type": "currency",
+      "sample_text": "$2,922.75",
+      "description": "Effective per-month cost when the annual total is billed as a single annual payment.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "client_situation_intro",
+      "natural_name": "Client Situation Introduction",
+      "category": "paragraph",
+      "data_type": "paragraph",
+      "sample_text": "Thanks for reaching out through our outreach campaign — you mentioned Bloom & Co now has two active clinic locations and isn't showing up when local patients search on Google. That's a common gap at your stage: single-location SEO tactics stop working once a second location enters the picture, because you're now competing for local pack visibility in two separate map areas at once. Below is the package built for exactly that situation, along with what it costs and what's included.",
+      "description": "Opening prose summarizing the client's situation, how they came in, their locations and the visibility problem they described.",
+      "context_text": "",
+      "condition_flag": "",
+      "paragraph_config": {
+        "mode": "ai_generated",
+        "purpose": "Recap the client's current situation in their own words: how they reached out, how many locations they operate, and the local visibility gap they are experiencing.",
+        "tone": "warm, consultative, second person",
+        "length_guideline": "3-5 sentences"
+      }
+    },
+    {
+      "variable_name": "tier_recommendation_rationale",
+      "natural_name": "Why This Package Fits",
+      "category": "paragraph",
+      "data_type": "paragraph",
+      "sample_text": "Based on your two locations, Growth is the right fit — Local only supports a single location, and Authority is built for franchise-scale accounts. Growth covers both of your clinics under one plan with room to add a third location later without changing tiers.",
+      "description": "Paragraph justifying the recommended tier against the client's location count and comparing it to the lower and higher tiers.",
+      "context_text": "",
+      "condition_flag": "",
+      "paragraph_config": {
+        "mode": "ai_generated",
+        "purpose": "Explain why the selected tier is the right fit for this client's number of locations and growth stage, contrasting it with the tier below and the tier above.",
+        "tone": "confident, consultative",
+        "length_guideline": "2-4 sentences"
+      }
+    },
+    {
+      "variable_name": "payment_preference_note",
+      "natural_name": "Payment Preference Note",
+      "category": "paragraph",
+      "data_type": "paragraph",
+      "sample_text": "You mentioned you'd rather pay annually than track a monthly invoice — that qualifies for our annual prepay discount, applied below.",
+      "description": "Prose tying the client's stated billing preference to the discount applied in the pricing table.",
+      "context_text": "",
+      "condition_flag": "",
+      "paragraph_config": {
+        "mode": "ai_generated",
+        "purpose": "Reference the client's stated billing preference and connect it to the discount that has been applied in the investment table below.",
+        "tone": "friendly, practical",
+        "length_guideline": "1-2 sentences"
+      }
+    },
+    {
+      "variable_name": "upgrade_path",
+      "natural_name": "Upgrade Path Paragraph",
+      "category": "paragraph",
+      "data_type": "paragraph",
+      "sample_text": "If you open a third clinic mid-year, Growth already covers it at no change in price. A fourth location would move you into Authority ($8,000/mo), which adds a dedicated strategist and weekly content — we'd re-quote at that point, not before.",
+      "description": "Prose describing what happens to the plan if the client adds locations, naming the next tier and its rate.",
+      "context_text": "",
+      "condition_flag": "",
+      "paragraph_config": {
+        "mode": "ai_generated",
+        "purpose": "Describe the client's upgrade path: what the current tier tolerates without a price change and which tier and price they would move to beyond that.",
+        "tone": "reassuring, forward-looking",
+        "length_guideline": "2-3 sentences"
+      }
+    },
+    {
+      "variable_name": "included_not_included_list",
+      "natural_name": "Included vs. Not Included Bullets",
+      "category": "paragraph",
+      "data_type": "paragraph",
+      "sample_text": "- Included: Google Business Profile management for both clinic locations\n- Included: On-page SEO across your site, citation building across major directories\n- Included: 4 content pieces/month, quarterly strategy call, monthly performance report\n- Not included: Paid ad management (Google/Meta ads) — available as a separate engagement\n- Not included: A dedicated 1:1 strategist — that begins at the Authority tier",
+      "description": "Bullet list of what the selected tier covers and explicitly does not cover for this client.",
+      "context_text": "",
+      "condition_flag": "",
+      "paragraph_config": {
+        "mode": "ai_generated",
+        "purpose": "Enumerate what the selected package includes for this client and what is explicitly excluded, noting what would require an upgrade or separate engagement.",
+        "tone": "clear, plain-language",
+        "length_guideline": "5 bullets, one line each, each starting with '- Included:' or '- Not included:'"
+      }
+    },
+    {
+      "variable_name": "minimum_commitment_note",
+      "natural_name": "Minimum Commitment Note",
+      "category": "paragraph",
+      "data_type": "paragraph",
+      "sample_text": "Minimum initial engagement is 3 months; month-to-month thereafter.",
+      "description": "Note stating the minimum initial engagement length and the month-to-month terms that follow.",
+      "context_text": "",
+      "condition_flag": "",
+      "paragraph_config": {
+        "mode": "ai_generated",
+        "purpose": "State the minimum initial engagement period for this deal and the rolling month-to-month terms that apply after it.",
+        "tone": "factual, concise",
+        "length_guideline": "1 sentence"
+      }
+    }
+  ],
+  "loop_tables": []
+}

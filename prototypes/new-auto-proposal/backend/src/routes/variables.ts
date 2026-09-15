@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import crypto from "node:crypto";
 import { getDatabase } from "../db/database.js";
 import { extractVariables } from "../services/ai-extraction.service.js";
+import { getAISettings } from "../services/ai-settings.service.js";
 import type { ExtractionResponse } from "../services/gemini.service.js";
 import { logPipelineArtifact } from "../services/pipeline-log.js";
 import type { CompanyRow } from "./companies.js";
@@ -136,7 +137,8 @@ router.post("/:id/variables/extract", async (req: Request, res: Response): Promi
       },
       industry: company.industry,
     });
-    logPipelineArtifact(id, "variables-raw.json", extraction);
+    // The model is the first thing to check when an extraction comes back thin — record it with the output.
+    logPipelineArtifact(id, "variables-raw.json", { ai: getAISettings(), ...extraction });
 
     const now = new Date().toISOString();
 

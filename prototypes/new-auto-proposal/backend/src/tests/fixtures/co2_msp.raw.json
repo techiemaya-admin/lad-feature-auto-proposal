@@ -1,0 +1,285 @@
+{
+  "document_summary": "A Managed IT Services proposal from Fortress IT Group for the client Whitfield & Associates, recommending the Standard support tier at 42 seats across two offices, with a full auditable monthly pricing breakdown (base rate, volume adjustment, seat subtotal, extra managed devices, Ohio tax, total recurring), a one-time onboarding fee, an included-scope bullet list, and next steps. It is being converted into a reusable template.",
+  "variables": [
+    {
+      "variable_name": "client_company_name",
+      "natural_name": "Client Company Name",
+      "category": "customer_input",
+      "data_type": "string",
+      "sample_text": "Whitfield & Associates",
+      "description": "Name of the prospect/client the proposal is prepared for.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "proposal_date",
+      "natural_name": "Proposal Date",
+      "category": "customer_input",
+      "data_type": "string",
+      "sample_text": "September 7, 2026",
+      "description": "Date the proposal was issued.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "proposal_valid_until",
+      "natural_name": "Proposal Valid Until Date",
+      "category": "customer_input",
+      "data_type": "string",
+      "sample_text": "September 21, 2026",
+      "description": "Date the quoted pricing expires.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "proposal_validity_period",
+      "natural_name": "Proposal Validity Period",
+      "category": "customer_input",
+      "data_type": "string",
+      "sample_text": "14 days",
+      "description": "Length of the quote validity window shown parenthetically next to the expiry date.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "seat_count",
+      "natural_name": "Total Employees / Seats",
+      "category": "customer_input",
+      "data_type": "number",
+      "sample_text": "42",
+      "description": "Headcount / billable seat count used throughout the proposal and pricing math.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "office_count",
+      "natural_name": "Number of Offices",
+      "category": "customer_input",
+      "data_type": "string",
+      "sample_text": "two",
+      "description": "Number of office locations the client operates, as described in the environment summary.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "server_count",
+      "natural_name": "Managed Servers / Devices Beyond 1:1",
+      "category": "customer_input",
+      "data_type": "number",
+      "sample_text": "5",
+      "description": "Count of managed devices (servers) billed beyond the 1:1 seat ratio.",
+      "context_text": "Managed devices beyond 1:1",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "selected_tier",
+      "natural_name": "Selected Support Tier",
+      "category": "pricing",
+      "data_type": "enum",
+      "sample_text": "Standard",
+      "description": "The support tier recommended and selected for this client.",
+      "context_text": "",
+      "condition_flag": "",
+      "enum_options": [
+        "Essential",
+        "Standard",
+        "Premium"
+      ]
+    },
+    {
+      "variable_name": "selected_tier_rate",
+      "natural_name": "Selected Tier Base Rate (per seat / month)",
+      "category": "pricing",
+      "data_type": "currency",
+      "sample_text": "$65.00",
+      "description": "Published base rate of the selected tier before any volume adjustment.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "volume_band",
+      "natural_name": "Volume Adjustment Seat Band",
+      "category": "pricing",
+      "data_type": "string",
+      "sample_text": "25–49",
+      "description": "Seat band that determines which volume discount applies.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "volume_adjustment_per_seat",
+      "natural_name": "Volume Adjustment (per seat / month)",
+      "category": "pricing",
+      "data_type": "currency",
+      "sample_text": "$5.00",
+      "description": "Per-seat discount applied because the client falls in the 25–49 seat volume band.",
+      "context_text": "",
+      "condition_flag": "has_volume_adjustment"
+    },
+    {
+      "variable_name": "adjusted_seat_rate",
+      "natural_name": "Adjusted Seat Rate (per seat / month)",
+      "category": "pricing",
+      "data_type": "currency",
+      "sample_text": "$60.00",
+      "description": "Tier base rate after the per-seat volume adjustment; reused in the seat subtotal label.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "seat_subtotal",
+      "natural_name": "Seat Subtotal",
+      "category": "pricing",
+      "data_type": "currency",
+      "sample_text": "$2,520.00",
+      "description": "Monthly amount for all seats at the adjusted rate.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "extra_device_rate",
+      "natural_name": "Rate per Extra Managed Device",
+      "category": "pricing",
+      "data_type": "currency",
+      "sample_text": "$12.00",
+      "description": "Monthly charge per managed device beyond the 1:1 seat ratio.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "extra_device_subtotal",
+      "natural_name": "Managed Devices Beyond 1:1 Subtotal",
+      "category": "pricing",
+      "data_type": "currency",
+      "sample_text": "$60.00",
+      "description": "Monthly subtotal for managed devices billed beyond the 1:1 seat ratio.",
+      "context_text": "Managed devices beyond 1:1",
+      "condition_flag": "has_extra_devices"
+    },
+    {
+      "variable_name": "monthly_recurring_subtotal",
+      "natural_name": "Monthly Recurring Subtotal",
+      "category": "pricing",
+      "data_type": "currency",
+      "sample_text": "$2,580.00",
+      "description": "Monthly recurring subtotal before tax.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "tax_rate",
+      "natural_name": "Sales Tax Rate",
+      "category": "pricing",
+      "data_type": "string",
+      "sample_text": "6%",
+      "description": "State sales tax rate applied to the recurring monthly total.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "tax_amount",
+      "natural_name": "Sales Tax Amount",
+      "category": "pricing",
+      "data_type": "currency",
+      "sample_text": "$154.80",
+      "description": "Monthly sales tax charged on the recurring subtotal.",
+      "context_text": "",
+      "condition_flag": "has_tax"
+    },
+    {
+      "variable_name": "total_monthly_recurring",
+      "natural_name": "Total Monthly Recurring",
+      "category": "pricing",
+      "data_type": "currency",
+      "sample_text": "$2,734.80",
+      "description": "Total monthly recurring charge including tax, excluding the one-time setup fee.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "onboarding_fee_per_seat",
+      "natural_name": "One-time Onboarding Fee per Seat",
+      "category": "pricing",
+      "data_type": "currency",
+      "sample_text": "$75.00",
+      "description": "One-time setup and onboarding fee charged per seat.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "onboarding_total",
+      "natural_name": "One-time Setup & Onboarding Total",
+      "category": "pricing",
+      "data_type": "currency",
+      "sample_text": "$3,150.00",
+      "description": "Total one-time onboarding fee invoiced separately at signing.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "environment_situation_paragraph",
+      "natural_name": "Current Environment Situation Summary",
+      "category": "paragraph",
+      "data_type": "paragraph",
+      "sample_text": "You noted Whitfield & Associates has grown to 42 employees across two offices with no dedicated IT support in place. At that headcount, informal or single-contractor IT support is statistically where firms start seeing recurring downtime, delayed patching, and no documented backup posture — all of which compound quietly until an outage or incident forces the issue. The scope below is sized specifically to your headcount and device footprint.",
+      "description": "Client-specific opening paragraph describing their current environment, headcount, locations and pain points, tying the scope to their size.",
+      "context_text": "",
+      "condition_flag": "",
+      "paragraph_config": {
+        "mode": "ai_generated",
+        "purpose": "Describe the prospect's current IT environment (headcount, locations, existing support) and why this scoped proposal fits it.",
+        "tone": "consultative, direct, factual",
+        "length_guideline": "2–4 sentences"
+      }
+    },
+    {
+      "variable_name": "tier_rationale_paragraph",
+      "natural_name": "Recommended Tier Rationale",
+      "category": "paragraph",
+      "data_type": "paragraph",
+      "sample_text": "Standard is built for firms your size that need faster-than-business-hours coverage and managed backups, without paying for the 24/7 / vCIO layer that Premium adds — appropriate once you're running compliance-sensitive client data with real recovery-time expectations.",
+      "description": "Paragraph explaining why the recommended tier fits this client and what the next tier up would add.",
+      "context_text": "",
+      "condition_flag": "",
+      "paragraph_config": {
+        "mode": "ai_generated",
+        "purpose": "Justify the recommended support tier for the client's size and needs, and contrast briefly with the next tier up.",
+        "tone": "consultative, reassuring",
+        "length_guideline": "2–3 sentences"
+      }
+    },
+    {
+      "variable_name": "minimum_commitment_note",
+      "natural_name": "Minimum Commitment Note",
+      "category": "paragraph",
+      "data_type": "paragraph",
+      "sample_text": "Minimum billable commitment is 10 seats — your 42-seat count is well above the floor, so no minimum-commit adjustment applies.",
+      "description": "Footnote below the pricing table stating the minimum seat commitment and confirming whether it affects this client.",
+      "context_text": "",
+      "condition_flag": "",
+      "paragraph_config": {
+        "mode": "ai_generated",
+        "purpose": "State the minimum billable seat commitment and confirm whether the client's seat count is above or below it.",
+        "tone": "plain, factual",
+        "length_guideline": "1–2 sentences"
+      }
+    },
+    {
+      "variable_name": "included_scope_bullets",
+      "natural_name": "What's Included This Cycle (bullets)",
+      "category": "paragraph",
+      "data_type": "paragraph",
+      "sample_text": "Onboarding of all 42 endpoints and 5 servers into 24/7 monitoring within weeks 1–2\nManaged backup configuration for both office locations\n4-hour response SLA during business hours; after-hours emergency line for critical outages\nNamed account engineer — not a rotating helpdesk queue",
+      "description": "Bullet list of what is included in this billing cycle, specific to the client's endpoints, servers, locations and tier SLA.",
+      "context_text": "",
+      "condition_flag": "",
+      "paragraph_config": {
+        "mode": "ai_generated",
+        "purpose": "List what is included this cycle — onboarding scope, backup coverage, SLA response times and support model.",
+        "tone": "plain, concrete, confident",
+        "length_guideline": "3–5 bullets, one line each"
+      }
+    }
+  ],
+  "loop_tables": []
+}

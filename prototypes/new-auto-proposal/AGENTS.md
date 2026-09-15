@@ -27,8 +27,10 @@ Self-contained proof of concept demonstrating zero-configuration proposal genera
 - Mutate Word templates using `docxmlater` to preserve styling, typography, and page layout. Apply variables longest `sample_text` first so overlapping values never clobber each other.
 - Loop tables: locate by header text, collapse the `row_labels` rows into a single `{#loop}...{/loop}` row, and leave header / base-fee / subtotal / total rows untouched.
 - Tier comparison matrix: located by the selector's `enum_options` in a header row, tagged positionally (`{tierN_name}`, `{tierN_rM}`), never re-styled; hydration rotates the selected tier into the highlighted column via `buildTierMatrixPayload`. A `condition_flag` on a `paragraph` variable wraps the paragraph itself.
-- Every mutation must produce a `details[]` entry (`applied`, `info`) so misses and context-skipped occurrences are visible in the Template Checkpoint; never silently drop a variable.
-- Keep the golden test (`tests/template-mutator.test.ts` + `tests/fixtures/*.variables.json`) green: it pins the engine against `Mock Data/templated_markdown/*.md`. `npm test` is offline; the live Gemini contract check is `npm run test:live`.
+- Paragraph variables: a sample that is only a sub-span of its paragraph replaces that span (the numbers in the sentence around it keep their own tags); `paragraph_config.mode: "fixed"` keeps the text in place and lets values inside it tag inline. Numbers and counts inside prose are always their own variables — the drafter never does arithmetic.
+- Every mutation must produce a `details[]` entry (`applied`, `info`); after all mutations the engine verifies each tag survived. A value that only lives inside a drafted paragraph or loop is reported `covered` (the drafter receives it as input, no separate tag), a tag that vanished is flipped to a miss. Never silently drop a variable. Context-text skips are not misses.
+- Keep the golden test (`tests/template-mutator.test.ts` + `tests/fixtures/*.variables.json` ideal responses + `*.raw.json` real model logs) green: it pins the engine against `Mock Data/templated_markdown/*.md` and against real model quirks. `npm test` is offline; the live Gemini contract check is `npm run test:live`.
+- Extraction model: the provider/model default and any change made in the configuration drawer live in the `app_settings` table (`ai-settings.service.ts`), never in memory, and are stamped into every `logs/<company>/*-variables-raw.json` as `ai`. Default is `deepseek-flash`; `gemini-flash-lite` drops money amounts and must not be the accident.
 - Verify modified `.docx` files by converting to Markdown via `@firecrawl/anydoc` rather than inspecting raw binary XML.
 - Hydrate final proposals using `easy-template-x`.
 
@@ -45,7 +47,7 @@ Self-contained proof of concept demonstrating zero-configuration proposal genera
 
 ### 5. Per-Company Session Isolation
 - Store working files on disk under `backend/storage/<company_id>/`.
-- Persist variable tables, rule schemas, and configurations in SQLite so switching company tabs maintains progress.
+- Persist variable tables, rule schemas, and configurations in SQLite so switching company tabs maintains progress; app-wide settings (AI provider/model) live in `app_settings`.
 - Provide an explicit "Reset to Mock Default" action to re-seed from `companies_dataset.json`.
 
 ### 6. **Context-Rich Commits:**
