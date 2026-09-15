@@ -121,7 +121,7 @@ interface PricingRulesState { rules; compiled_at; validation_errors: ValidationE
 - `POST /:id/rules/compile` — 400 without `quotation_markdown` or Stage 2 pricing variables; persist `working_state.pricing_rules = state`, `stage: "pricing_engine"`; `{success, pricing_rules}`.
 - `GET /:id/rules` — 404 "Pricing rules have not been compiled yet" when null.
 - `PUT /:id/rules` body `{rules}` — validate against live Stage 2; structural errors → 400 `{success:false, errors:[{path,message}]}` (nothing persisted); else re-evaluate + sample check, persist.
-- `POST /:id/rules/calculate` body `{inputs}` → `{success, evaluation, payload, sample_check}` (deck live recalculation; Stage 5 reuses it).
+- `POST /:id/rules/calculate` body `{inputs}` → `{success, evaluation, payload}` (Stage 5's entry point; a sample check against a non-sample lead is meaningless, so it is not returned — the deck's live check goes through `PUT`).
 - `POST /:id/rules/proceed` — 409 if no rules or validation errors; `stage: "lead_simulation"`; returns `formatCompanyResponse(row)`.
 
 **Edits:** `P/backend/src/app.ts:30-33` mount `rulesRouter` before `companiesRouter`; `routes/template.ts:50-64` add `pricing_rules: null` to the spread (template regeneration resets Stage 4); `routes/briefing.ts:233-238` add explicit `pricing_rules: null`.

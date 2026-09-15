@@ -136,21 +136,23 @@ Model choice: provider/model are persisted in `app_settings` (default `deepseek-
 [Natural Language Spec]
        │ (Gemini Rule Compiler)
        ▼
-[Structured Rule Schema (JSON)]
-       ├── Tiers: [{ id, name, monthly_price, location_cap, sla }]
-       ├── Volume Breakpoints: [{ min_seats, max_seats, adjustment_per_unit }]
-       ├── Addons: [{ id, name, unit_price, is_stackable }]
-       ├── Discounts: [{ type, rate, condition }]
-       └── Tax: [{ state, rate, applies_to_recurring_only }]
+[PricingRules — a spreadsheet whose cells are the Stage 2 variable names]
+       ├── tables[]: generic grids with a kind hint (packages | bands | addons | taxes | splits | other)
+       ├── variables[]: one flat definition per cell — input | constant | lookup | formula | condition | aggregate | rows
+       │     in_document:true = a Stage 2 pricing variable; in_document:false = pricing-only helper
+       ├── review_rules[] ("decline to auto-quote"), assumptions[], sample_inputs (the sample lead)
+       └── persisted in working_state_json.pricing_rules; both compile attempts logged to logs/<id>/*-rules-raw.json / *-rules-repair.json
        │
        ├─────────────────────────────────┐
        ▼                                 ▼
-[Interactive Visual Rule Cards]    [Deterministic Math Interpreter (JS)]
-- Change prices & multipliers      - Evaluates conditions
-- Toggle discount rules            - Applies volume adjustments
-- Add / remove conditions          - Calculates subtotals, taxes, totals
-- Reviewer JSON Inspector Dropdown - Guarantees 100% mathematical precision
+[PricingEngineDeck]                [pricing-calculator.ts (pure)]
+- one editable card per table      - topological evaluation, cents rounding per money variable
+- lead inputs + calculation ledger - condition_flag skip guard, null = unbounded, splits remainder
+- per-variable ✓/✗ vs the sample   - needs_review: missing input / lookup miss / ÷0 / review rule
+- Dev Dock: raw JSON + Apply       - formatLike() writes values in the quotation's notation
 ```
+
+API (`/api/companies/:id/rules`): `POST /compile` (validate → evaluate `sample_inputs` → sample check → one auto-repair; stage → `pricing_engine`) · `GET` · `PUT` (400 `errors[{path,message}]`, nothing persisted) · `POST /calculate` (`{inputs}` → `{evaluation, payload}`, Stage 5's entry point) · `POST /proceed` (409 while errors exist; stage → `lead_simulation`). Template regeneration and briefing unlock null `pricing_rules` (hard-reset policy). Schema and engine semantics: [docs/plans/05-pricing-engine.md](plans/05-pricing-engine.md) §1.
 
 ### What the Variable Ledger hands the Pricing Engine (read before building Stage 4)
 
@@ -165,12 +167,12 @@ Verified against `logs/*/variables-raw.json` and `company_variables` on 2026-09-
 **What the engine must do itself**
 1. **Tag values are display strings, not numbers.** `selected_tier_rate` in co1 is `$3,000/mo`, `sales_tax_rate` is `8.25%`. Compute with numbers, then format each tag exactly like its `sample_value` (currency symbol, thousands separator, decimals, `/mo` suffix): one `formatLike(sample, value)` helper.
 2. **Parse percentages from the sample string**, not from `data_type` — the model types `10%` as `number` in one run and `string` in the next. `"8.25%"` → `0.0825`.
-3. **Add-on selection (co3) is not a customer input.** It is only present as the `addon_items` loop and the `addon_menu` paragraph. The rule schema must define the add-on multi-select itself and emit both the loop rows and the menu paragraph's inputs.
+3. **Add-on selection (co3) is not a customer input.** It is only present as the `addon_items` loop and the `addon_menu` paragraph. The rule schema must define the add-on multi-select itself and emit both the loop rows and the menu paragraph's inputs. *Resolved:* a `multi_choice` input over an `addons` table, `aggregate` (sum / count) for the totals, `rows` for the loop.
 4. **Drafted paragraphs get numbers as inputs, never compute them.** Every variable marked `covered` by a paragraph, plus every value that paragraph mentions (`$8,000/mo` upgrade price, `10 seats` floor), goes into the drafter's input set; the drafter returns text with `{tags}` for the program to fill — it never writes a number itself.
 5. **Words for numbers.** `location_count` is `"two"` in both co1 and co2; the lead form collects an integer, the drafter spells it.
-6. **Labels that encode a rule are not all tagged yet.** Known static text that depends on the rule outcome: co2 `Volume adjustment (25–49 seat band)` (add `volume_tier_band` as a custom chip), co2 `Ohio state tax` and co1 `{client_state}` (only co1 extracted the state), co3 `Base template: up to 100 products, … 4–6 weeks` and `(base template, up to 100 products)` (tier-dependent; add as a custom paragraph). Fix these in Variable Review, not in code.
-7. **co3 `enum_options` casing:** the option reads `E-commerce`, the sample and heading `E-Commerce`; compare tiers case-insensitively or fix the option in the review deck.
-8. **Minimum-commitment rules appear as prose, not rows.** co1 `minimum_engagement_months` = 3, co2 `minimum_seat_commitment` = 10 (covered by its note). The rule schema needs a floor/minimum concept; the template only displays it.
+6. **Labels that encode a rule are not all tagged yet.** Known static text that depends on the rule outcome: co2 `Volume adjustment (25–49 seat band)` (add `volume_tier_band` as a custom chip), co2 `Ohio state tax` and co1 `{client_state}` (only co1 extracted the state), co3 `Base template: up to 100 products, … 4–6 weeks` and `(base template, up to 100 products)` (tier-dependent; add as a custom paragraph). Fix these in Variable Review, not in code. *Resolved for the labels that are chips:* `volume_tier_band` is a `lookup` of the bands table's label column; `template_scope_summary` / `typical_delivery_timeline` are lookups on the templates table.
+7. **co3 `enum_options` casing:** the option reads `E-commerce`, the sample and heading `E-Commerce`; compare tiers case-insensitively or fix the option in the review deck. *Resolved:* every text compare in the calculator is whitespace-normalised and case-insensitive; the table's spelling is what gets written out.
+8. **Minimum-commitment rules appear as prose, not rows.** co1 `minimum_engagement_months` = 3, co2 `minimum_seat_commitment` = 10 (covered by its note). The rule schema needs a floor/minimum concept; the template only displays it. *Resolved:* a `constant` helper plus `formula max` (`billed_seat_count = max(seat_count, minimum_seat_commitment)`).
 9. **Benchmarks are the acceptance test.** The three totals below must come out of the interpreter to the cent before any UI work; `Mock Data/verification_guide.md` has the arithmetic.
 
 ### The Three Ground-Truth Test Profiles

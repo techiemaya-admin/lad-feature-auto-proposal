@@ -57,9 +57,12 @@ The Rush Away Auto-Proposal onboarding workflow is an **agentic configuration wo
                                       ▼
 ┌───────────────────────────────────────────────────────────────────────────┐
 │  STAGE 4: PRICING ENGINE (Rule Cards + Deterministic Math)                │
-│  - Gemini compiles rules using: Prompt + Sample Doc Values + Variables    │
-│  - Visual interactive cards for packages, breakpoints, add-ons, taxes     │
-│  - Pure JS deterministic calculation engine (100% precision)              │
+│  - Model compiles notes + sample quotation + Stage 2 variables → tables + │
+│    one definition per document value; one auto-repair on errors/mismatch  │
+│  - Assumptions strip → one editable card per table → "What we ask the     │
+│    lead" → calculation ledger (readable rule · sample · quotation · ✓/✗)  │
+│  - Tap a ledger row → tray edits kind / operator / operands / conditions  │
+│  - Footer "N of M match" · [Regenerate] · [Proceed to Lead Simulation ➔]  │
 └───────────────────────────────────────────────────────────────────────────┘
                                       │
                User clicks [Proceed to Lead Simulation ➔]
@@ -151,17 +154,19 @@ The user needs three things here: did it work, is anything wrong, what's next. T
 
 ### 3.4 Stage 4: Pricing Engine & Visual Rule Cards (`PricingEngineDeck.tsx`)
 
-1. **Compilation Input:** Gemini compiles rules using the Natural Pricing Prompt + Confirmed Variables + Sample Quotation Values.
-2. **Visual Rule Cards:**
-   - Packages & Tiers Card: Base rates, location/seat limits, SLA tiers.
-   - Volume Breakpoints Card: Per-unit step discounts, location tiers.
-   - Add-ons & Modifiers Card: Extra services, stackable discounts.
-   - Taxes & Milestones Card: State tax rules, payment deposit milestones.
-3. **Applied Design System Rules for Stage 4:**
-   - **Elevation & Layout:** Cards are pure elevated white (`bg-card`) with crisp 1px borders.
-   - **Input Editing:** Numeric fields enforce `tabular-nums` using shadcn `Input` primitives with clean focus rings (`focus-visible:ring-2 focus-visible:ring-blue-500/20`), avoiding layout jitter.
-   - **No Technical Jargon:** Replace references to "PricingRuleSchema AST JSON" with "Pricing Rules".
-   - **Primary Action:** Theme-blue advance button `[ Confirm Rules & Test Simulator ➔ ]` (`bg-blue-600 hover:bg-blue-500 text-white`).
+1. **Compilation Input:** the model compiles the pricing notes + the sample quotation markdown + the confirmed Stage 2 variables (names, samples, flags, loop columns, covered values) into `PricingRules`; the deck shows the result after one automatic repair pass. Shimmer bar while compiling; an explicit error panel with "Try again" — never a stuck shimmer.
+2. **Sections, top to bottom:**
+   - **Assumptions strip** (amber): what the notes left open and how it was resolved.
+   - **One `RuleTableCard` per compiled table** (icon by `kind`: packages, bands, add-ons, taxes, splits). Cells are editable and typed by column unit (`font-mono tabular-nums` on money / percent / integer, empty integer = ∞), rows can be added or removed.
+   - **What we ask the lead:** chips for the input variables (label, answer type, required dot).
+   - **Calculation ledger:** one row per non-input variable in evaluation order — label, plain-language definition ("Packages · first row where Location cap ≥ Number of locations → Monthly rate"), computed sample value, the quotation's value, ✓/✗. Helpers carry a dashed "not in document" chip. Tapping a row docks a tray (`LedgerTray`) that edits kind, unit, guard, operator, operands and conditions; `[+ Add variable]` adds a helper.
+   - **Held for review when:** the review rules in words.
+3. **Live check:** every edit is saved after 300 ms (`PUT /rules`); the response refreshes the ledger's sample check. A rejected edit shows its errors inline on the offending rows and keeps the edit on screen.
+4. **Applied Design System Rules for Stage 4:**
+   - **Elevation & Layout:** Cards are pure elevated white (`bg-card`) with crisp 1px borders and `hover:-translate-y-0.5 transition-transform duration-100`.
+   - **Input Editing:** Numeric cells enforce `tabular-nums`, commit on blur / Enter, and use clean focus rings (`focus-visible:ring-2 focus-visible:ring-blue-500/20`), avoiding layout jitter.
+   - **No Technical Jargon:** the deck never shows JSON; the raw `PricingRules` live in the Dev Dock.
+   - **Primary Action:** footer "N of M match the quotation", ghost `[Regenerate]`, theme-blue `[ Proceed to Lead Simulation ➔ ]` (`bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-xs btn-tactile`), disabled while validation errors exist.
 
 ---
 
@@ -194,7 +199,7 @@ A minimal, docked tray at the bottom of the screen (collapsible down to a corner
 - **Tab 1: Profile JSON:** Raw company profile JSON relocated from the main workspace for cleaner presentation.
 - **Tab 2: AnyDoc Markdown:** Semantic markdown output from the uploaded quotation.
 - **Tab 3: Variables JSON:** Raw taxonomy payload with anchors and categories.
-- **Tab 4: Pricing Schema JSON:** Formatted `PricingRuleSchema` with copy capabilities.
+- **Tab 4: Pricing Rules JSON:** the raw `PricingRules`, editable in place; `Apply` PUTs it and lists validation errors (nothing is persisted on a 400).
 - **Tab 5: Pipeline Logs:** Timestamps, token usage, and AST replacement records.
 
 ---

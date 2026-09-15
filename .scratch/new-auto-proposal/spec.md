@@ -63,25 +63,39 @@ A zero-configuration, AI-assisted auto-proposal prototype that enables an agency
 - Final proposal generation takes the templated `.docx` and a hydrated data payload, executing via `easy-template-x`.
 - Handles dynamic table row replication, conditional block rendering, and scalar variable substitution in-memory.
 
-### 4. Pricing Engine Architecture: Rule Schema & Deterministic Execution
-- The LLM parses natural language text, confirmed variables, and sample quotation values into a declarative JSON schema.
-- The prototype uses a shared rule schema shape:
+### 4. Pricing Engine Architecture: Spreadsheet Rules & Deterministic Execution
+Design detail: [`prototypes/new-auto-proposal/docs/plans/05-pricing-engine.md`](../../prototypes/new-auto-proposal/docs/plans/05-pricing-engine.md).
+
+- **The rules are a spreadsheet whose cells are the Stage 2 variables.** There is no separate internal key vocabulary or bindings map: every Stage 2 `pricing` variable gets a *definition* written in terms of other variables, and the calculator emits values under those same names. Pricing-only helpers (lead inputs such as `location_count`, constants such as `minimum_seat_commitment`, intermediates such as `stackable_addon_count`) live inside the rules JSON with `in_document: false`; they are never written to `company_variables`.
+- The LLM compiles `pricing_spec` + the sample quotation markdown + the Stage 2 variables (names, sample values, condition flags, enum options, loop tags/columns, covered values) into `PricingRules`. It never computes a number the tables and definitions can derive.
+- Shape (persisted in `working_state_json.pricing_rules`; no new table):
 
 ```typescript
-interface PricingRuleSchema {
-  mechanism: "tiered_package" | "per_unit_formula" | "fixed_template" | "hybrid";
-  packages?: Array<{ id: string; name: string; monthly_price: number; location_cap?: number; sla?: string }>;
-  unit_rates?: { base_unit_name: string; base_rates: Record<string, number>; minimum_commit?: number };
-  volume_adjustments?: Array<{ min_units: number; max_units: number; rate_adjustment: number }>;
-  addons?: Array<{ id: string; name: string; price: number; is_stackable: boolean }>;
-  discounts?: Array<{ name: string; percentage?: number; flat_amount?: number; condition: string; basis: "subtotal" | "addons_only" | "total" }>;
-  taxes?: Array<{ state: string; rate_percent: number; basis: "recurring_only" | "post_discount_subtotal" | "all" }>;
-  one_time_fees?: Array<{ name: string; amount_per_unit?: number; flat_amount?: number; is_taxable: boolean }>;
-  payment_splits?: Array<{ milestone: string; percentage: number; due_condition: string }>;
+interface PricingRules {
+  version: 1;
+  tables: Array<{ id; label; kind: "packages" | "bands" | "addons" | "taxes" | "splits" | "other";
+                  columns: Array<{ key; label; unit: "money" | "percent" | "integer" | "text" | "boolean" }>;
+                  rows: Array<Record<string, string | number | boolean | null>> }>;   // null integer = unbounded
+  variables: Array<{ name; label; in_document: boolean; unit; condition_flag: string } & (
+    | { kind: "input"; input_type: "integer" | "choice" | "multi_choice" | "boolean" | "us_state"; options_table?; options_column?; options?; required }
+    | { kind: "constant"; value }                                                    // percent stored as fraction
+    | { kind: "lookup"; table; where: Where[]; take }                                // first row in table order
+    | { kind: "formula"; op: "add" | "sub" | "mul" | "div" | "min" | "max"; args: Array<string | number> }  // one flat op; nest via helpers
+    | { kind: "condition"; all: Cond[] }
+    | { kind: "aggregate"; fn: "sum" | "count"; table; rows: "selected" | "all"; selected_var?; key_column; column?; where? }
+    | { kind: "rows"; table; rows: "selected" | "all"; selected_var?; key_column; where?; map: Record<loopColumnTag, columnKey | Formula> } )>;
+  review_rules: Array<{ when: Cond[]; reason: string }>;      // explicit "decline to auto-quote"
+  assumptions: Array<{ text: string; resolved_as: string }>;  // what the owner's notes left open
+  sample_inputs: Record<string, unknown>;                      // the lead facts behind the sample quotation
 }
+// Where = { column; op: eq|neq|gte|lte|gt|lt|in; value_var? | value? | values? }, Cond = same with `var` instead of `column`.
 ```
 
-- A deterministic JavaScript calculation module accepts lead parameters and executes the rule schema, returning exact numerical subtotals, discounts, taxes, and totals.
+- Engine guarantees: topological evaluation; money rounded to cents immediately after each money variable; percent kept as a fraction; text compares whitespace-normalised and case-insensitive; `null` cell = unbounded in `gte`/`gt`; `condition_flag` on a rules variable is an optional *skip guard* (value zeroed, no review fired) while row presence in the payload comes from the Stage 2 flag; split rows receive the rounding remainder on the last row; amounts are unsigned (templates hard-code `−`); missing required input / no matching lookup row / division by zero / matching `review_rules` → `needs_review[]`, never a silent 0.
+- Pure module `backend/src/services/pricing-calculator.ts`: `evaluate(rules, inputs)`, `validate(rules, stage2)` (domain-level errors: unknown name, cycle, Stage 2 pricing variable without definition, flag without condition, loop map ≠ columns), `formatLike(sample_value, value)` (`$3,000/mo`, `8.25%`, `10%`), `sampleCheck` (per-variable ✓/✗ against the sample quotation), `buildProposalPayload` (keys = `variable_name`, `has_*` booleans, loops by `loop_tag`, tier matrix via `buildTierMatrixPayload`).
+- Compile validates, evaluates with `sample_inputs`, runs the sample check, and **retries once** with the error list (structural errors and sample mismatches) before persisting; both attempts are logged to `logs/<company>/*-rules-raw.json` / `*-rules-repair.json`. Gemini receives a flat wire shape (table rows as `cells[]`, every kind's fields present) because its response schema has no unions or dynamic keys; DeepSeek gets the same shape in the prompt; `fromWire()` types cells by column unit.
+- API (`/api/companies/:id/rules`): `POST /compile`, `GET`, `PUT` (400 with `errors[{path,message}]` on structural errors, nothing persisted), `POST /calculate` (`{inputs}` → evaluation + payload for an arbitrary lead; Stage 5's entry point — the deck's live check goes through `PUT`, which re-runs the sample), `POST /proceed` (`stage: "lead_simulation"`, 409 while validation errors exist). Any template regeneration or briefing unlock clears `pricing_rules`.
+- UI (`PricingEngineDeck.tsx`): assumptions strip → one editable grid card per `tables[]` entry (icon by `kind`) → "What we ask the lead" (inputs) → Calculation ledger (each variable: readable definition, computed sample value, quote sample value, ✓/✗; tap → tray to change kind/operator/operands/conditions; `[+ Add variable]` for helpers marked "not in document") → review rules → footer with "N of M match", `Regenerate`, `Proceed to Lead Simulation`. Dev Dock tab edits the raw `PricingRules` JSON with validation.
 
 ### 5. UI Architecture: Agentic Briefing & Ambient Controls
 - **Compound Briefing Capsule:** Unified prompt area + docked dropzone. `Enter` creates new lines; submission via explicit `[Send ➔]` button when both inputs are present. Transitions to read-only locked state with edit/reset modal.
@@ -111,7 +125,7 @@ interface PricingRuleSchema {
   3. **Fieldstone Studio (Dev)**: E-commerce build + Copywriting + SEO setup, 10% addon bundle discount = **$10,445.00** ($5,222.50 deposit / $5,222.50 delivery).
 
 ### Tested Modules
-- **Pricing Calculation Engine**: Automated unit tests asserting exact output figures for all 3 company rule sets against varied inputs and edge cases (boundary seat counts, tax exemptions, discount toggles).
+- **Pricing Calculation Engine**: `backend/src/tests/pricing-calculator.test.ts` runs the hand-written ideal rules `tests/fixtures/<company>.rules.json` (names aligned to `<company>.variables.json`) through the pure calculator: the three benchmarks to the cent, every boundary in `verification_guide.md` §4.1–4.3 (cap `≥`, unlimited cap, 25/50 band edges, 7-seat floor, non-stacking bands, absent rows not `$0.00`, one add-on no bundle, rush excluded from the bundle count, non-TX no tax, setup fee untaxed, missing state / over-cap / Custom Web App → `needs_review`), validator errors, `formatLike`, an all-green sample check per fixture, and payload-key ⟷ template-tag parity against `applyTemplate` output (never against `Mock Data/templated_markdown/*.md`). Route tests stub the model call via `setRulesModelCall` so `npm test` stays offline.
 - **Template Generation Bridge**: Integration tests asserting `docxmlater` output contains valid `{tags}` and loop rows while preserving footer rows.
 - **Proposal Rendering Pipeline**: End-to-end integration tests verifying `easy-template-x` generates valid `.docx` binaries with correct hydrated values.
 
