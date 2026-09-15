@@ -4,12 +4,6 @@
 
 **Rush Away Auto-Proposal** (`lad-feature-auto-proposal`) is a multi-tenant Node.js + Express backend powering dynamic price calculation, automated quotation generation, and AI-driven client proposal workflows.
 
-- **Runtime & Modules:** Node.js (CommonJS `require`/`module.exports`)
-- **Web Framework:** Express.js 4.x (`src/app.js`, `src/index.js`)
-- **Data Access:** PostgreSQL with parameterized SQL via `AppDataSource.query()` and `pg` pools (ADR-0001)
-- **AI & Document Pipelines:** Google Gemini, OpenAI, `docxtemplater`, `pizzip`, `puppeteer`, `@google-cloud/storage`
-- **Test Suite:** Jest (`npm test`, `npm run test:watch`, `npm run test:coverage`)
-
 ---
 
 ## Non-Negotiable Architecture Guardrails

@@ -48,6 +48,11 @@ Self-contained proof of concept demonstrating zero-configuration proposal genera
 - Persist variable tables, rule schemas, and configurations in SQLite so switching company tabs maintains progress.
 - Provide an explicit "Reset to Mock Default" action to re-seed from `companies_dataset.json`.
 
+### 6. **Context-Rich Commits:**
+- Format: `<type>(<scope>): <imperative summary>` followed by a blank line.
+- Body must explain **WHY** (problem, failure mode, or motivation) before **HOW** (approach, trade-offs, and fallbacks).
+- Reference related issues, plans, or ADRs (`REFS:`) if any.
+
 ---
 
 ## Documentation & Maintenance Policy
