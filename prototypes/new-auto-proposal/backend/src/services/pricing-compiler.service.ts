@@ -7,7 +7,7 @@ import { getAISettings } from "./ai-settings.service.js";
 import { logPipelineArtifact } from "./pipeline-log.js";
 import { evaluate, sampleCheck, validate } from "./pricing-calculator.js";
 import { fromWire, toWire, type AiPricingRules, type PricingRules, type PricingRulesState, type Stage2Context } from "./pricing-rules.types.js";
-import type { MutationLogEntry, TierMatrix } from "./template-mutator.service.js";
+import type { MutationLogEntry } from "./template-mutator.service.js";
 
 /**
  * Stage 4 compile: pricing notes + sample quotation + the confirmed Stage 2 variables → PricingRules.
@@ -22,7 +22,6 @@ export interface CompileInput {
   stage2: Stage2Context;
   /** Values the template engine reported as covered by a drafted paragraph/loop (no tag of their own). */
   covered: string[];
-  tierMatrix?: TierMatrix;
 }
 
 export function loadCompany(companyId: string): CompanyRow | undefined {
@@ -65,7 +64,6 @@ export function buildCompileInput(company: CompanyRow, stage2: Stage2Context): C
     quotationMarkdown: company.quotation_markdown ?? "",
     stage2,
     covered: details.filter((d) => d.action === "covered").map((d) => d.target),
-    tierMatrix: ws.template_stats?.tier_matrix,
   };
 }
 

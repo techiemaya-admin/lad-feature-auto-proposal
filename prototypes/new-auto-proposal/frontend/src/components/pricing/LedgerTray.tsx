@@ -3,6 +3,7 @@ import { X, Plus, Trash2 } from "lucide-react";
 import { CustomDropdown } from "../ui/custom-dropdown";
 import type { Cond, Formula, PricingRules, RuleKind, RuleVariable, Unit, Where } from "../../types/pricing";
 import { OP_SYMBOL, UNIT_LABEL, cellInputText, parseCellInput, parseLiteral, readableFormula } from "./readable";
+import { Commit as CommitBox } from "./RuleTableCard";
 
 /** Docked editor for one ledger variable: kind, unit, guard, and the kind's operands. */
 
@@ -48,16 +49,8 @@ const Field: React.FC<{ label: string; className?: string; children: React.React
 
 const box = "h-7 w-full rounded-md border border-border/70 bg-background px-2 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20";
 
-/** Text box that commits on blur/Enter so typing is never fought by re-renders. */
-const Commit: React.FC<{ value: string; onCommit: (s: string) => void; placeholder?: string; mono?: boolean; className?: string }> = ({ value, onCommit, placeholder, mono, className = "" }) => (
-  <input
-    key={value}
-    defaultValue={value}
-    placeholder={placeholder}
-    onBlur={(e) => e.target.value !== value && onCommit(e.target.value)}
-    onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
-    className={`${box} ${mono ? "font-mono tabular-nums" : ""} ${className}`}
-  />
+const Commit: React.FC<{ value: string; onCommit: (s: string) => void; placeholder?: string; mono?: boolean; className?: string }> = ({ mono, className = "", ...rest }) => (
+  <CommitBox {...rest} className={`${box} ${mono ? "font-mono tabular-nums" : ""} ${className}`} />
 );
 
 interface CondRowsProps<T extends Where | Cond> {

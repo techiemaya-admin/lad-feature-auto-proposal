@@ -14,6 +14,19 @@ const KIND_ICON: Record<TableKind, React.ComponentType<{ className?: string }>> 
   other: Table2,
 };
 
+/** Text box that commits on blur / Enter, so half-typed numbers ("12.") are never reformatted mid-keystroke. */
+export const Commit: React.FC<{ value: string; onCommit: (s: string) => void; placeholder?: string; inputMode?: "decimal" | "text"; className?: string }> = ({ value, onCommit, placeholder, inputMode, className = "" }) => (
+  <input
+    key={value}
+    defaultValue={value}
+    placeholder={placeholder}
+    inputMode={inputMode}
+    onBlur={(e) => e.target.value !== value && onCommit(e.target.value)}
+    onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+    className={className}
+  />
+);
+
 const UNIT_HINT: Record<string, string> = { money: "$", percent: "%", integer: "#", boolean: "✓", text: "" };
 const isNumeric = (unit: string) => unit === "money" || unit === "percent" || unit === "integer";
 
@@ -35,7 +48,7 @@ export const RuleTableCard: React.FC<RuleTableCardProps> = ({ table, onChange })
   const removeRow = (ri: number) => onChange({ ...table, rows: table.rows.filter((_, i) => i !== ri) });
 
   return (
-    <div className="rounded-xl border border-border/80 bg-card shadow-xs hover:-translate-y-0.5 hover:shadow-sm transition-transform duration-100 overflow-hidden">
+    <div className="rounded-xl border border-border/80 bg-card shadow-xs hover:-translate-y-0.5 transition-transform duration-100 overflow-hidden">
       <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-border/60">
         <Icon className="size-3.5 text-muted-foreground" />
         <span className="text-xs font-semibold text-foreground">{table.label}</span>
@@ -71,17 +84,11 @@ export const RuleTableCard: React.FC<RuleTableCardProps> = ({ table, onChange })
                         />
                       </label>
                     ) : (
-                      <input
-                        // Committed on blur / Enter so half-typed numbers ("12.") are never reformatted mid-keystroke.
-                        key={`${ri}-${c.key}-${cellInputText(c.unit, row[c.key])}`}
-                        defaultValue={cellInputText(c.unit, row[c.key])}
+                      <Commit
+                        value={cellInputText(c.unit, row[c.key])}
                         placeholder={c.unit === "integer" ? "∞" : ""}
                         inputMode={isNumeric(c.unit) ? "decimal" : "text"}
-                        onBlur={(e) => {
-                          const next = parseCellInput(c.unit, e.target.value);
-                          if (next !== (row[c.key] ?? null)) setCell(ri, c.key, next);
-                        }}
-                        onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+                        onCommit={(s) => setCell(ri, c.key, parseCellInput(c.unit, s))}
                         className={`h-7 w-full min-w-16 rounded-md border border-transparent bg-transparent px-1.5 text-xs text-foreground hover:border-border focus:border-border focus:bg-background outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20 transition-colors ${
                           isNumeric(c.unit) ? "font-mono tabular-nums text-right" : ""
                         }`}

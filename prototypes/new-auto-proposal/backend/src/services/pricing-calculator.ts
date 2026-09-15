@@ -486,7 +486,7 @@ export function validate(rules: PricingRules, stage2: Stage2Context): Validation
   const { cyclic } = topoOrder(rules.variables ?? []);
   if (cyclic.length) {
     const i = rules.variables.findIndex((v) => v.name === cyclic[0]);
-    err(`variables[${i}]`, `circular definition: ${cyclic.join(" → ")} depend on each other`);
+    err(`variables[${i}]`, `circular definition: ${cyclic.join(", ")} cannot be computed because they depend on each other (directly or through one another)`);
   }
 
   // The sheet must cover the document: every Stage 2 pricing cell, flag, and loop.

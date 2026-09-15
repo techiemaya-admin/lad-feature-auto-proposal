@@ -16,7 +16,7 @@ import type { Company } from "../types/company";
 import type { CompanyVariable, CompoundTable } from "../types/variable";
 import type { TemplateStats } from "../types/template";
 import type { PricingRulesState, ValidationError } from "../types/pricing";
-import { updatePricingRules } from "../services/api";
+import { RulesValidationError, updatePricingRules } from "../services/api";
 import { Button } from "./ui/button";
 
 interface DevDockProps {
@@ -79,8 +79,7 @@ export const DevDock: React.FC<DevDockProps> = ({
       setRulesErrors([]);
       onRulesChange?.(next);
     } catch (err) {
-      const e = err as Error & { errors?: ValidationError[] };
-      setRulesErrors(e.errors ?? [{ path: "", message: e.message }]);
+      setRulesErrors(err instanceof RulesValidationError ? err.errors : [{ path: "", message: err instanceof Error ? err.message : String(err) }]);
     } finally {
       setRulesApplying(false);
     }

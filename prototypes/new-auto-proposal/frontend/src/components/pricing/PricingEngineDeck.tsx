@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Calculator, CheckCircle2, AlertCircle, AlertTriangle, RefreshCw, ChevronRight, Check, X, Plus, ShieldAlert, User } from "lucide-react";
 import { Button } from "../ui/button";
-import { updatePricingRules } from "../../services/api";
+import { RulesValidationError, updatePricingRules } from "../../services/api";
 import type { PricingRules, PricingRulesState, RuleVariable, ValidationError } from "../../types/pricing";
 import type { CompanyVariable, CompoundTable } from "../../types/variable";
 import { RuleTableCard } from "./RuleTableCard";
@@ -49,13 +49,18 @@ export const PricingEngineDeck: React.FC<PricingEngineDeckProps> = ({
   const [errors, setErrors] = useState<ValidationError[]>(state?.validation_errors ?? []);
   const [selected, setSelected] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
-  // A new compile (or a reset) replaces the local copy. A local edit makes `rules` differ from
-  // `state.rules` until the debounced PUT's response is handed back up through onStateChange.
+  // A local edit makes `rules` differ from `state.rules` until the debounced PUT's response comes back
+  // through onStateChange. A parent change we did NOT cause (new compile, Dev Dock apply, reset) replaces
+  // the local copy; our own response is recognised by `lastSaved` so an edit made while the PUT was in
+  // flight is kept and saved next.
+  const [lastSaved, setLastSaved] = useState<PricingRules | null>(null);
   const [syncedRules, setSyncedRules] = useState(state?.rules);
   if (state?.rules !== syncedRules) {
     setSyncedRules(state?.rules);
-    setRules(state?.rules ?? null);
-    setErrors(state?.validation_errors ?? []);
+    if (state?.rules !== lastSaved) {
+      setRules(state?.rules ?? null);
+      setErrors(state?.validation_errors ?? []);
+    }
   }
 
   useEffect(() => {
@@ -63,13 +68,13 @@ export const PricingEngineDeck: React.FC<PricingEngineDeckProps> = ({
     const timer = setTimeout(async () => {
       try {
         const next = await updatePricingRules(companyId, rules);
+        setLastSaved(rules);
         setErrors([]);
         onStateChange({ ...next, rules });
         setSaveStatus("Saved");
         setTimeout(() => setSaveStatus(null), 1500);
       } catch (err) {
-        const e = err as Error & { errors?: ValidationError[] };
-        setErrors(e.errors ?? [{ path: "", message: e.message }]);
+        setErrors(err instanceof RulesValidationError ? err.errors : [{ path: "", message: err instanceof Error ? err.message : String(err) }]);
       }
     }, 300);
     return () => clearTimeout(timer);
@@ -81,14 +86,13 @@ export const PricingEngineDeck: React.FC<PricingEngineDeckProps> = ({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const edit = (next: PricingRules) => setRules(next);
-  const editVariable = (name: string, v: RuleVariable) => rules && edit({ ...rules, variables: rules.variables.map((x) => (x.name === name ? v : x)) });
+  const editVariable = (name: string, v: RuleVariable) => rules && setRules({ ...rules, variables: rules.variables.map((x) => (x.name === name ? v : x)) });
   const addHelper = () => {
     if (!rules) return;
     let n = 1;
     while (rules.variables.some((v) => v.name === `helper_${n}`)) n++;
     const name = `helper_${n}`;
-    edit({ ...rules, variables: [...rules.variables, { name, label: `Helper ${n}`, in_document: false, unit: "money", condition_flag: "", kind: "constant", value: 0 }] });
+    setRules({ ...rules, variables: [...rules.variables, { name, label: `Helper ${n}`, in_document: false, unit: "money", condition_flag: "", kind: "constant", value: 0 }] });
     setSelected(name);
   };
 
@@ -207,7 +211,7 @@ export const PricingEngineDeck: React.FC<PricingEngineDeckProps> = ({
             {/* One card per table */}
             <div className="grid gap-3 sm:grid-cols-2">
               {rules.tables.map((t, i) => (
-                <RuleTableCard key={t.id} table={t} onChange={(table) => edit({ ...rules, tables: rules.tables.map((x, j) => (j === i ? table : x)) })} />
+                <RuleTableCard key={t.id} table={t} onChange={(table) => setRules({ ...rules, tables: rules.tables.map((x, j) => (j === i ? table : x)) })} />
               ))}
             </div>
 
@@ -301,7 +305,7 @@ export const PricingEngineDeck: React.FC<PricingEngineDeckProps> = ({
                       variable={selectedVar}
                       sample={samples[selectedVar.name]}
                       onChange={(v) => editVariable(selectedVar.name, v)}
-                      onDelete={selectedVar.in_document ? undefined : () => { edit({ ...rules, variables: rules.variables.filter((x) => x.name !== selectedVar.name) }); setSelected(null); }}
+                      onDelete={selectedVar.in_document ? undefined : () => { setRules({ ...rules, variables: rules.variables.filter((x) => x.name !== selectedVar.name) }); setSelected(null); }}
                       onClose={() => setSelected(null)}
                     />
                   </div>

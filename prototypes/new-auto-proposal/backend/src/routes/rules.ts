@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { getDatabase } from "../db/database.js";
-import { buildProposalPayload, evaluate, sampleCheck } from "../services/pricing-calculator.js";
+import { buildProposalPayload, evaluate } from "../services/pricing-calculator.js";
 import { buildRulesState, compilePricingRules, loadCompany, loadStage2Context } from "../services/pricing-compiler.service.js";
 import type { PricingRulesState } from "../services/pricing-rules.types.js";
 import { formatCompanyResponse, type CompanyRow } from "./companies.js";
@@ -71,7 +71,7 @@ router.put("/:id/rules", (req: Request, res: Response): void => {
   }
 });
 
-// POST /api/companies/:id/rules/calculate — body { inputs }; the deck's live recalculation and Stage 5's entry point
+// POST /api/companies/:id/rules/calculate — body { inputs }; Stage 5's entry point (a lead, not the sample)
 router.post("/:id/rules/calculate", (req: Request, res: Response): void => {
   try {
     const company = loadCompany(req.params.id);
@@ -80,12 +80,7 @@ router.post("/:id/rules/calculate", (req: Request, res: Response): void => {
     if (!state) return void fail(res, 404, "Pricing rules have not been compiled yet");
     const stage2 = loadStage2Context(company.company_id);
     const evaluation = evaluate(state.rules, req.body?.inputs ?? {});
-    res.json({
-      success: true,
-      evaluation,
-      payload: buildProposalPayload(state.rules, evaluation, stage2, workingState.template_stats?.tier_matrix),
-      sample_check: sampleCheck(state.rules, evaluation, stage2),
-    });
+    res.json({ success: true, evaluation, payload: buildProposalPayload(state.rules, evaluation, stage2, workingState.template_stats?.tier_matrix) });
   } catch (error) {
     fail(res, 500, error instanceof Error ? error.message : "Failed to calculate pricing");
   }

@@ -1,5 +1,5 @@
 import type { Company, CompanySummary } from "../types/company";
-import type { Evaluation, PricingRules, PricingRulesState, SampleCheckEntry, ValidationError, Value } from "../types/pricing";
+import type { Evaluation, PricingRules, PricingRulesState, ValidationError, Value } from "../types/pricing";
 
 const API_BASE = "/api";
 
@@ -283,56 +283,41 @@ export async function updateAISettings(payload: Partial<AISettings>): Promise<AI
 // Stage 4: pricing rules
 // ---------------------------------------------------------------------------
 
-async function unwrapRules(res: Response, what: string): Promise<PricingRulesState> {
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({ error: res.statusText }));
-    const err = new Error(errorData.error || `Failed to ${what}: ${res.statusText}`) as Error & { errors?: ValidationError[] };
-    if (Array.isArray(errorData.errors)) err.errors = errorData.errors;
-    throw err;
+/** A PUT the server refused: `errors` are the structural problems, nothing was persisted. */
+export class RulesValidationError extends Error {
+  constructor(message: string, public errors: ValidationError[]) {
+    super(message);
   }
-  return (await res.json()).pricing_rules;
 }
 
-export async function compilePricingRules(companyId: string): Promise<PricingRulesState> {
-  return unwrapRules(await fetch(`${API_BASE}/companies/${companyId}/rules/compile`, { method: "POST" }), "compile pricing rules");
-}
-
-export async function fetchPricingRules(companyId: string): Promise<PricingRulesState> {
-  return unwrapRules(await fetch(`${API_BASE}/companies/${companyId}/rules`), "fetch pricing rules");
-}
-
-/** A 400 carries `errors: ValidationError[]` on the thrown Error. */
-export async function updatePricingRules(companyId: string, rules: PricingRules): Promise<PricingRulesState> {
-  const res = await fetch(`${API_BASE}/companies/${companyId}/rules`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ rules }),
-  });
-  return unwrapRules(res, "update pricing rules");
-}
-
-export async function calculatePricing(
-  companyId: string,
-  inputs: Record<string, Value>
-): Promise<{ evaluation: Evaluation; payload: Record<string, unknown>; sample_check: SampleCheckEntry[] }> {
-  const res = await fetch(`${API_BASE}/companies/${companyId}/rules/calculate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ inputs }),
-  });
+async function rulesRequest<T>(path: string, what: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE}/companies/${path}`, init);
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(errorData.error || `Failed to calculate pricing: ${res.statusText}`);
+    const message = errorData.error || `Failed to ${what}: ${res.statusText}`;
+    throw Array.isArray(errorData.errors) ? new RulesValidationError(message, errorData.errors) : new Error(message);
   }
   return res.json();
 }
+const json = (body: unknown): RequestInit => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+
+export async function compilePricingRules(companyId: string): Promise<PricingRulesState> {
+  return (await rulesRequest<{ pricing_rules: PricingRulesState }>(`${companyId}/rules/compile`, "compile pricing rules", { method: "POST" })).pricing_rules;
+}
+
+export async function fetchPricingRules(companyId: string): Promise<PricingRulesState> {
+  return (await rulesRequest<{ pricing_rules: PricingRulesState }>(`${companyId}/rules`, "fetch pricing rules")).pricing_rules;
+}
+
+/** Throws RulesValidationError on a 400. */
+export async function updatePricingRules(companyId: string, rules: PricingRules): Promise<PricingRulesState> {
+  return (await rulesRequest<{ pricing_rules: PricingRulesState }>(`${companyId}/rules`, "update pricing rules", { ...json({ rules }), method: "PUT" })).pricing_rules;
+}
+
+export function calculatePricing(companyId: string, inputs: Record<string, Value>): Promise<{ evaluation: Evaluation; payload: Record<string, unknown> }> {
+  return rulesRequest(`${companyId}/rules/calculate`, "calculate pricing", json({ inputs }));
+}
 
 export async function proceedToLeadSimulation(companyId: string): Promise<Company> {
-  const res = await fetch(`${API_BASE}/companies/${companyId}/rules/proceed`, { method: "POST" });
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error(errorData.error || `Failed to proceed: ${res.statusText}`);
-  }
-  const data = await res.json();
-  return data.company;
+  return (await rulesRequest<{ company: Company }>(`${companyId}/rules/proceed`, "proceed", { method: "POST" })).company;
 }
