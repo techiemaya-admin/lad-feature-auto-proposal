@@ -9,6 +9,8 @@ import {
   unlockBriefing,
   generateTemplate,
   fetchTemplateStatus,
+  compilePricingRules,
+  proceedToLeadSimulation,
   fetchAISettings,
   updateAISettings,
   type AISettings,
@@ -16,6 +18,8 @@ import {
 import type { Company, CompanySummary } from "./types/company";
 import type { CompanyVariable, CompoundTable } from "./types/variable";
 import type { TemplateStats } from "./types/template";
+import type { PricingRulesState } from "./types/pricing";
+import type { RulesStatus } from "./components/pricing/PricingEngineDeck";
 import { CompanyProfileCard } from "./components/CompanyProfileCard";
 import { DevDock } from "./components/DevDock";
 import { Button } from "./components/ui/button";
@@ -40,6 +44,9 @@ export function App() {
   const [templateStats, setTemplateStats] = useState<TemplateStats | null>(null);
   const [templateFilesize, setTemplateFilesize] = useState<number | null>(null);
   const [isGeneratingTemplate, setIsGeneratingTemplate] = useState<boolean>(false);
+  const [pricingRules, setPricingRules] = useState<PricingRulesState | null>(null);
+  const [rulesStatus, setRulesStatus] = useState<RulesStatus>({ status: "idle" });
+  const [isProceeding, setIsProceeding] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSubmittingBriefing, setIsSubmittingBriefing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -127,11 +134,14 @@ export function App() {
     setActiveCompoundTables([]);
     setTemplateStats(null);
     setTemplateFilesize(null);
+    setPricingRules(null);
+    setRulesStatus({ status: "idle" });
 
     fetchCompany(activeCompanyId)
       .then((data) => {
         if (!ignore) {
           setCurrentCompany(data);
+          setPricingRules(data.working_state?.pricing_rules ?? null);
           setIsLoading(false);
         }
       })
@@ -229,6 +239,7 @@ export function App() {
       setActiveCompoundTables([]);
       setTemplateStats(null);
       setTemplateFilesize(null);
+      setPricingRules(null);
       setNotification({
         type: "info",
         message: `Briefing unlocked for ${updated.company_name}. Downstream state reset.`,
@@ -258,6 +269,7 @@ export function App() {
     if (!templateStats) return;
     setTemplateStats(null);
     setTemplateFilesize(null);
+    setPricingRules(null);
     setNotification({ type: "info", message: "Variables changed. Generate the template again when you're done." });
   };
 
@@ -267,6 +279,8 @@ export function App() {
     try {
       const result = await generateTemplate(currentCompany.company_id);
       setTemplateStats(result);
+      setPricingRules(null); // a new template resets Stage 4
+      setRulesStatus({ status: "idle" });
 
       const status = await fetchTemplateStatus(currentCompany.company_id).catch(() => null);
       if (status) {
@@ -287,11 +301,38 @@ export function App() {
     }
   };
 
-  const handleProceedToPricing = () => {
-    setNotification({
-      type: "info",
-      message: `Template confirmed for ${currentCompany?.company_name}. Ready for Stage 4: Pricing Engine & Rules.`,
-    });
+  // Stage 3 → 4: compile the rules (the model writes the sheet, the calculator checks it)
+  const handleProceedToPricing = async () => {
+    if (!currentCompany) return;
+    setRulesStatus({ status: "compiling" });
+    try {
+      const state = await compilePricingRules(currentCompany.company_id);
+      setPricingRules(state);
+      setRulesStatus({ status: "idle" });
+      const toCheck = state.sample_check.filter((c) => !c.ok).length + state.validation_errors.length;
+      setNotification({
+        type: toCheck ? "info" : "success",
+        message: toCheck
+          ? `Pricing rules compiled — ${toCheck} ${toCheck === 1 ? "value" : "values"} to check.`
+          : `Pricing rules match ${currentCompany.company_name}'s quotation.`,
+      });
+    } catch (err) {
+      setRulesStatus({ status: "error", message: err instanceof Error ? err.message : "Failed to compile pricing rules" });
+    }
+  };
+
+  const handleProceedToLeadSimulation = async () => {
+    if (!currentCompany) return;
+    setIsProceeding(true);
+    try {
+      const updated = await proceedToLeadSimulation(currentCompany.company_id);
+      setCurrentCompany(updated);
+      setNotification({ type: "success", message: `Rules confirmed for ${updated.company_name}. Ready for Stage 5: Lead Simulation.` });
+    } catch (err) {
+      setNotification({ type: "error", message: err instanceof Error ? err.message : "Failed to proceed" });
+    } finally {
+      setIsProceeding(false);
+    }
   };
 
   const handleImportSettings = async () => {
@@ -303,6 +344,7 @@ export function App() {
       setActiveCompoundTables([]);
       setTemplateStats(null);
       setTemplateFilesize(null);
+      setPricingRules(null);
       setNotification({
         type: "success",
         message: `Settings & spec imported for ${reseeded.company_name}.`,
@@ -336,6 +378,7 @@ export function App() {
       setActiveCompoundTables([]);
       setTemplateStats(null);
       setTemplateFilesize(null);
+      setPricingRules(null);
       setNotification({
         type: "info",
         message: `Reset ${reset.company_name} to default.`,
@@ -500,6 +543,13 @@ export function App() {
             templateFilesize={templateFilesize}
             isGeneratingTemplate={isGeneratingTemplate}
             onProceedToPricing={handleProceedToPricing}
+            pricingRules={pricingRules}
+            rulesStatus={rulesStatus}
+            onRulesChange={setPricingRules}
+            onProceedToLeadSimulation={handleProceedToLeadSimulation}
+            isProceeding={isProceeding}
+            variables={activeVariables}
+            compoundTables={activeCompoundTables}
           />
         ) : null}
       </main>
@@ -510,6 +560,8 @@ export function App() {
         variables={activeVariables}
         compoundTables={activeCompoundTables}
         templateStats={templateStats}
+        pricingRules={pricingRules}
+        onRulesChange={setPricingRules}
       />
     </div>
   );

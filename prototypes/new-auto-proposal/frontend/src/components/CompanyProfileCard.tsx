@@ -3,10 +3,12 @@ import { RotateCcw, DownloadCloud, Building2 } from "lucide-react";
 import type { Company } from "../types/company";
 import type { CompanyVariable, CompoundTable } from "../types/variable";
 import type { TemplateStats } from "../types/template";
+import type { PricingRulesState } from "../types/pricing";
 import { Button } from "./ui/button";
 import { PromptDocCapsule } from "./PromptDocCapsule";
 import { VariableReviewDeck } from "./VariableReviewDeck";
 import { TemplateCheckpointCard } from "./TemplateCheckpointCard";
+import { PricingEngineDeck, type RulesStatus } from "./pricing/PricingEngineDeck";
 
 interface CompanyProfileCardProps {
   company: Company;
@@ -24,6 +26,13 @@ interface CompanyProfileCardProps {
   templateFilesize?: number | null;
   isGeneratingTemplate?: boolean;
   onProceedToPricing?: () => void;
+  pricingRules?: PricingRulesState | null;
+  rulesStatus?: RulesStatus;
+  onRulesChange?: (state: PricingRulesState) => void;
+  onProceedToLeadSimulation?: () => void;
+  isProceeding?: boolean;
+  variables?: CompanyVariable[];
+  compoundTables?: CompoundTable[];
 }
 
 export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
@@ -41,6 +50,13 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
   templateFilesize,
   isGeneratingTemplate = false,
   onProceedToPricing,
+  pricingRules = null,
+  rulesStatus = { status: "idle" },
+  onRulesChange,
+  onProceedToLeadSimulation,
+  isProceeding = false,
+  variables = [],
+  compoundTables = [],
 }) => {
   const [isImporting, setIsImporting] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
@@ -173,6 +189,22 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
           onRegenerate={onGenerateTemplate}
           onFixVariable={(target) => setFocusRequest({ target })}
           isRegenerating={isGeneratingTemplate}
+        />
+      )}
+
+      {/* Stage 4: Pricing Engine — tables, lead inputs, calculation ledger */}
+      {company.briefing_locked && templateStats && (pricingRules || rulesStatus.status !== "idle") && (
+        <PricingEngineDeck
+          companyId={company.company_id}
+          companyName={basics.company_name}
+          state={pricingRules}
+          status={rulesStatus}
+          variables={variables}
+          compoundTables={compoundTables}
+          onStateChange={(s) => onRulesChange?.(s)}
+          onRegenerate={() => onProceedToPricing?.()}
+          onProceed={() => onProceedToLeadSimulation?.()}
+          isProceeding={isProceeding}
         />
       )}
     </div>

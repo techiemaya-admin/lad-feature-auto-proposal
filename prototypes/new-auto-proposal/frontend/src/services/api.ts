@@ -1,4 +1,5 @@
 import type { Company, CompanySummary } from "../types/company";
+import type { Evaluation, PricingRules, PricingRulesState, SampleCheckEntry, ValidationError, Value } from "../types/pricing";
 
 const API_BASE = "/api";
 
@@ -276,4 +277,62 @@ export async function updateAISettings(payload: Partial<AISettings>): Promise<AI
   }
   const data = await res.json();
   return data.settings;
+}
+
+// ---------------------------------------------------------------------------
+// Stage 4: pricing rules
+// ---------------------------------------------------------------------------
+
+async function unwrapRules(res: Response, what: string): Promise<PricingRulesState> {
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ error: res.statusText }));
+    const err = new Error(errorData.error || `Failed to ${what}: ${res.statusText}`) as Error & { errors?: ValidationError[] };
+    if (Array.isArray(errorData.errors)) err.errors = errorData.errors;
+    throw err;
+  }
+  return (await res.json()).pricing_rules;
+}
+
+export async function compilePricingRules(companyId: string): Promise<PricingRulesState> {
+  return unwrapRules(await fetch(`${API_BASE}/companies/${companyId}/rules/compile`, { method: "POST" }), "compile pricing rules");
+}
+
+export async function fetchPricingRules(companyId: string): Promise<PricingRulesState> {
+  return unwrapRules(await fetch(`${API_BASE}/companies/${companyId}/rules`), "fetch pricing rules");
+}
+
+/** A 400 carries `errors: ValidationError[]` on the thrown Error. */
+export async function updatePricingRules(companyId: string, rules: PricingRules): Promise<PricingRulesState> {
+  const res = await fetch(`${API_BASE}/companies/${companyId}/rules`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rules }),
+  });
+  return unwrapRules(res, "update pricing rules");
+}
+
+export async function calculatePricing(
+  companyId: string,
+  inputs: Record<string, Value>
+): Promise<{ evaluation: Evaluation; payload: Record<string, unknown>; sample_check: SampleCheckEntry[] }> {
+  const res = await fetch(`${API_BASE}/companies/${companyId}/rules/calculate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ inputs }),
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(errorData.error || `Failed to calculate pricing: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function proceedToLeadSimulation(companyId: string): Promise<Company> {
+  const res = await fetch(`${API_BASE}/companies/${companyId}/rules/proceed`, { method: "POST" });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(errorData.error || `Failed to proceed: ${res.statusText}`);
+  }
+  const data = await res.json();
+  return data.company;
 }

@@ -15,6 +15,8 @@ import {
 import type { Company } from "../types/company";
 import type { CompanyVariable, CompoundTable } from "../types/variable";
 import type { TemplateStats } from "../types/template";
+import type { PricingRulesState, ValidationError } from "../types/pricing";
+import { updatePricingRules } from "../services/api";
 import { Button } from "./ui/button";
 
 interface DevDockProps {
@@ -22,7 +24,20 @@ interface DevDockProps {
   variables?: CompanyVariable[];
   compoundTables?: CompoundTable[];
   templateStats?: TemplateStats | null;
+  pricingRules?: PricingRulesState | null;
+  onRulesChange?: (state: PricingRulesState) => void;
 }
+
+const stageLabel = (stage: string | undefined, hasTemplate: boolean, locked: boolean) =>
+  stage === "lead_simulation"
+    ? "Stage 5: Lead Simulation"
+    : stage === "pricing_engine"
+    ? "Stage 4: Pricing Engine"
+    : hasTemplate
+    ? "Stage 3: Template Checkpoint"
+    : locked
+    ? "Stage 2: Variable Review"
+    : "Stage 1: Pricing Briefing";
 
 type TabKey = "profile" | "anydoc" | "variables" | "rules" | "logs";
 
@@ -31,12 +46,45 @@ export const DevDock: React.FC<DevDockProps> = ({
   variables,
   compoundTables,
   templateStats,
+  pricingRules,
+  onRulesChange,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>("profile");
   const [viewMode, setViewMode] = useState<"raw" | "preview">("raw");
   const [copied, setCopied] = useState(false);
+  // Rules tab: the raw PricingRules JSON, editable; Apply = PUT, structural errors listed, nothing persisted on 400
+  const [rulesText, setRulesText] = useState("");
+  const [rulesErrors, setRulesErrors] = useState<ValidationError[]>([]);
+  const [rulesApplying, setRulesApplying] = useState(false);
+  const [syncedRules, setSyncedRules] = useState(pricingRules);
+  if (pricingRules !== syncedRules) {
+    setSyncedRules(pricingRules);
+    setRulesText(pricingRules ? JSON.stringify(pricingRules.rules, null, 2) : "");
+    setRulesErrors(pricingRules?.validation_errors ?? []);
+  }
+  const applyRules = async () => {
+    if (!company) return;
+    let parsed;
+    try {
+      parsed = JSON.parse(rulesText);
+    } catch (err) {
+      setRulesErrors([{ path: "", message: `Not valid JSON: ${err instanceof Error ? err.message : String(err)}` }]);
+      return;
+    }
+    setRulesApplying(true);
+    try {
+      const next = await updatePricingRules(company.company_id, parsed);
+      setRulesErrors([]);
+      onRulesChange?.(next);
+    } catch (err) {
+      const e = err as Error & { errors?: ValidationError[] };
+      setRulesErrors(e.errors ?? [{ path: "", message: e.message }]);
+    } finally {
+      setRulesApplying(false);
+    }
+  };
 
   const docMeta = company?.document_metadata;
   const markdown = docMeta?.extracted_markdown || "";
@@ -69,7 +117,7 @@ export const DevDock: React.FC<DevDockProps> = ({
     } else if (activeTab === "variables") {
       content = JSON.stringify(variablesPayload, null, 2);
     } else if (activeTab === "rules") {
-      content = JSON.stringify(company?.data?.pricing_engine_spec || {}, null, 2);
+      content = rulesText || JSON.stringify({ status: "awaiting_stage_4" }, null, 2);
     } else if (activeTab === "logs") {
       content = JSON.stringify(
         {
@@ -77,11 +125,7 @@ export const DevDock: React.FC<DevDockProps> = ({
           briefing_locked: company?.briefing_locked,
           document_metadata: company?.document_metadata,
           updated_at: company?.updated_at,
-          pipeline_stage: resolvedTemplateStats
-            ? "Stage 3: Template Checkpoint"
-            : company?.briefing_locked
-            ? "Stage 2: Variable Review"
-            : "Stage 1: Pricing Briefing",
+          pipeline_stage: stageLabel(company?.working_state?.stage, Boolean(resolvedTemplateStats), Boolean(company?.briefing_locked)),
           template_status: resolvedTemplateStats ? "generated" : "awaiting_generation",
           template_stats: resolvedTemplateStats,
         },
@@ -337,22 +381,39 @@ export const DevDock: React.FC<DevDockProps> = ({
             )}
 
             {activeTab === "rules" && (
-              <div>
-                <div className="text-xs font-sans text-muted-foreground mb-2">
-                  Pricing Rule Schema (Stage 4 preview):
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs font-sans text-muted-foreground">
+                  <span>
+                    Pricing Rules JSON{pricingRules ? ` · compiled ${new Date(pricingRules.compiled_at).toLocaleString()}` : " (compiles in Stage 4)"}
+                  </span>
+                  {pricingRules && (
+                    <Button size="sm" variant="outline" onClick={applyRules} disabled={rulesApplying} className="h-6 px-2 text-[11px]">
+                      {rulesApplying ? "Applying…" : "Apply"}
+                    </Button>
+                  )}
                 </div>
-                <pre className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap wrap-break-word break-all">
-                  <code>
-                    {JSON.stringify(
-                      company?.data?.pricing_engine_spec || {
-                        status: "awaiting_stage_4",
-                        info: "Pricing rule schema compiles in Stage 4.",
-                      },
-                      null,
-                      2
-                    )}
-                  </code>
-                </pre>
+                {rulesErrors.length > 0 && (
+                  <ul className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-[11px] font-mono space-y-0.5">
+                    {rulesErrors.map((e, i) => (
+                      <li key={i}>
+                        {e.path && <span className="text-destructive/70">{e.path}: </span>}
+                        {e.message}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {pricingRules ? (
+                  <textarea
+                    value={rulesText}
+                    onChange={(e) => setRulesText(e.target.value)}
+                    spellCheck={false}
+                    className="w-full min-h-64 p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs font-mono leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20"
+                  />
+                ) : (
+                  <pre className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap wrap-break-word break-all">
+                    <code>{JSON.stringify({ status: "awaiting_stage_4", info: "Press “Set up pricing” on the template checkpoint to compile the rules." }, null, 2)}</code>
+                  </pre>
+                )}
               </div>
             )}
 
@@ -372,11 +433,10 @@ export const DevDock: React.FC<DevDockProps> = ({
                       {
                         company_id: company?.company_id,
                         briefing_locked: company?.briefing_locked,
-                        pipeline_stage: resolvedTemplateStats
-                          ? "Stage 3: Template Checkpoint (Mutated .docx ready)"
-                          : company?.briefing_locked
-                          ? "Stage 2: Variable Review"
-                          : "Stage 1: Pricing Briefing",
+                        pipeline_stage: stageLabel(company?.working_state?.stage, Boolean(resolvedTemplateStats), Boolean(company?.briefing_locked)),
+                        pricing_rules_status: pricingRules
+                          ? `${pricingRules.sample_check.filter((c) => c.ok).length}/${pricingRules.sample_check.length} sample values match, ${pricingRules.validation_errors.length} errors`
+                          : "awaiting_compile",
                         template_status: resolvedTemplateStats ? "generated" : "awaiting_generation",
                         template_stats: resolvedTemplateStats,
                         document_metadata: company?.document_metadata,

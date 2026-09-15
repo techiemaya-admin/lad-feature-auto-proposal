@@ -1,4 +1,5 @@
 import type { TemplateStats } from "./template";
+import type { PricingRulesState } from "./pricing";
 
 export interface CompanyBasics {
   company_name: string;
@@ -74,6 +75,8 @@ export interface CompanyWorkingState {
   template_generated_at?: string;
   template_stats?: TemplateStats;
   extracted_variables?: unknown;
+  /** Stage 4; null until compiled, nulled again by any earlier-stage rerun. */
+  pricing_rules?: PricingRulesState | null;
   [key: string]: unknown;
 }
 
