@@ -1,0 +1,111 @@
+{
+  "version": 1,
+  "tables": [
+    {
+      "id": "templates",
+      "label": "Project templates",
+      "kind": "packages",
+      "columns": [
+        { "key": "name", "label": "Template", "unit": "text" },
+        { "key": "fee", "label": "Base fee", "unit": "money" },
+        { "key": "product_cap", "label": "Product cap", "unit": "integer" },
+        { "key": "scope_summary", "label": "Scope", "unit": "text" },
+        { "key": "timeline", "label": "Typical delivery", "unit": "text" },
+        { "key": "needs_scoping", "label": "Needs scoping call", "unit": "boolean" }
+      ],
+      "rows": [
+        { "name": "Landing Page", "fee": 2500, "product_cap": null, "scope_summary": "single page, contact form", "timeline": "1–2 weeks", "needs_scoping": false },
+        { "name": "Business Website", "fee": 6000, "product_cap": null, "scope_summary": "up to 8 pages, CMS", "timeline": "3–4 weeks", "needs_scoping": false },
+        { "name": "E-Commerce Build", "fee": 9500, "product_cap": 100, "scope_summary": "up to 100 products", "timeline": "4–6 weeks", "needs_scoping": false },
+        { "name": "Custom Web App", "fee": 22000, "product_cap": null, "scope_summary": "scoped per project", "timeline": "8–12 weeks", "needs_scoping": true }
+      ]
+    },
+    {
+      "id": "phases",
+      "label": "Project phases",
+      "kind": "other",
+      "columns": [
+        { "key": "template", "label": "Template", "unit": "text" },
+        { "key": "phase_number", "label": "Phase", "unit": "integer" },
+        { "key": "milestone_title", "label": "Milestone", "unit": "text" },
+        { "key": "deliverable_summary", "label": "Deliverable", "unit": "text" }
+      ],
+      "rows": [
+        { "template": "E-Commerce Build", "phase_number": 1, "milestone_title": "Discovery", "deliverable_summary": "Requirements confirmed: product catalog structure, cart provider, copy & SEO inputs gathered" },
+        { "template": "E-Commerce Build", "phase_number": 2, "milestone_title": "Design", "deliverable_summary": "Homepage, category, and product page design delivered for review" },
+        { "template": "E-Commerce Build", "phase_number": 3, "milestone_title": "Build", "deliverable_summary": "Store built, products loaded, copywriting integrated, checkout configured" },
+        { "template": "E-Commerce Build", "phase_number": 4, "milestone_title": "QA", "deliverable_summary": "Cross-device testing, checkout/payment flow verification, basic SEO setup applied" },
+        { "template": "E-Commerce Build", "phase_number": 5, "milestone_title": "Launch", "deliverable_summary": "Store goes live; one round of post-launch revisions included" }
+      ]
+    },
+    {
+      "id": "addons",
+      "label": "Add-ons",
+      "kind": "addons",
+      "columns": [
+        { "key": "name", "label": "Add-on", "unit": "text" },
+        { "key": "line_label", "label": "Line label", "unit": "text" },
+        { "key": "fee", "label": "Fee", "unit": "money" },
+        { "key": "stackable", "label": "Counts toward bundle", "unit": "boolean" }
+      ],
+      "rows": [
+        { "name": "Copywriting", "line_label": "Copywriting add-on", "fee": 600, "stackable": true },
+        { "name": "Basic SEO Setup", "line_label": "Basic SEO Setup add-on", "fee": 450, "stackable": true },
+        { "name": "CMS Integration", "line_label": "CMS Integration add-on", "fee": 800, "stackable": true },
+        { "name": "Extra Revision Round", "line_label": "Extra Revision Round add-on", "fee": 300, "stackable": true }
+      ]
+    },
+    {
+      "id": "payment_splits",
+      "label": "Payment schedule",
+      "kind": "splits",
+      "columns": [
+        { "key": "milestone_name", "label": "Milestone", "unit": "text" },
+        { "key": "trigger_description", "label": "Trigger", "unit": "text" },
+        { "key": "share", "label": "Share", "unit": "percent" }
+      ],
+      "rows": [
+        { "milestone_name": "Deposit (50%)", "trigger_description": "On signing", "share": 0.5 },
+        { "milestone_name": "Final payment (50%)", "trigger_description": "At delivery / launch", "share": 0.5 }
+      ]
+    }
+  ],
+  "variables": [
+    { "name": "product_count", "label": "Number of products", "in_document": false, "unit": "integer", "condition_flag": "", "kind": "input", "input_type": "integer", "required": true },
+    { "name": "project_template_name", "label": "Project template", "in_document": true, "unit": "text", "condition_flag": "", "kind": "input", "input_type": "choice", "options_table": "templates", "options_column": "name", "required": true },
+    { "name": "selected_addons", "label": "Add-ons requested", "in_document": false, "unit": "text", "condition_flag": "", "kind": "input", "input_type": "multi_choice", "options_table": "addons", "options_column": "name", "required": false },
+    { "name": "rush_delivery", "label": "Rush delivery", "in_document": false, "unit": "boolean", "condition_flag": "", "kind": "input", "input_type": "boolean", "required": false },
+
+    { "name": "template_product_cap", "label": "Template product cap", "in_document": false, "unit": "integer", "condition_flag": "", "kind": "lookup", "table": "templates", "where": [{ "column": "name", "op": "eq", "value_var": "project_template_name" }], "take": "product_cap" },
+    { "name": "template_needs_scoping", "label": "Template needs a scoping call", "in_document": false, "unit": "boolean", "condition_flag": "", "kind": "lookup", "table": "templates", "where": [{ "column": "name", "op": "eq", "value_var": "project_template_name" }], "take": "needs_scoping" },
+    { "name": "template_scope_summary", "label": "Template scope", "in_document": true, "unit": "text", "condition_flag": "", "kind": "lookup", "table": "templates", "where": [{ "column": "name", "op": "eq", "value_var": "project_template_name" }], "take": "scope_summary" },
+    { "name": "typical_delivery_timeline", "label": "Typical delivery timeline", "in_document": true, "unit": "text", "condition_flag": "", "kind": "lookup", "table": "templates", "where": [{ "column": "name", "op": "eq", "value_var": "project_template_name" }], "take": "timeline" },
+    { "name": "base_template_fee", "label": "Base template fee", "in_document": true, "unit": "money", "condition_flag": "", "kind": "lookup", "table": "templates", "where": [{ "column": "name", "op": "eq", "value_var": "project_template_name" }], "take": "fee" },
+    { "name": "milestones", "label": "Project phases", "in_document": true, "unit": "rows", "condition_flag": "", "kind": "rows", "table": "phases", "rows": "all", "key_column": "phase_number", "where": [{ "column": "template", "op": "eq", "value_var": "project_template_name" }], "map": { "phase_number": "phase_number", "milestone_title": "milestone_title", "deliverable_summary": "deliverable_summary" } },
+    { "name": "addon_items", "label": "Selected add-ons", "in_document": true, "unit": "rows", "condition_flag": "", "kind": "rows", "table": "addons", "rows": "selected", "selected_var": "selected_addons", "key_column": "name", "map": { "addon_name": "line_label", "addon_fee": "fee" } },
+    { "name": "stackable_addon_count", "label": "Stackable add-ons selected", "in_document": false, "unit": "integer", "condition_flag": "", "kind": "aggregate", "fn": "count", "table": "addons", "rows": "selected", "selected_var": "selected_addons", "key_column": "name", "where": [{ "column": "stackable", "op": "eq", "value": true }] },
+    { "name": "addon_flat_subtotal", "label": "Add-on fees", "in_document": false, "unit": "money", "condition_flag": "", "kind": "aggregate", "fn": "sum", "table": "addons", "rows": "selected", "selected_var": "selected_addons", "key_column": "name", "column": "fee" },
+    { "name": "rush_percentage", "label": "Rush delivery uplift", "in_document": false, "unit": "percent", "condition_flag": "", "kind": "constant", "value": 0.2 },
+    { "name": "rush_fee", "label": "Rush delivery fee", "in_document": false, "unit": "money", "condition_flag": "", "kind": "formula", "op": "mul", "args": ["rush_delivery", "base_template_fee", "rush_percentage"] },
+    { "name": "addon_subtotal", "label": "Add-on subtotal", "in_document": true, "unit": "money", "condition_flag": "", "kind": "formula", "op": "add", "args": ["addon_flat_subtotal", "rush_fee"] },
+    { "name": "has_addons", "label": "Add-ons selected", "in_document": false, "unit": "boolean", "condition_flag": "", "kind": "condition", "all": [{ "var": "addon_subtotal", "op": "gt", "value": 0 }] },
+    { "name": "bundle_discount_percentage", "label": "Bundle discount", "in_document": true, "unit": "percent", "condition_flag": "", "kind": "constant", "value": 0.1 },
+    { "name": "has_bundle_discount", "label": "Bundle discount applies", "in_document": false, "unit": "boolean", "condition_flag": "", "kind": "condition", "all": [{ "var": "stackable_addon_count", "op": "gte", "value": 2 }] },
+    { "name": "bundle_discount_amount", "label": "Bundle discount amount", "in_document": true, "unit": "money", "condition_flag": "has_bundle_discount", "kind": "formula", "op": "mul", "args": ["addon_flat_subtotal", "bundle_discount_percentage"] },
+    { "name": "addon_total_after_discount", "label": "Add-ons after discount", "in_document": false, "unit": "money", "condition_flag": "", "kind": "formula", "op": "sub", "args": ["addon_subtotal", "bundle_discount_amount"] },
+    { "name": "tax_rate", "label": "Tax rate", "in_document": false, "unit": "percent", "condition_flag": "", "kind": "constant", "value": 0 },
+    { "name": "tax_amount", "label": "Tax", "in_document": false, "unit": "money", "condition_flag": "", "kind": "formula", "op": "mul", "args": ["addon_total_after_discount", "tax_rate"] },
+    { "name": "total_project_investment", "label": "Total project investment", "in_document": true, "unit": "money", "condition_flag": "", "kind": "formula", "op": "add", "args": ["base_template_fee", "addon_total_after_discount", "tax_amount"] },
+    { "name": "payment_milestones", "label": "Payment schedule", "in_document": true, "unit": "rows", "condition_flag": "", "kind": "rows", "table": "payment_splits", "rows": "all", "key_column": "milestone_name", "map": { "milestone_name": "milestone_name", "trigger_description": "trigger_description", "payment_amount": { "op": "mul", "args": ["col:share", "total_project_investment"] } } }
+  ],
+  "review_rules": [
+    { "when": [{ "var": "product_count", "op": "gt", "value_var": "template_product_cap" }], "reason": "Product count exceeds the template's product cap — needs a scoping call" },
+    { "when": [{ "var": "template_needs_scoping", "op": "eq", "value": true }], "reason": "Custom Web App always needs a scoping call before quoting" }
+  ],
+  "assumptions": [
+    { "text": "Tax was inconclusive in the owner's notes.", "resolved_as": "0% tax; revisit before go-live." },
+    { "text": "Rush delivery is a percentage modifier, not a stackable add-on.", "resolved_as": "20% of the base fee, added to the add-on subtotal, excluded from the bundle count." },
+    { "text": "Optional three-way payment split.", "resolved_as": "Not modelled; the default 50/50 split applies." }
+  ],
+  "sample_inputs": { "product_count": 60, "project_template_name": "E-Commerce Build", "selected_addons": ["Copywriting", "Basic SEO Setup"], "rush_delivery": false }
+}

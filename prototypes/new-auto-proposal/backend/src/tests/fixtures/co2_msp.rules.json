@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "tables": [
+    {
+      "id": "tiers",
+      "label": "Support tiers",
+      "kind": "packages",
+      "columns": [
+        { "key": "name", "label": "Tier", "unit": "text" },
+        { "key": "rate_per_seat", "label": "Rate per seat / mo", "unit": "money" },
+        { "key": "sla", "label": "SLA", "unit": "text" }
+      ],
+      "rows": [
+        { "name": "Essential", "rate_per_seat": 45, "sla": "Next-business-day response, business hours" },
+        { "name": "Standard", "rate_per_seat": 65, "sla": "4-hour response, extended hours, backups" },
+        { "name": "Premium", "rate_per_seat": 85, "sla": "1-hour response, 24/7 coverage" }
+      ]
+    },
+    {
+      "id": "volume_bands",
+      "label": "Volume bands",
+      "kind": "bands",
+      "columns": [
+        { "key": "min_seats", "label": "From seats", "unit": "integer" },
+        { "key": "max_seats", "label": "To seats", "unit": "integer" },
+        { "key": "discount_per_seat", "label": "Discount per seat", "unit": "money" },
+        { "key": "label", "label": "Band label", "unit": "text" }
+      ],
+      "rows": [
+        { "min_seats": 0, "max_seats": 24, "discount_per_seat": 0, "label": "0–24 seat band" },
+        { "min_seats": 25, "max_seats": 49, "discount_per_seat": 5, "label": "25–49 seat band" },
+        { "min_seats": 50, "max_seats": null, "discount_per_seat": 10, "label": "50+ seat band" }
+      ]
+    },
+    {
+      "id": "taxes",
+      "label": "Sales tax",
+      "kind": "taxes",
+      "columns": [
+        { "key": "state", "label": "State", "unit": "text" },
+        { "key": "state_name", "label": "Jurisdiction", "unit": "text" },
+        { "key": "rate", "label": "Rate", "unit": "percent" }
+      ],
+      "rows": [{ "state": "OH", "state_name": "Ohio", "rate": 0.06 }]
+    }
+  ],
+  "variables": [
+    { "name": "seat_count", "label": "Seats", "in_document": true, "unit": "integer", "condition_flag": "", "kind": "input", "input_type": "integer", "required": true },
+    { "name": "selected_tier", "label": "Support tier", "in_document": true, "unit": "text", "condition_flag": "", "kind": "input", "input_type": "choice", "options_table": "tiers", "options_column": "name", "required": true },
+    { "name": "extra_device_count", "label": "Extra managed devices", "in_document": true, "unit": "integer", "condition_flag": "", "kind": "input", "input_type": "integer", "required": false },
+    { "name": "client_state", "label": "Client state", "in_document": false, "unit": "text", "condition_flag": "", "kind": "input", "input_type": "us_state", "required": true },
+
+    { "name": "minimum_seat_commitment", "label": "Minimum seat commitment", "in_document": false, "unit": "integer", "condition_flag": "", "kind": "constant", "value": 10 },
+    { "name": "billed_seat_count", "label": "Billed seats", "in_document": false, "unit": "integer", "condition_flag": "", "kind": "formula", "op": "max", "args": ["seat_count", "minimum_seat_commitment"] },
+    { "name": "base_rate_per_seat", "label": "Base rate per seat", "in_document": true, "unit": "money", "condition_flag": "", "kind": "lookup", "table": "tiers", "where": [{ "column": "name", "op": "eq", "value_var": "selected_tier" }], "take": "rate_per_seat" },
+    { "name": "volume_band_discount", "label": "Band discount per seat", "in_document": false, "unit": "money", "condition_flag": "", "kind": "lookup", "table": "volume_bands", "where": [{ "column": "min_seats", "op": "lte", "value_var": "billed_seat_count" }, { "column": "max_seats", "op": "gte", "value_var": "billed_seat_count" }], "take": "discount_per_seat" },
+    { "name": "has_volume_adjustment", "label": "Volume discount applies", "in_document": false, "unit": "boolean", "condition_flag": "", "kind": "condition", "all": [{ "var": "volume_band_discount", "op": "gt", "value": 0 }] },
+    { "name": "volume_discount_per_seat", "label": "Volume discount per seat", "in_document": true, "unit": "money", "condition_flag": "", "kind": "formula", "op": "add", "args": ["volume_band_discount"] },
+    { "name": "volume_tier_band", "label": "Volume band", "in_document": true, "unit": "text", "condition_flag": "has_volume_adjustment", "kind": "lookup", "table": "volume_bands", "where": [{ "column": "min_seats", "op": "lte", "value_var": "billed_seat_count" }, { "column": "max_seats", "op": "gte", "value_var": "billed_seat_count" }], "take": "label" },
+    { "name": "adjusted_seat_rate", "label": "Adjusted rate per seat", "in_document": true, "unit": "money", "condition_flag": "", "kind": "formula", "op": "sub", "args": ["base_rate_per_seat", "volume_band_discount"] },
+    { "name": "seat_subtotal", "label": "Seat subtotal", "in_document": true, "unit": "money", "condition_flag": "", "kind": "formula", "op": "mul", "args": ["billed_seat_count", "adjusted_seat_rate"] },
+    { "name": "extra_device_rate", "label": "Extra device rate", "in_document": true, "unit": "money", "condition_flag": "", "kind": "constant", "value": 12 },
+    { "name": "has_extra_devices", "label": "Extra devices billed", "in_document": false, "unit": "boolean", "condition_flag": "", "kind": "condition", "all": [{ "var": "extra_device_count", "op": "gt", "value": 0 }] },
+    { "name": "extra_device_subtotal", "label": "Extra device subtotal", "in_document": true, "unit": "money", "condition_flag": "has_extra_devices", "kind": "formula", "op": "mul", "args": ["extra_device_count", "extra_device_rate"] },
+    { "name": "monthly_recurring_subtotal", "label": "Monthly recurring subtotal", "in_document": true, "unit": "money", "condition_flag": "", "kind": "formula", "op": "add", "args": ["seat_subtotal", "extra_device_subtotal"] },
+    { "name": "tax_match_count", "label": "Tax rows for the client's state", "in_document": false, "unit": "integer", "condition_flag": "", "kind": "aggregate", "fn": "count", "table": "taxes", "rows": "all", "key_column": "state", "where": [{ "column": "state", "op": "eq", "value_var": "client_state" }] },
+    { "name": "has_tax", "label": "Sales tax applies", "in_document": false, "unit": "boolean", "condition_flag": "", "kind": "condition", "all": [{ "var": "tax_match_count", "op": "gt", "value": 0 }] },
+    { "name": "tax_jurisdiction", "label": "Tax jurisdiction", "in_document": true, "unit": "text", "condition_flag": "has_tax", "kind": "lookup", "table": "taxes", "where": [{ "column": "state", "op": "eq", "value_var": "client_state" }], "take": "state_name" },
+    { "name": "tax_rate", "label": "Tax rate", "in_document": true, "unit": "percent", "condition_flag": "has_tax", "kind": "lookup", "table": "taxes", "where": [{ "column": "state", "op": "eq", "value_var": "client_state" }], "take": "rate" },
+    { "name": "tax_amount", "label": "Sales tax", "in_document": true, "unit": "money", "condition_flag": "has_tax", "kind": "formula", "op": "mul", "args": ["monthly_recurring_subtotal", "tax_rate"] },
+    { "name": "total_monthly_recurring", "label": "Total monthly recurring", "in_document": true, "unit": "money", "condition_flag": "", "kind": "formula", "op": "add", "args": ["monthly_recurring_subtotal", "tax_amount"] },
+    { "name": "onboarding_rate_per_seat", "label": "Onboarding rate per seat", "in_document": true, "unit": "money", "condition_flag": "", "kind": "constant", "value": 75 },
+    { "name": "setup_fee_total", "label": "One-time setup fee", "in_document": true, "unit": "money", "condition_flag": "", "kind": "formula", "op": "mul", "args": ["billed_seat_count", "onboarding_rate_per_seat"] }
+  ],
+  "review_rules": [],
+  "assumptions": [
+    { "text": "Volume bands apply to the whole seat count once crossed (not marginally).", "resolved_as": "Whole-quantity band rate; bands never stack." },
+    { "text": "Setup fee and tax basis.", "resolved_as": "Setup fee is one-time, never taxed; tax applies to the recurring subtotal only." }
+  ],
+  "sample_inputs": { "seat_count": 42, "selected_tier": "Standard", "extra_device_count": 5, "client_state": "OH" }
+}

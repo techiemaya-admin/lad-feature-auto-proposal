@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "tables": [
+    {
+      "id": "packages",
+      "label": "Packages",
+      "kind": "packages",
+      "columns": [
+        { "key": "name", "label": "Package", "unit": "text" },
+        { "key": "monthly_rate", "label": "Monthly rate", "unit": "money" },
+        { "key": "location_cap", "label": "Location cap", "unit": "integer" }
+      ],
+      "rows": [
+        { "name": "Local", "monthly_rate": 1000, "location_cap": 1 },
+        { "name": "Growth", "monthly_rate": 3000, "location_cap": 3 },
+        { "name": "Authority", "monthly_rate": 8000, "location_cap": null }
+      ]
+    },
+    {
+      "id": "taxes",
+      "label": "Sales tax",
+      "kind": "taxes",
+      "columns": [
+        { "key": "state", "label": "State", "unit": "text" },
+        { "key": "state_name", "label": "Jurisdiction", "unit": "text" },
+        { "key": "rate", "label": "Rate", "unit": "percent" }
+      ],
+      "rows": [{ "state": "TX", "state_name": "Texas", "rate": 0.0825 }]
+    }
+  ],
+  "variables": [
+    { "name": "location_count", "label": "Number of locations", "in_document": false, "unit": "integer", "condition_flag": "", "kind": "input", "input_type": "integer", "required": true },
+    { "name": "client_state", "label": "Client state", "in_document": false, "unit": "text", "condition_flag": "", "kind": "input", "input_type": "us_state", "required": true },
+    { "name": "annual_prepay", "label": "Pays annually up front", "in_document": false, "unit": "boolean", "condition_flag": "", "kind": "input", "input_type": "boolean", "required": false },
+
+    { "name": "selected_tier", "label": "Selected package", "in_document": true, "unit": "text", "condition_flag": "", "kind": "lookup", "table": "packages", "where": [{ "column": "location_cap", "op": "gte", "value_var": "location_count" }], "take": "name" },
+    { "name": "selected_tier_rate", "label": "Package monthly rate", "in_document": true, "unit": "money", "condition_flag": "", "kind": "lookup", "table": "packages", "where": [{ "column": "name", "op": "eq", "value_var": "selected_tier" }], "take": "monthly_rate" },
+    { "name": "contract_months", "label": "Contract length (months)", "in_document": true, "unit": "integer", "condition_flag": "", "kind": "constant", "value": 12 },
+    { "name": "base_investment_amount", "label": "Base investment", "in_document": true, "unit": "money", "condition_flag": "", "kind": "formula", "op": "mul", "args": ["selected_tier_rate", "contract_months"] },
+    { "name": "annual_discount_percentage", "label": "Annual prepay discount", "in_document": true, "unit": "percent", "condition_flag": "", "kind": "constant", "value": 0.1 },
+    { "name": "has_annual_discount", "label": "Annual discount applies", "in_document": false, "unit": "boolean", "condition_flag": "", "kind": "condition", "all": [{ "var": "annual_prepay", "op": "eq", "value": true }] },
+    { "name": "annual_discount_amount", "label": "Annual discount", "in_document": true, "unit": "money", "condition_flag": "has_annual_discount", "kind": "formula", "op": "mul", "args": ["base_investment_amount", "annual_discount_percentage"] },
+    { "name": "subtotal_amount", "label": "Subtotal", "in_document": true, "unit": "money", "condition_flag": "", "kind": "formula", "op": "sub", "args": ["base_investment_amount", "annual_discount_amount"] },
+    { "name": "tax_match_count", "label": "Tax rows for the client's state", "in_document": false, "unit": "integer", "condition_flag": "", "kind": "aggregate", "fn": "count", "table": "taxes", "rows": "all", "key_column": "state", "where": [{ "column": "state", "op": "eq", "value_var": "client_state" }] },
+    { "name": "has_tax", "label": "Sales tax applies", "in_document": false, "unit": "boolean", "condition_flag": "", "kind": "condition", "all": [{ "var": "tax_match_count", "op": "gt", "value": 0 }] },
+    { "name": "tax_jurisdiction", "label": "Tax jurisdiction", "in_document": true, "unit": "text", "condition_flag": "has_tax", "kind": "lookup", "table": "taxes", "where": [{ "column": "state", "op": "eq", "value_var": "client_state" }], "take": "state_name" },
+    { "name": "tax_rate", "label": "Tax rate", "in_document": true, "unit": "percent", "condition_flag": "has_tax", "kind": "lookup", "table": "taxes", "where": [{ "column": "state", "op": "eq", "value_var": "client_state" }], "take": "rate" },
+    { "name": "tax_amount", "label": "Sales tax", "in_document": true, "unit": "money", "condition_flag": "has_tax", "kind": "formula", "op": "mul", "args": ["subtotal_amount", "tax_rate"] },
+    { "name": "total_investment_amount", "label": "Total investment", "in_document": true, "unit": "money", "condition_flag": "", "kind": "formula", "op": "add", "args": ["subtotal_amount", "tax_amount"] }
+  ],
+  "review_rules": [],
+  "assumptions": [
+    { "text": "Owner notes say tax is \"around 8.25%\" without a basis.", "resolved_as": "Texas sales tax at 8.25% on the post-discount subtotal." },
+    { "text": "Monthly (non-prepay) leads are not priced in the notes.", "resolved_as": "Quoted as 12 months at the monthly rate with the discount row hidden." }
+  ],
+  "sample_inputs": { "location_count": 2, "client_state": "TX", "annual_prepay": true }
+}
