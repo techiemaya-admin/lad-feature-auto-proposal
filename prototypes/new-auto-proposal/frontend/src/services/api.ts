@@ -321,3 +321,76 @@ export function calculatePricing(companyId: string, inputs: Record<string, Value
 export async function proceedToLeadSimulation(companyId: string): Promise<Company> {
   return (await rulesRequest<{ company: Company }>(`${companyId}/rules/proceed`, "proceed", { method: "POST" })).company;
 }
+
+// ---------------------------------------------------------------------------
+// Ambient shell: per-company configuration, mock email link, pipeline logs
+// ---------------------------------------------------------------------------
+
+export interface CompanyConfiguration {
+  company_id: string;
+  style_notes: string;
+  reference_proposal_text: string;
+  clarification_notes: string;
+  email_connected: boolean;
+  email_address: string | null;
+  email_connected_at: string | null;
+  updated_at: string | null;
+}
+
+export type ConfigurationPatch = Partial<
+  Pick<CompanyConfiguration, "style_notes" | "reference_proposal_text" | "clarification_notes">
+>;
+
+async function configurationCall(path: string, init?: RequestInit): Promise<CompanyConfiguration> {
+  const res = await fetch(`${API_BASE}/companies/${path}`, init);
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(errorData.error || `Request failed: ${res.statusText}`);
+  }
+  const data = await res.json();
+  return data.configuration;
+}
+
+export function fetchConfiguration(companyId: string): Promise<CompanyConfiguration> {
+  return configurationCall(`${companyId}/configurations`);
+}
+
+export function updateConfiguration(companyId: string, patch: ConfigurationPatch): Promise<CompanyConfiguration> {
+  return configurationCall(`${companyId}/configurations`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+}
+
+export function connectEmail(companyId: string): Promise<CompanyConfiguration> {
+  return configurationCall(`${companyId}/email/connect`, { method: "POST" });
+}
+
+export function disconnectEmail(companyId: string): Promise<CompanyConfiguration> {
+  return configurationCall(`${companyId}/email/disconnect`, { method: "POST" });
+}
+
+export interface LogArtifact {
+  file: string;
+  kind: string;
+  logged_at: string;
+  size: number;
+}
+
+export async function fetchLogArtifacts(companyId: string): Promise<LogArtifact[]> {
+  const res = await fetch(`${API_BASE}/companies/${companyId}/logs`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch pipeline logs: ${res.statusText}`);
+  }
+  const data = await res.json();
+  return data.artifacts;
+}
+
+export async function fetchLogArtifact(companyId: string, file: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/companies/${companyId}/logs/${encodeURIComponent(file)}`);
+  if (!res.ok) {
+    throw new Error(`Failed to fetch artifact: ${res.statusText}`);
+  }
+  return res.text();
+}

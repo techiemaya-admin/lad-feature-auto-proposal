@@ -13,7 +13,9 @@ import {
   proceedToLeadSimulation,
   fetchAISettings,
   updateAISettings,
+  fetchConfiguration,
   type AISettings,
+  type CompanyConfiguration,
 } from "./services/api";
 import type { Company, CompanySummary } from "./types/company";
 import type { CompanyVariable, CompoundTable } from "./types/variable";
@@ -22,6 +24,7 @@ import type { PricingRulesState } from "./types/pricing";
 import type { RulesStatus } from "./components/pricing/PricingEngineDeck";
 import { CompanyProfileCard } from "./components/CompanyProfileCard";
 import { DevDock } from "./components/DevDock";
+import { ConfigurationSheet } from "./components/ConfigurationSheet";
 import { Button } from "./components/ui/button";
 import { CustomDropdown } from "./components/ui/custom-dropdown";
 import { useTheme } from "./components/theme-provider";
@@ -56,6 +59,9 @@ export function App() {
   } | null>(null);
   const [aiSettings, setAiSettings] = useState<AISettings | null>(null);
   const [aiModels, setAiModels] = useState<Record<string, string[]>>({});
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
+  // Only the inbox status is read here (drives the strip CTA); the sheet owns editing.
+  const [configuration, setConfiguration] = useState<CompanyConfiguration | null>(null);
 
   useEffect(() => {
     if (notification) {
@@ -151,6 +157,11 @@ export function App() {
           setIsLoading(false);
         }
       });
+
+    setConfiguration(null);
+    fetchConfiguration(activeCompanyId)
+      .then((config) => { if (!ignore) setConfiguration(config); })
+      .catch(() => { if (!ignore) setConfiguration(null); });
 
     // Check template status
     fetchTemplateStatus(activeCompanyId)
@@ -418,7 +429,7 @@ export function App() {
               <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-xs">
                 <Workflow className="size-4" />
               </div>
-              <span className="font-semibold text-sm tracking-tight">Auto-Proposal</span>
+              <span className="font-semibold text-sm tracking-tight whitespace-nowrap">Auto-Proposal</span>
             </div>
 
             {/* Centered Segmented Tab Switcher */}
@@ -429,7 +440,7 @@ export function App() {
                   <button
                     key={c.company_id}
                     onClick={() => setActiveCompanyId(c.company_id)}
-                    className={`px-3 py-1.5 rounded-md font-medium transition-all select-none ${
+                    className={`px-3 py-1.5 rounded-md font-medium transition-all select-none whitespace-nowrap ${
                       isActive
                         ? "bg-background text-foreground shadow-xs"
                         : "text-muted-foreground hover:text-foreground"
@@ -461,7 +472,7 @@ export function App() {
 
               <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground px-2 py-0.5 rounded-full bg-secondary/50">
                 <span className="size-1.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
-                <span className="hidden sm:inline">SQLite Synced</span>
+                <span className="hidden xl:inline whitespace-nowrap">SQLite Synced</span>
               </div>
 
               <Button
@@ -533,6 +544,8 @@ export function App() {
             isSubmittingBriefing={isSubmittingBriefing}
             onSaveSpec={handleSaveSpec}
             onImportSettings={handleImportSettings}
+            onOpenSettings={() => setIsConfigOpen(true)}
+            emailConnected={configuration?.email_connected ?? null}
             onResetDefault={handleResetDefault}
             onSubmitBriefing={handleBriefingSubmit}
             onUnlockBriefing={handleBriefingUnlock}
@@ -553,6 +566,18 @@ export function App() {
           />
         ) : null}
       </main>
+
+      {/* Ambient slide-over: per-company drafter preferences + mock inbox link */}
+      {currentCompany && (
+        <ConfigurationSheet
+          open={isConfigOpen}
+          onOpenChange={setIsConfigOpen}
+          companyId={currentCompany.company_id}
+          companyName={currentCompany.company_name}
+          onNotify={setNotification}
+          onConfigurationChange={setConfiguration}
+        />
+      )}
 
       {/* Bottom Developer Dock HUD */}
       <DevDock

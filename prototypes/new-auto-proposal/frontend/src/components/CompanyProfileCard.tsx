@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { RotateCcw, DownloadCloud, Building2 } from "lucide-react";
+import { RotateCcw, DownloadCloud, Building2, Mail, MailCheck } from "lucide-react";
 import type { Company } from "../types/company";
 import type { CompanyVariable, CompoundTable } from "../types/variable";
 import type { TemplateStats } from "../types/template";
@@ -16,6 +16,9 @@ interface CompanyProfileCardProps {
   isSubmittingBriefing?: boolean;
   onSaveSpec: (newSpec: string) => Promise<void>;
   onImportSettings: () => Promise<void>;
+  onOpenSettings: () => void;
+  /** null while unknown — the CTA stays neutral until the status has loaded */
+  emailConnected: boolean | null;
   onResetDefault: () => Promise<void>;
   onSubmitBriefing: (prompt: string, file: File | null) => Promise<void>;
   onUnlockBriefing: () => Promise<void>;
@@ -40,6 +43,8 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
   isLoading,
   isSubmittingBriefing,
   onImportSettings,
+  onOpenSettings,
+  emailConnected,
   onResetDefault,
   onSubmitBriefing,
   onUnlockBriefing,
@@ -124,6 +129,37 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
+          {/* The tenant's own control, so it sits with the company, not in the developer header.
+              The strip's one solid button until the inbox is linked (nothing can be sent before that),
+              then a quiet outline pill. Import / Reset are mock-data chores and stay ghost. */}
+          {emailConnected === false ? (
+            <Button
+              size="sm"
+              onClick={onOpenSettings}
+              disabled={isLoading}
+              className="h-7 pl-2 pr-2.5 text-[11px] font-semibold shadow-sm shadow-primary/25 btn-tactile"
+              title="Set how your proposals sound and link the inbox they go out from"
+            >
+              <span className="size-1.5 rounded-full bg-amber-300 mr-1.5" aria-hidden="true" />
+              <Mail className="size-3 mr-1" />
+              Set up voice &amp; inbox
+            </Button>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onOpenSettings}
+              disabled={isLoading || emailConnected === null}
+              className="h-7 px-2.5 text-[11px] font-medium text-foreground/80 hover:text-primary hover:border-primary/40 hover:bg-primary/5 btn-tactile"
+              title={emailConnected ? "Inbox linked · edit how your proposals sound" : "Loading…"}
+            >
+              <MailCheck className={`size-3 mr-1 ${emailConnected ? "text-emerald-500" : "text-muted-foreground/50"}`} />
+              Voice &amp; inbox
+              {emailConnected && <span className="ml-1.5 size-1.5 rounded-full bg-emerald-500" aria-hidden="true" />}
+            </Button>
+          )}
+          <span className="mx-1.5 h-4 w-px bg-border/70" aria-hidden="true" />
+
           <Button
             variant="ghost"
             size="sm"

@@ -182,13 +182,13 @@ The user needs three things here: did it work, is anything wrong, what's next. T
 
 ## 4. Ambient Shell Components
 
-### 4.1 Slide-Over Configuration Drawer (`ConfigurationSheet.tsx`)
-Accessible via a `[ Settings ⚙️ ]` button in the top navigation bar.
-- **AI Tone & Style:** Formality slider (Formal / Consultative / Energetic), Brevity toggle (Concise / Detailed).
-- **Customer Clarification Triggers:** Threshold for when AI should ask clarifying questions versus adopting reasonable defaults.
-- **Email Integration Settings:** Inbound reply webhook triggers, test recipient email.
-- **Design Consistency:** Uses shadcn Sheet primitive with theme-adaptive background (`bg-card`), clean typography, and zero jargon.
-- **Persistence:** Saved in SQLite per company independently of prompt resets.
+### 4.1 Slide-Over Configuration Drawer (`ConfigurationSheet.tsx`, "Voice & inbox")
+Opened from the company context strip, not the header — the header holds developer controls (AI model picker, theme) only. The strip button is the tenant's one solid CTA (`Set up voice & inbox`, amber dot) until the inbox is linked, then a quiet outline pill (`Voice & inbox`, green dot).
+- **Proposal voice (free text, not sliders):** *How your proposals should sound* (style notes), *A proposal you're proud of* (optional reference proposal the drafter learns voice and structure from — few-shot beats a formality enum), *When a lead's request is missing details* (how the clarification email should sound). Each has a real example as placeholder; empty means the Stage 5 drafter uses its built-in default.
+- **Send from your inbox:** mock link against the company profile address — `Connect inbox` / `Disconnect` act immediately and show `Connected` / `Not connected`. No SMTP or webhooks.
+- **Save / Cancel:** explicit; Save is disabled until a field changes, and Cancel, Esc and the backdrop discard the draft.
+- **Design Consistency:** shadcn Sheet on base-ui Dialog (focus trap, Esc, scroll-lock), `bg-card`, `z-50` above the Dev Dock, zero jargon.
+- **Persistence:** `company_configurations` table (typed columns, one row per company), capped at 6,000 chars per field; untouched by pipeline resets and by "Import Settings".
 
 ### 4.2 Bottom Dev Inspector (`DevDock.tsx`)
 A minimal, docked tray at the bottom of the screen (collapsible down to a corner pill `[ <Code2 /> Dev Inspector ]` with a single clean icon):
@@ -200,7 +200,7 @@ A minimal, docked tray at the bottom of the screen (collapsible down to a corner
 - **Tab 2: AnyDoc Markdown:** Semantic markdown output from the uploaded quotation.
 - **Tab 3: Variables JSON:** Raw taxonomy payload with anchors and categories.
 - **Tab 4: Pricing Rules JSON:** the raw `PricingRules`, editable in place; `Apply` PUTs it and lists validation errors (nothing is persisted on a 400).
-- **Tab 5: Pipeline Logs:** Timestamps, token usage, and AST replacement records.
+- **Tab 5: Pipeline Logs:** compact pipeline-state snapshot, the docxmlater mutation table (`template_stats.details[]`, ✓/✗ per tag), and the on-disk run artifacts (`logs/<company>/`, last 20, expandable inline). No token usage is captured.
 
 ---
 

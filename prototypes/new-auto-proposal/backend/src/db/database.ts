@@ -97,6 +97,21 @@ export function initDatabase(dbPath?: string): DatabaseSync {
       key TEXT PRIMARY KEY,
       value_json TEXT NOT NULL
     );
+
+    -- Per-company drafter preferences + mock email link. Typed columns (not a JSON blob) so the
+    -- real build maps it 1:1 onto a tenant_proposal_settings table. Reseed is an upsert on
+    -- company_sessions, so the cascade never fires on "Import Settings".
+    CREATE TABLE IF NOT EXISTS company_configurations (
+      company_id TEXT PRIMARY KEY,
+      style_notes TEXT NOT NULL DEFAULT '',
+      reference_proposal_text TEXT NOT NULL DEFAULT '',
+      clarification_notes TEXT NOT NULL DEFAULT '',
+      email_connected INTEGER NOT NULL DEFAULT 0,
+      email_address TEXT,
+      email_connected_at TEXT,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (company_id) REFERENCES company_sessions(company_id) ON DELETE CASCADE
+    );
   `);
 
   // Non-destructive column migrations for existing databases

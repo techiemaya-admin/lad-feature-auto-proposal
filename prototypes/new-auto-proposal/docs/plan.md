@@ -64,7 +64,7 @@ The system runs a **5-stage sequential pipeline** anchored by an **ambient shell
   └── In-browser proposal preview via docx-preview + one-click download
 
 AMBIENT SHELL COMPONENTS:
-├── Slide-Over Configuration Drawer: AI Tone & Style, Clarification Triggers, Email settings
+├── Slide-Over Configuration Drawer ("Voice & inbox"): style notes, reference proposal, clarification-email notes, mock inbox link
 └── Bottom Dev Dock (HUD): Collapsible tray for AnyDoc MD, Variables JSON, Rule Schema JSON, Logs
 ```
 
@@ -205,4 +205,4 @@ Verified against `logs/*/variables-raw.json` and `company_variables` on 2026-09-
 | **Phase 4** | **docxmlater Mutation & Minimal Checkpoint** | Mutate .docx AST & confirm template | `docxmlater` replacement pipeline, smart table row collapse, compact inline checkpoint card with tag stats and optional `docx-preview` modal. |
 | **Phase 5** | **Pricing Compiler & Rule Cards** | Compile spec to visual & executable rules | Gemini rule compiler using Prompt + Variables + Sample Quote Values, interactive rule cards UI, collapsible JSON editor, deterministic JS math engine. |
 | **Phase 6** | **Lead Simulator & Proposal Verification** | Generate proposal from lead message & verify math | Inbound email textarea + sample load button, lead parameter extraction, narrative copy generator, `easy-template-x` proposal generation, math verification against benchmarks. |
-| **Auxiliary** | **Ambient Shell Enhancements** | Independent settings & developer tools | Slide-Over Configuration Drawer (AI tone slider, clarification thresholds, email toggles) and Bottom Developer Dock (AnyDoc MD, Variables JSON, Rule Schema JSON, logs). |
+| **Auxiliary** | **Ambient Shell Enhancements** | Independent settings & developer tools | Slide-Over Configuration Drawer (free-text voice notes, reference proposal, clarification-email notes, mock inbox link) and Bottom Developer Dock (AnyDoc MD, Variables JSON, Rule Schema JSON, pipeline logs + run artifacts). |

@@ -30,7 +30,7 @@ Self-contained proof of concept demonstrating zero-configuration proposal genera
 - Paragraph variables: a sample that is only a sub-span of its paragraph replaces that span (the numbers in the sentence around it keep their own tags); `paragraph_config.mode: "fixed"` keeps the text in place and lets values inside it tag inline. Numbers and counts inside prose are always their own variables — the drafter never does arithmetic.
 - Every mutation must produce a `details[]` entry (`applied`, `info`); after all mutations the engine verifies each tag survived. A value that only lives inside a drafted paragraph or loop is reported `covered` (the drafter receives it as input, no separate tag), a tag that vanished is flipped to a miss. Never silently drop a variable. Context-text skips are not misses.
 - Keep the golden test (`tests/template-mutator.test.ts` + `tests/fixtures/*.variables.json` ideal responses + `*.raw.json` real model logs) green: it pins the engine against `Mock Data/templated_markdown/*.md` and against real model quirks. `npm test` is offline; the live Gemini contract check is `npm run test:live`.
-- Extraction model: the provider/model default and any change made in the configuration drawer live in the `app_settings` table (`ai-settings.service.ts`), never in memory, and are stamped into every `logs/<company>/*-variables-raw.json` as `ai`. Default is `deepseek-flash`; `gemini-flash-lite` drops money amounts and must not be the accident.
+- Extraction model: the provider/model default and any change made in the header model picker live in the `app_settings` table (`ai-settings.service.ts`), never in memory, and are stamped into every `logs/<company>/*-variables-raw.json` as `ai`. Default is `deepseek-flash`; `gemini-flash-lite` drops money amounts and must not be the accident.
 - Verify modified `.docx` files by converting to Markdown via `@firecrawl/anydoc` rather than inspecting raw binary XML.
 - Hydrate final proposals using `easy-template-x`.
 
@@ -42,7 +42,7 @@ Self-contained proof of concept demonstrating zero-configuration proposal genera
 
 ### 4. Ambient Decoupling & Two-Tier Exposure
 - Primary linear canvas focuses exclusively on the 5-stage proposal pipeline.
-- Peripheral configurations (AI tone/style, customer clarification triggers, email toggles) reside in an ambient slide-over drawer (`ConfigurationSheet.tsx`).
+- Per-company drafter preferences (style notes, reference proposal, clarification-email notes) and the mock inbox link reside in an ambient slide-over drawer (`ConfigurationSheet.tsx`, opened from the company strip), backed by the `company_configurations` table.
 - Technical inspection data (AnyDoc Markdown, raw Variables JSON, Rule Schema JSON, AST mutation logs) resides in a docked, collapsible bottom HUD (`DevDock.tsx`).
 
 ### 5. Per-Company Session Isolation

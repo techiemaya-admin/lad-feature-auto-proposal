@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Code2,
   ChevronDown,
@@ -11,12 +11,15 @@ import {
   Maximize2,
   Minimize2,
   Building2,
+  ChevronRight,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 import type { Company } from "../types/company";
 import type { CompanyVariable, CompoundTable } from "../types/variable";
 import type { TemplateStats } from "../types/template";
 import type { PricingRulesState, ValidationError } from "../types/pricing";
-import { RulesValidationError, updatePricingRules } from "../services/api";
+import { RulesValidationError, updatePricingRules, fetchLogArtifacts, fetchLogArtifact, type LogArtifact } from "../services/api";
 import { Button } from "./ui/button";
 
 interface DevDockProps {
@@ -52,7 +55,6 @@ export const DevDock: React.FC<DevDockProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<TabKey>("profile");
-  const [viewMode, setViewMode] = useState<"raw" | "preview">("raw");
   const [copied, setCopied] = useState(false);
   // Rules tab: the raw PricingRules JSON, editable; Apply = PUT, structural errors listed, nothing persisted on 400
   const [rulesText, setRulesText] = useState("");
@@ -82,6 +84,31 @@ export const DevDock: React.FC<DevDockProps> = ({
       setRulesErrors(err instanceof RulesValidationError ? err.errors : [{ path: "", message: err instanceof Error ? err.message : String(err) }]);
     } finally {
       setRulesApplying(false);
+    }
+  };
+
+  // Logs tab: on-disk pipeline artifacts (prototype-only endpoint), fetched when the tab is shown
+  const [artifacts, setArtifacts] = useState<LogArtifact[]>([]);
+  const [openArtifact, setOpenArtifact] = useState<{ file: string; text: string } | null>(null);
+  const companyId = company?.company_id;
+  const stage = company?.working_state?.stage;
+  useEffect(() => {
+    if (!isOpen || activeTab !== "logs" || !companyId) return;
+    let ignore = false;
+    fetchLogArtifacts(companyId)
+      .then((list) => { if (!ignore) setArtifacts(list); })
+      .catch(() => { if (!ignore) setArtifacts([]); });
+    return () => { ignore = true; };
+  }, [isOpen, activeTab, companyId, stage, templateStats, pricingRules]);
+  // Filenames carry a millisecond stamp, so an artifact left open for another company simply never matches.
+  const shownArtifact = artifacts.some((a) => a.file === openArtifact?.file) ? openArtifact : null;
+  const toggleArtifact = async (file: string) => {
+    if (openArtifact?.file === file) { setOpenArtifact(null); return; }
+    if (!companyId) return;
+    try {
+      setOpenArtifact({ file, text: await fetchLogArtifact(companyId, file) });
+    } catch (err) {
+      setOpenArtifact({ file, text: err instanceof Error ? err.message : String(err) });
     }
   };
 
@@ -118,19 +145,7 @@ export const DevDock: React.FC<DevDockProps> = ({
     } else if (activeTab === "rules") {
       content = rulesText || JSON.stringify({ status: "awaiting_stage_4" }, null, 2);
     } else if (activeTab === "logs") {
-      content = JSON.stringify(
-        {
-          company_id: company?.company_id,
-          briefing_locked: company?.briefing_locked,
-          document_metadata: company?.document_metadata,
-          updated_at: company?.updated_at,
-          pipeline_stage: stageLabel(company?.working_state?.stage, Boolean(resolvedTemplateStats), Boolean(company?.briefing_locked)),
-          template_status: resolvedTemplateStats ? "generated" : "awaiting_generation",
-          template_stats: resolvedTemplateStats,
-        },
-        null,
-        2
-      );
+      content = shownArtifact?.text ?? JSON.stringify(pipelineState, null, 2);
     }
 
     navigator.clipboard.writeText(content);
@@ -139,6 +154,19 @@ export const DevDock: React.FC<DevDockProps> = ({
   };
 
   const lineCount = markdown ? markdown.split("\n").length : 0;
+  const { details: mutationDetails = [], ...templateSummary } = resolvedTemplateStats ?? {};
+  const pipelineState = {
+    company_id: company?.company_id,
+    pipeline_stage: stageLabel(stage, Boolean(resolvedTemplateStats), Boolean(company?.briefing_locked)),
+    briefing_locked: company?.briefing_locked,
+    pricing_rules_status: pricingRules
+      ? `${pricingRules.sample_check.filter((c) => c.ok).length}/${pricingRules.sample_check.length} sample values match, ${pricingRules.validation_errors.length} errors`
+      : "awaiting_compile",
+    template_status: resolvedTemplateStats ? "generated" : "awaiting_generation",
+    template_stats: resolvedTemplateStats ? templateSummary : null,
+    document_metadata: docMeta ? { ...docMeta, extracted_markdown: `<${lineCount} lines — see Quotation Markdown tab>` } : null,
+    updated_at: company?.updated_at,
+  };
   const wordCount = markdown ? markdown.split(/\s+/).filter(Boolean).length : 0;
 
   return (
@@ -240,7 +268,7 @@ export const DevDock: React.FC<DevDockProps> = ({
                   }`}
                 >
                   <Activity className="size-3 text-amber-500" />
-                  <span>Pipeline State</span>
+                  <span>Pipeline Logs</span>
                 </button>
               </nav>
             </div>
@@ -254,27 +282,6 @@ export const DevDock: React.FC<DevDockProps> = ({
                   <span>{wordCount} words</span>
                   <span>•</span>
                   <span>{docMeta?.filesize ? `${(docMeta.filesize / 1024).toFixed(1)} KB` : ""}</span>
-                </div>
-              )}
-
-              {activeTab === "anydoc" && markdown && (
-                <div className="flex items-center rounded-md bg-muted p-0.5 border border-border/60 text-xs font-mono mr-1">
-                  <button
-                    onClick={() => setViewMode("raw")}
-                    className={`px-2 py-0.5 rounded ${
-                      viewMode === "raw" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground"
-                    }`}
-                  >
-                    Raw
-                  </button>
-                  <button
-                    onClick={() => setViewMode("preview")}
-                    className={`px-2 py-0.5 rounded ${
-                      viewMode === "preview" ? "bg-card text-foreground shadow-xs" : "text-muted-foreground"
-                    }`}
-                  >
-                    Preview
-                  </button>
                 </div>
               )}
 
@@ -338,17 +345,9 @@ export const DevDock: React.FC<DevDockProps> = ({
             {activeTab === "anydoc" && (
               <div>
                 {markdown ? (
-                  viewMode === "raw" ? (
-                    <pre className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap wrap-break-word break-all select-text">
-                      <code>{markdown}</code>
-                    </pre>
-                  ) : (
-                    <div className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap wrap-break-word break-all">
-                      <pre className="whitespace-pre-wrap wrap-break-word break-all">
-                        {markdown}
-                      </pre>
-                    </div>
-                  )
+                  <pre className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap wrap-break-word break-all select-text">
+                    <code>{markdown}</code>
+                  </pre>
                 ) : (
                   <div className="py-12 text-center text-muted-foreground space-y-2 font-sans">
                     <FileText className="size-8 mx-auto opacity-30 text-primary" />
@@ -417,35 +416,87 @@ export const DevDock: React.FC<DevDockProps> = ({
             )}
 
             {activeTab === "logs" && (
-              <div>
-                <div className="flex items-center justify-between text-xs font-sans text-muted-foreground mb-2">
-                  <span>Pipeline execution telemetry & mutation logs:</span>
-                  {resolvedTemplateStats && (
-                    <span className="font-mono text-[11px] text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                      {resolvedTemplateStats.tags_placed_count} tags • {resolvedTemplateStats.loops_collapsed_count} loops
-                    </span>
+              <div className="space-y-4">
+                <div>
+                  <div className="flex items-center justify-between text-xs font-sans text-muted-foreground mb-2">
+                    <span>Where this company is in the pipeline:</span>
+                    {resolvedTemplateStats && (
+                      <span className="font-mono text-[11px] text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                        {resolvedTemplateStats.tags_placed_count} tags • {resolvedTemplateStats.loops_collapsed_count} loops
+                      </span>
+                    )}
+                  </div>
+                  <pre className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap wrap-break-word break-all">
+                    <code>{JSON.stringify(pipelineState, null, 2)}</code>
+                  </pre>
+                </div>
+
+                <div>
+                  <div className="text-xs font-sans text-muted-foreground mb-2">
+                    Template mutations ({mutationDetails.length}) — every tag, loop and matrix docxmlater placed in Stage 3:
+                  </div>
+                  {mutationDetails.length > 0 ? (
+                    <div className="rounded-xl border border-border/60 overflow-hidden">
+                      <table className="w-full text-[11px]">
+                        <thead className="bg-muted/60 text-muted-foreground font-sans">
+                          <tr>
+                            <th className="text-left px-3 py-1.5 font-medium w-8"></th>
+                            <th className="text-left px-3 py-1.5 font-medium">Action</th>
+                            <th className="text-left px-3 py-1.5 font-medium">Target</th>
+                            <th className="text-left px-3 py-1.5 font-medium">Info</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {mutationDetails.map((d, i) => (
+                            <tr key={i} className="border-t border-border/40 align-top">
+                              <td className="px-3 py-1">
+                                {d.applied ? <CheckCircle2 className="size-3 text-emerald-500" /> : <XCircle className="size-3 text-destructive" />}
+                              </td>
+                              <td className="px-3 py-1 whitespace-nowrap">{d.action}</td>
+                              <td className="px-3 py-1 break-all">{d.target}</td>
+                              <td className="px-3 py-1 text-muted-foreground break-words">{d.info}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] font-sans text-muted-foreground px-1">Generate the template in Stage 3 to see the mutation log.</p>
                   )}
                 </div>
-                <pre className="p-4 rounded-xl bg-muted/30 border border-border/60 text-foreground text-xs leading-relaxed whitespace-pre-wrap wrap-break-word break-all">
-                  <code>
-                    {JSON.stringify(
-                      {
-                        company_id: company?.company_id,
-                        briefing_locked: company?.briefing_locked,
-                        pipeline_stage: stageLabel(company?.working_state?.stage, Boolean(resolvedTemplateStats), Boolean(company?.briefing_locked)),
-                        pricing_rules_status: pricingRules
-                          ? `${pricingRules.sample_check.filter((c) => c.ok).length}/${pricingRules.sample_check.length} sample values match, ${pricingRules.validation_errors.length} errors`
-                          : "awaiting_compile",
-                        template_status: resolvedTemplateStats ? "generated" : "awaiting_generation",
-                        template_stats: resolvedTemplateStats,
-                        document_metadata: company?.document_metadata,
-                        updated_at: company?.updated_at,
-                      },
-                      null,
-                      2
-                    )}
-                  </code>
-                </pre>
+
+                <div>
+                  <div className="text-xs font-sans text-muted-foreground mb-2">
+                    Run artifacts — the raw model responses and parsed markdown each stage wrote to disk (latest {artifacts.length}):
+                  </div>
+                  {artifacts.length > 0 ? (
+                    <ul className="rounded-xl border border-border/60 divide-y divide-border/40 overflow-hidden">
+                      {artifacts.map((a) => {
+                        const expanded = shownArtifact?.file === a.file;
+                        return (
+                          <li key={a.file}>
+                            <button
+                              onClick={() => toggleArtifact(a.file)}
+                              className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-muted/40 transition-colors"
+                            >
+                              <ChevronRight className={`size-3 text-muted-foreground transition-transform ${expanded ? "rotate-90" : ""}`} />
+                              <span className="text-foreground">{a.kind}</span>
+                              <span className="text-muted-foreground ml-auto text-[11px] whitespace-nowrap">{a.logged_at}</span>
+                              <span className="text-muted-foreground/70 text-[11px] w-14 text-right">{(a.size / 1024).toFixed(1)} KB</span>
+                            </button>
+                            {expanded && (
+                              <pre className="px-4 py-3 bg-muted/30 border-t border-border/40 text-foreground text-[11px] leading-relaxed whitespace-pre-wrap wrap-break-word break-all max-h-96 overflow-y-auto">
+                                <code>{shownArtifact?.text}</code>
+                              </pre>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : (
+                    <p className="text-[11px] font-sans text-muted-foreground px-1">Nothing written yet — artifacts appear after the first extraction or compile.</p>
+                  )}
+                </div>
               </div>
             )}
           </div>
