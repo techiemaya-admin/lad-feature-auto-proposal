@@ -6,11 +6,16 @@ node_modules/
 *.iml
 service-account.json
 .rough
-graphify-out
 .agents
 skills-lock.json
-AGENTS.md
+prototypes/new-auto-proposal/backend/storage/
+prototypes/new-auto-proposal/logs/
 coverage
 oauth2.keys.json
 client_secret_*.json
-prototypes
+*.docx#
+.claude
+prototypes/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
