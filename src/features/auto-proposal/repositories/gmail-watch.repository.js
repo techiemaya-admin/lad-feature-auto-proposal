@@ -13,6 +13,12 @@ class GmailWatchRepository {
         expiration
       )
       VALUES ($1,$2,$3,$4)
+      ON CONFLICT (user_identities_id) DO UPDATE
+      SET
+        history_id = COALESCE(EXCLUDED.history_id, gmail_watch.history_id),
+        expiration = COALESCE(EXCLUDED.expiration, gmail_watch.expiration),
+        tenant_id = EXCLUDED.tenant_id,
+        updated_at = CURRENT_TIMESTAMP
       RETURNING *;
     `;
 

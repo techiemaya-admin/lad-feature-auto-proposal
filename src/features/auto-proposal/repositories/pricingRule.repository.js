@@ -11,7 +11,7 @@ class PricingRuleRepository {
     logger.debug("Creating pricing rule with data:", data);
 
     const requirement_config_id = data.target_type === 'service' 
-      ? await lead_requirement_configRepository.findIdByFieldKey(data.tenant_id, data.condition_field) 
+      ? (data.requirement_config_id || await lead_requirement_configRepository.findIdByFieldKey(data.tenant_id, data.condition_field)) 
       : null;
     logger.debug("Derived requirement_config_id for service target:", requirement_config_id);
     const sql = `

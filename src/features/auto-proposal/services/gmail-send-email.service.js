@@ -9,6 +9,7 @@ const mammoth = require("mammoth");
 const { Storage } = require("@google-cloud/storage");
 const emailTemplateService = require("./email-template.service");
 const conversationMessageRepository = require("../repositories/conversation-message.repository");
+const logger = require("../../../utils/logger");
 
 const storage = new Storage({
   keyFilename: process.env.GCS_KEY_FILE, // service-account.json
@@ -300,7 +301,7 @@ async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price
 
 
       // 2. Determine Content Source
-      if (!template && template === undefined) {
+      if (!template) {
         // Fallback if no default template exists in DB
         htmlContent = await emailTemplateService.defaultEmailTemplateIfNoTemplateUpload();
         subjectLine = "Re: Quotation from [company_name]";
@@ -308,7 +309,7 @@ async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price
         if (subject !== undefined && subject.trim() !== "") {
           subjectLine = sanitizeSubjectLine(subject.startsWith("Re:") ? subject : `Re: ${subject}`);
         } else {
-          subjectLine = sanitizeSubjectLine(template.subject.startsWith("Re:") ? template.subject : `Re: ${template.subject}`);
+          subjectLine = sanitizeSubjectLine(template.subject?.startsWith("Re:") ? template.subject : `Re: ${template.subject || ''}`);
         }
 
         // Logic for HTML vs Plain Text
@@ -316,16 +317,17 @@ async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price
           htmlContent = template.body_html;
         } else {
           // If it's plain text, we wrap it in basic HTML to preserve line breaks
-          htmlContent = `<div style="white-space: pre-wrap; font-family: sans-serif;">${template.body_text}</div>`;
+          htmlContent = `<div style="white-space: pre-wrap; font-family: sans-serif;">${template.body_text || ''}</div>`;
         }
-      }
-      // If media_url exists in the incoming 'data' object, prepend it to the htmlContent
-      if (template.media_url) {
-        const mediaHtml = `
+
+        // If media_url exists in the template object, prepend it to the htmlContent
+        if (template.media_url) {
+          const mediaHtml = `
     <div style="text-align:center; margin-bottom:20px;">
       <img src="${template.media_url}" alt="Header Media" style="max-width:100%; height:auto; display:block; margin:0 auto;" />
     </div>`;
-        htmlContent = mediaHtml + htmlContent;
+          htmlContent = mediaHtml + htmlContent;
+        }
       }
 
       // 3. Perform Replacements
@@ -389,16 +391,20 @@ async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price
         .replace(/\//g, "_")
         .replace(/=+$/, "");
 
-      const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
-      const response = await gmail.users.messages.send({
-        userId: "me",
-        requestBody: {
-          raw: encodedMessage,
-          threadId: threadId // Ensure the reply is in the same thread
-        },
-      });
-      messageId = response.data.id;
-      console.log("Email successfully sent:", response.data.id);
+      if (oAuth2Client) {
+        const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
+        const response = await gmail.users.messages.send({
+          userId: "me",
+          requestBody: {
+            raw: encodedMessage,
+            threadId: threadId // Ensure the reply is in the same thread
+          },
+        });
+        messageId = response.data.id;
+        logger.info("Email successfully sent via Gmail API:", { messageId });
+      } else {
+        logger.info("Skipping Gmail send: oAuth2Client not provided (test-prompt sandbox mode)");
+      }
     }
     // 7. Save to Database
     // 7. Save to Database using your createMessage method

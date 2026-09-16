@@ -1,14 +1,24 @@
-//  Import service that talks to Gmail and processes messages
 const gmailService = require("../services/gmail-read-email.service");
+const leadRepo = require("../repositories/lead.repository");
 const logger = require('../../../utils/logger');
 
 async function startWatch(req, res) {
-  logger.info("Testing start watch>>");
-  let tenantId = "e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5";
-  const email = "shweta.goel1711@gmail.com";
-  const result = await gmailService.startWatch(email, tenantId);
-  logger.debug(result);
-  res.json(result.data);
+  try {
+    const tenantId = req.tenantId || req.headers?.['x-tenant-id'];
+    const email = req.body?.email || req.query?.email;
+    if (!tenantId || !email) {
+      return res.status(400).json({
+        error: "Both X-Tenant-Id header and email parameter are required to start a watch",
+      });
+    }
+    logger.info("Initiating Gmail watch subscription", { tenantId, email });
+    const result = await gmailService.startWatch(email, tenantId);
+    logger.debug("Gmail watch initialized", { result });
+    return res.json(result?.data || result);
+  } catch (err) {
+    logger.error("Error starting Gmail watch:", err);
+    return res.status(500).json({ error: err.message });
+  }
 }
 
 // This is the webhook endpoint that will be called by Google when there is a new email in the user's inbox. We will receive the email details in the request body and we can process it accordingly.
@@ -36,11 +46,13 @@ async function webhook(req, res) {
     // Log the historyId for debugging
     logger.debug("History ID:", historyId);
 
-    // Call the service function to fetch new email details from Gmail API using the email address and historyId. The service function will use the Gmail API to fetch the new email details based on the historyId and process it accordingly (e.g. save to DB, trigger AI processing, lead requirement cretaed, calculated price, create quatotion, send to gcs,then create proposal draft .)
-    await gmailService.fetchNewEmails(data.emailAddress, historyId);
-
-    // Return a 200 response to acknowledge successful processing of the webhook. Google expects a 200 response to consider the webhook successful. We can also include a message in the response body for debugging purposes.
+    // Acknowledge webhook immediately so Pub/Sub does not timeout and retry
     res.status(200).send("Processed");
+    setImmediate(() => {
+      gmailService.fetchNewEmails(data.emailAddress, historyId).catch((err) => {
+        logger.error("Error in background email processing:", err);
+      });
+    });
 
     // If there is any error during processing, catch it and log the error for debugging. We can return a 200 response with an error message in the body to acknowledge the webhook but indicate that there was an error during processing. This way, Google will not retry the webhook since we are returning a 200 status, but we can still log and monitor the errors in our system.
   } catch (err) {
@@ -56,16 +68,57 @@ async function webhook(req, res) {
 
 async function testprompt(req, res) {
   try {
-    const body = req.body.prompt;
-    const tenantId = req.tenantId || req.headers?.['x-tenant-id'] || "e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5";
-    const leadData = {
-      id: req.leadId || "7cb0954d-ba2c-4224-969c-a3fa353a68fd",
-      first_name: "Test",
-      last_name: "Lead",
-      email: "usha.dhamija0510@gmail.com",
-      phone: "1234567890"
-    };
-    logger.debug("Testing AI prompt in controller : " + req.body.prompt);
+    const body = req.body?.prompt || req.query?.prompt;
+    const tenantId = req.tenantId || req.headers?.['x-tenant-id'];
+    if (!tenantId) {
+      return res.status(400).json({ error: "X-Tenant-Id header is required" });
+    }
+    if (!body) {
+      return res.status(400).json({ error: "Prompt is required in request body or query" });
+    }
+
+    let leadData = null;
+    const explicitLeadId = req.leadId || req.body?.leadId || req.query?.leadId || req.body?.leadData?.id;
+
+    if (explicitLeadId) {
+      leadData = {
+        id: explicitLeadId,
+        first_name: req.body?.first_name || req.body?.leadData?.first_name || "Test",
+        last_name: req.body?.last_name || req.body?.leadData?.last_name || "Lead",
+        email: req.body?.email || req.body?.leadData?.email || "test.lead@example.com",
+        phone: req.body?.phone || req.body?.leadData?.phone || "1234567890",
+      };
+    } else {
+      // Dynamically resolve or create a test lead for this tenant in DB to guarantee foreign key validity
+      try {
+        const testEmail = req.body?.email || req.query?.email || req.body?.leadData?.email || "test.lead@example.com";
+        const created = await leadRepo.create({
+          tenant_id: tenantId,
+          first_name: req.body?.first_name || req.body?.leadData?.first_name || "Test",
+          last_name: req.body?.last_name || req.body?.leadData?.last_name || "Lead",
+          email: testEmail,
+          phone: req.body?.phone || req.body?.leadData?.phone || "1234567890",
+          source: "ai_test_prompt",
+        });
+        if (created && created.id) {
+          leadData = created;
+        }
+      } catch (err) {
+        logger.debug("Dynamic test lead creation fallback:", err.message);
+      }
+
+      if (!leadData) {
+        leadData = {
+          id: "7cb0954d-ba2c-4224-969c-a3fa353a68fd",
+          first_name: req.body?.first_name || req.body?.leadData?.first_name || "Test",
+          last_name: req.body?.last_name || req.body?.leadData?.last_name || "Lead",
+          email: req.body?.email || req.body?.leadData?.email || "test.lead@example.com",
+          phone: req.body?.phone || req.body?.leadData?.phone || "1234567890",
+        };
+      }
+    }
+
+    logger.debug("Testing AI prompt in controller:", { prompt: body, tenantId, leadId: leadData.id });
     const { leadRequirementDetails, values } = await gmailService.createLeadRequirementViaPrompt(body, leadData.id, tenantId);
     logger.debug("Lead requirement details:", leadRequirementDetails);
     logger.debug("Saved requirement values:", values);

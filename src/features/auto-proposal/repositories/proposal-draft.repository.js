@@ -1,26 +1,35 @@
 const AppDataSource = require("../../../config/data-source");
 const proposalDraftItemRepository = require("./proposal-draft-items.repository");
+const logger = require("../../../utils/logger");
 
 class ProposalDraftRepository {
-  async findDraftById(id) {
-    console.log("Finding draft proposal with ID:", id);
-    const sql = `
+  async findDraftById(id, tenantId = null) {
+    logger.debug("Finding draft proposal with ID:", { id, tenantId });
+    const params = [id];
+    let sql = `
       SELECT *
       FROM proposal_draft
       WHERE id = $1
-      AND is_deleted = false;
+      AND is_deleted = false
     `;
-    const result = await AppDataSource.query(sql, [id]);
-    console.log("Draft proposal found:", result[0]);
+    if (tenantId) {
+      params.push(tenantId);
+      sql += ` AND tenant_id = $2`;
+    }
+    const result = await AppDataSource.query(sql, params);
+    logger.debug("Draft proposal query result:", { found: !!result[0] });
     return result[0];
   }
-
 
   // =====================================================
   // CREATE PROPOSAL DRAFT
   // =====================================================
   async create(data) {
-    console.log("Creating proposal draft:", data);
+    if (!data || !data.tenant_id) {
+      throw new Error("tenant_id is strictly required to create a proposal draft");
+    }
+
+    logger.debug("Creating proposal draft:", { tenant_id: data.tenant_id, lead_requirement_id: data.lead_requirement_id });
 
     const sql = `
       INSERT INTO proposal_draft
@@ -39,7 +48,7 @@ class ProposalDraftRepository {
     `;
 
     const values = [
-      data.tenant_id || "e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5",
+      data.tenant_id,
       data.lead_requirement_id || null,
       data.final_price,
       data.gcsUrl || null,
@@ -51,21 +60,20 @@ class ProposalDraftRepository {
 
     const result = await AppDataSource.query(sql, values);
     const proposalDraftId = result[0].id;
-    console.log("Proposal Draft created: {} ", proposalDraftId);
-    console.log("data.calculation_snapshot: {} ", data.calculation_snapshot);
-    // If it's already the single object you showed above, use it directly.
-    const concept = data.calculation_snapshot;
+    logger.info("Proposal Draft created successfully", { proposalDraftId, tenantId: data.tenant_id });
 
-    // 2. Map the breakdown directly
+    const concept = data.calculation_snapshot;
+    if (!concept || !concept.breakdown) {
+      return result[0];
+    }
+
     const itemsForBulkCreate = concept.breakdown.map(item => ({
-      tenant_id: data.tenant_id || "e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5",
+      tenant_id: data.tenant_id,
       proposal_draft_id: proposalDraftId,
-      concept_name: concept.concept_name, // Pull from parent object
+      concept_name: concept.concept_name,
       label: item.label,
       unit_count: item.count,
       total_price: item.price,
-      // Fix: applied_rules is an array of IDs in your snapshot, 
-      // we map them to your structured objects
       applied_rules: (item.applied_rules || []).map(ruleId => ({
         rule_id: ruleId,
         discount: item.total_discount,
@@ -76,56 +84,78 @@ class ProposalDraftRepository {
     return result[0];
   }
 
-  async approveProposalDraft(id) {
-    const sql = `
-    UPDATE proposal_draft
-    SET status = 'APPROVED',
-        updated_at = now()
-    WHERE id = $1
-    AND is_deleted = false
-    RETURNING *;
-  `;
+  async approveProposalDraft(id, tenantId = null) {
+    const params = [id];
+    let sql = `
+      UPDATE proposal_draft
+      SET status = 'APPROVED',
+          updated_at = now()
+      WHERE id = $1
+      AND is_deleted = false
+    `;
+    if (tenantId) {
+      params.push(tenantId);
+      sql += ` AND tenant_id = $2`;
+    }
+    sql += ` RETURNING *;`;
 
-    const result = await AppDataSource.query(sql, [id]);
+    const result = await AppDataSource.query(sql, params);
     return result[0];
   }
 
   // =====================================================
   // FIND BY ID
   // =====================================================
-  async findById(id) {
-    const sql = `
+  async findById(id, tenantId = null) {
+    const params = [id];
+    let sql = `
       SELECT *
       FROM proposal_draft
       WHERE id = $1
-      AND is_deleted = false;
+      AND is_deleted = false
     `;
+    if (tenantId) {
+      params.push(tenantId);
+      sql += ` AND tenant_id = $2`;
+    }
 
-    const result = await AppDataSource.query(sql, [id]);
+    const result = await AppDataSource.query(sql, params);
     return result[0];
   }
 
   // =====================================================
   // UPDATE STATUS
   // =====================================================
-  async updateStatus(id, status) {
-    const sql = `
+  async updateStatus(id, status, tenantId = null) {
+    const params = [status, id];
+    let sql = `
       UPDATE proposal_draft
       SET status = $1,
           updated_at = now()
       WHERE id = $2
-      RETURNING *;
     `;
+    if (tenantId) {
+      params.push(tenantId);
+      sql += ` AND tenant_id = $3`;
+    }
+    sql += ` RETURNING *;`;
 
-    const result = await AppDataSource.query(sql, [status, id]);
+    const result = await AppDataSource.query(sql, params);
     return result[0];
   }
 
   // =====================================================
   // UPDATE FULL RECORD
   // =====================================================
-  async update(id, data) {
-    const sql = `
+  async update(id, data, tenantId = null) {
+    const values = [
+      data.final_price,
+      data.gcs_storage_path || null,
+      data.metadata ? JSON.stringify(data.metadata) : null,
+      data.quotation_template_metadata_id || null,
+      id
+    ];
+    let sql = `
       UPDATE proposal_draft
       SET
         final_price = $1,
@@ -134,16 +164,12 @@ class ProposalDraftRepository {
         quotation_template_metadata_id = $4,
         updated_at = now()
       WHERE id = $5
-      RETURNING *;
     `;
-
-    const values = [
-      data.final_price,
-      data.gcs_storage_path || null,
-      data.metadata ? JSON.stringify(data.metadata) : null,
-      data.quotation_template_metadata_id || null,
-      id
-    ];
+    if (tenantId) {
+      values.push(tenantId);
+      sql += ` AND tenant_id = $6`;
+    }
+    sql += ` RETURNING *;`;
 
     const result = await AppDataSource.query(sql, values);
     return result[0];
@@ -152,19 +178,23 @@ class ProposalDraftRepository {
   // =====================================================
   // SOFT DELETE
   // =====================================================
-  async softDelete(id) {
-    const sql = `
+  async softDelete(id, tenantId = null) {
+    const params = [id];
+    let sql = `
       UPDATE proposal_draft
       SET is_deleted = true,
           updated_at = now()
       WHERE id = $1
-      RETURNING *;
     `;
+    if (tenantId) {
+      params.push(tenantId);
+      sql += ` AND tenant_id = $2`;
+    }
+    sql += ` RETURNING *;`;
 
-    const result = await AppDataSource.query(sql, [id]);
+    const result = await AppDataSource.query(sql, params);
     return result[0];
   }
-
 }
 
 module.exports = new ProposalDraftRepository();

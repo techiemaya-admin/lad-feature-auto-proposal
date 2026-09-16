@@ -3,6 +3,7 @@ const proposalRepo = require("../repositories/proposal-draft.repository");
 const leadRepo = require("../repositories/lead.repository");
 const attachmentRepo = require("../repositories/lead-attachment.repository");
 const tenantRepo = require("../repositories/tenant.repository");
+const userIdentityRepository = require("../repositories/user-identity.repository");
 const gmailService = require("./gmail-send-email.service");
 const googleConfig = require("../../../config/google.config");
 const logger = require("../../../utils/logger");
@@ -272,17 +273,27 @@ class ProposalDraftService {
     </html>
   `;
   }
-  async approveProposal(proposalId,oAuth2Client) {
+  async approveProposal(proposalId, oAuth2Client = null, tenantId = null) {
+    let client = oAuth2Client;
+    let resolvedTenantId = tenantId;
+    if (typeof oAuth2Client === 'string' && !tenantId) {
+      resolvedTenantId = oAuth2Client;
+      client = null;
+    }
 
     // 1️⃣ Get Draft
-    const proposal = await proposalRepo.findDraftById(proposalId);
+    const proposal = resolvedTenantId
+      ? await proposalRepo.findDraftById(proposalId, resolvedTenantId)
+      : await proposalRepo.findDraftById(proposalId);
+
     if (!proposal) {
       throw new Error("Proposal not found or already approved");
     }
 
-    // 2️⃣ Get Lead
+    // 2️⃣ Get Lead (scope to proposal.tenant_id)
     const lead = await leadRepo.findByLeadRequirementId(
-      proposal.lead_requirement_id
+      proposal.lead_requirement_id,
+      proposal.tenant_id
     );
 
     if (!lead) {
@@ -290,7 +301,11 @@ class ProposalDraftService {
     }
 
     // 3️⃣ Update Status
-    await proposalRepo.approveProposalDraft(proposalId);
+    if (resolvedTenantId) {
+      await proposalRepo.approveProposalDraft(proposalId, resolvedTenantId);
+    } else {
+      await proposalRepo.approveProposalDraft(proposalId);
+    }
 
     // 4️⃣ Create Attachment
     const attachment = await attachmentRepo.create({
@@ -309,12 +324,22 @@ class ProposalDraftService {
     });
 
     // 5️⃣ Send Email
-    let client = oAuth2Client;
     if (!client) {
       try {
         const tenant = await tenantRepo.findById(proposal.tenant_id);
         if (tenant?.email) {
-          client = await googleConfig.getGoogleClientForUser(tenant.email);
+          try {
+            client = await googleConfig.getGoogleClientForUser(tenant.email);
+          } catch (tenantEmailErr) {
+            logger.debug(`Could not resolve OAuth client via tenant email: ${tenantEmailErr.message}`);
+          }
+        }
+
+        if (!client) {
+          const identity = await userIdentityRepository.findByTenantId(proposal.tenant_id, "gmail");
+          if (identity?.provider_user_id) {
+            client = await googleConfig.getGoogleClientForUser(identity.provider_user_id);
+          }
         }
       } catch (err) {
         logger.warn(`Could not resolve OAuth client for proposal ${proposalId}: ${err.message}`);
@@ -322,7 +347,11 @@ class ProposalDraftService {
     }
 
     if (client) {
-      await gmailService.sendQuotationEmail(lead.email, proposal.gcs_storage_path, proposal.final_price, client);
+      try {
+        await gmailService.sendQuotationEmail(lead.email, proposal.gcs_storage_path, proposal.final_price, client);
+      } catch (sendErr) {
+        logger.error(`Failed to dispatch quotation email upon approval for proposal ${proposalId}:`, sendErr.message);
+      }
     } else {
       logger.warn(`Quotation email skipped upon approval: No OAuth2 client available for proposal ${proposalId}`);
     }

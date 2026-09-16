@@ -28,7 +28,10 @@ describe('GmailReadEmailController', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     req = {
+      tenantId: 'tenant-test-123',
       body: { prompt: 'Need photography and videography for wedding' },
+      headers: {},
+      query: {},
     };
     res = {
       status: jest.fn().mockReturnThis(),
@@ -39,7 +42,7 @@ describe('GmailReadEmailController', () => {
 
   describe('testprompt', () => {
     it('sends a 200 OK JSON response with generated draft and requirements', async () => {
-      const mockLeadReq = { id: 'req-1', tenant_id: 'tenant-1' };
+      const mockLeadReq = { id: 'req-1', tenant_id: 'tenant-test-123' };
       const mockValues = [{ label: 'Photography', price: 500 }];
       const mockDraft = { id: 'draft-1', final_price: 500 };
 
@@ -54,11 +57,14 @@ describe('GmailReadEmailController', () => {
       expect(gmailService.createLeadRequirementViaPrompt).toHaveBeenCalledWith(
         'Need photography and videography for wedding',
         '7cb0954d-ba2c-4224-969c-a3fa353a68fd',
-        'e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5'
+        'tenant-test-123'
       );
       expect(gmailService.createProposalDraft).toHaveBeenCalledWith(
         mockLeadReq,
-        expect.objectContaining({ id: '7cb0954d-ba2c-4224-969c-a3fa353a68fd' }),
+        expect.objectContaining({
+          id: '7cb0954d-ba2c-4224-969c-a3fa353a68fd',
+          email: 'test.lead@example.com',
+        }),
         'Need photography and videography for wedding'
       );
 
@@ -73,6 +79,30 @@ describe('GmailReadEmailController', () => {
       });
     });
 
+    it('returns a 400 Bad Request when X-Tenant-Id is missing', async () => {
+      req.tenantId = undefined;
+      req.headers = {};
+
+      await gmailReadEmailController.testprompt(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({ error: 'X-Tenant-Id header is required' });
+      expect(gmailService.createLeadRequirementViaPrompt).not.toHaveBeenCalled();
+    });
+
+    it('returns a 400 Bad Request when prompt is missing from body and query', async () => {
+      req.body = {};
+      req.query = {};
+
+      await gmailReadEmailController.testprompt(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'Prompt is required in request body or query',
+      });
+      expect(gmailService.createLeadRequirementViaPrompt).not.toHaveBeenCalled();
+    });
+
     it('returns a 500 JSON error when prompt processing fails', async () => {
       gmailService.createLeadRequirementViaPrompt.mockRejectedValue(new Error('AI Service Unavailable'));
 
@@ -80,6 +110,56 @@ describe('GmailReadEmailController', () => {
 
       expect(res.status).toHaveBeenCalledWith(500);
       expect(res.json).toHaveBeenCalledWith({ error: 'AI Service Unavailable' });
+    });
+  });
+
+  describe('startWatch', () => {
+    it('returns 400 when tenantId is missing', async () => {
+      req.tenantId = undefined;
+      req.headers = {};
+      req.body = { email: 'user@example.com' };
+
+      await gmailReadEmailController.startWatch(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'Both X-Tenant-Id header and email parameter are required to start a watch',
+      });
+      expect(gmailService.startWatch).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 when email is missing', async () => {
+      req.body = {};
+      req.query = {};
+
+      await gmailReadEmailController.startWatch(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'Both X-Tenant-Id header and email parameter are required to start a watch',
+      });
+      expect(gmailService.startWatch).not.toHaveBeenCalled();
+    });
+
+    it('initiates watch subscription and returns result when valid parameters are provided', async () => {
+      req.body = { email: 'photographer@studio.com' };
+      const mockResult = { historyId: '123456', expiration: '1700000000' };
+      gmailService.startWatch.mockResolvedValue({ data: mockResult });
+
+      await gmailReadEmailController.startWatch(req, res);
+
+      expect(gmailService.startWatch).toHaveBeenCalledWith('photographer@studio.com', 'tenant-test-123');
+      expect(res.json).toHaveBeenCalledWith(mockResult);
+    });
+
+    it('returns 500 when service throws an error', async () => {
+      req.body = { email: 'photographer@studio.com' };
+      gmailService.startWatch.mockRejectedValue(new Error('Google PubSub error'));
+
+      await gmailReadEmailController.startWatch(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Google PubSub error' });
     });
   });
 });

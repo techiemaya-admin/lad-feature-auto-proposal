@@ -52,7 +52,7 @@ class UserIdentityRepository {
 
   /**
    * Resolves user identity, user ID, and tenant ID for incoming external webhooks.
-   * Prioritizes tenant_id from gmail_watch, falling back to users.primary_tenant_id.
+   * Scopes tenant context dynamically from active gmail_watch record.
    * @param {string} provider - Provider key (e.g. 'gmail')
    * @param {string} providerUserId - User provider identity (e.g. email address)
    * @returns {Promise<{ userIdentityId: string, userId: string, tenantId: string } | null>}
@@ -62,9 +62,8 @@ class UserIdentityRepository {
       SELECT 
         ui.id AS user_identities_id,
         ui.user_id,
-        COALESCE(gw.tenant_id, u.primary_tenant_id) AS tenant_id
+        gw.tenant_id
       FROM user_identities ui
-      LEFT JOIN users u ON u.id = ui.user_id
       LEFT JOIN gmail_watch gw ON gw.user_identities_id = ui.id
       WHERE ui.provider = $1 AND LOWER(ui.provider_user_id) = LOWER($2)
       LIMIT 1;
@@ -100,6 +99,21 @@ class UserIdentityRepository {
   }
 
 
+
+  async findByTenantId(tenantId, provider = 'gmail') {
+    if (!tenantId) return null;
+    const sql = `
+      SELECT ui.*
+      FROM user_identities ui
+      JOIN gmail_watch gw ON gw.user_identities_id = ui.id
+      WHERE gw.tenant_id = $1 AND ui.provider = $2
+      ORDER BY gw.updated_at DESC
+      LIMIT 1;
+    `;
+    const values = [tenantId, provider];
+    const result = await AppDataSource.query(sql, values);
+    return result.length > 0 ? result[0] : null;
+  }
 
   async findByUserIdAndProvider(userId, provider) {
     const sql = `

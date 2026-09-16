@@ -30,6 +30,22 @@ const proposalDraftItemsRepository = require("../repositories/proposal-draft-ite
 
 /* 1️⃣ Start Gmail Watch */
 async function startWatch(email, tenantId) {
+  // Pre-seed the watch record with tenant context so tenant mapping is preserved
+  // even if Google Pub/Sub watch registration fails (e.g. unconfigured in local dev)
+  const userIdentityId = await userIdentityRepository.findByProvider(
+    "gmail",
+    email
+  );
+
+  if (userIdentityId && tenantId) {
+    await gmailWatchService.initializeWatch({
+      tenant_id: tenantId,
+      user_identities_id: userIdentityId,
+      history_id: null,
+      expiration: null
+    });
+  }
+
   const oAuth2Client = await googleConfig.getGoogleClientForUser(email);
   const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
   // the gmail.users.watch() API is used to start Gmail Push Notifications so that Gmail automatically notifies your system when something changes in the mailbox.
@@ -44,13 +60,7 @@ async function startWatch(email, tenantId) {
   });
   logger.info("Watch subscription initialized", { email, tenantId, historyId: response.data.historyId });
 
-  // After setting up the watch, we should save the historyId and expiration time in our database so that we can use it later to fetch new emails and also to know when to renew the watch. Here we are using a hardcoded user identity for demonstration, but in a real application, you would associate this with the actual user who authenticated their Gmail account.
-  const userIdentityId = await userIdentityRepository.findByProvider(
-    "gmail",
-    email
-  );
-
-  // Save the watch details in the database (create or update)
+  // Update active watch details with historyId and expiration
   await gmailWatchService.initializeWatch({
     tenant_id: tenantId,
     user_identities_id: userIdentityId,
@@ -88,35 +98,64 @@ async function createProposalDraft(leadRequirementDetails, leadData, email_conte
     logger.debug("tenantDetails : " + JSON.stringify(tenantDetails));
     logger.debug("lead data : " + JSON.stringify(leadData));
     logger.debug("tenant profile details : " + JSON.stringify(tenantProfileDetails));
-    const items = calculatedPriceDetails.breakdown.map(item => ({
-      qty: item.count,
-      description: item.label,
-      unit_price: item.base_unit_price,
-      line_total: item.price
-    }));
+    const items = calculatedPriceDetails.breakdown.map(item => {
+      const grossTotal = (item.count != null && item.base_unit_price != null)
+        ? (Number(item.count) * Number(item.base_unit_price))
+        : (item.price || 0);
+
+      return {
+        item_name: item.label || item.key,
+        item_description: item.label || '',
+        item_quantity: item.count || 1,
+        item_price: item.base_unit_price || 0,
+        item_total: grossTotal,
+        currency: "INR",
+        qty: item.count || 1,
+        description: item.label || '',
+        unit_price: item.base_unit_price || 0,
+        line_total: grossTotal
+      };
+    });
+
+    const quotationDate = new Date().toLocaleDateString('en-GB');
+    const validTill = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('en-GB');
+    const quotationId = `QT-${Date.now().toString().slice(-6)}`;
+
     const placeholderBuilderForEmail = new PlaceHolderBuilder()
       .setBulk({
-        lead_name: leadData.first_name + " " + leadData.last_name,
+        lead_name: ((leadData.first_name || '') + " " + (leadData.last_name || '')).trim(),
         lead_email: leadData.email || '',
+        lead_phone: leadData.phone || '',
+        lead_company: leadData.company_name || '',
+        lead_address: leadData.address || '',
         company_name: tenantDetails.name || '',
-        company_email: tenantProfileDetails.official_email || '',
-        company_phone: tenantDetails.phone,
-        company_website: tenantDetails.website || '',
+        company_email: tenantProfileDetails.official_email || tenantDetails.email || '',
+        company_phone: tenantProfileDetails.phone_number || tenantDetails.phone || '',
+        company_website: tenantProfileDetails.website_url || tenantDetails.website || '',
+        company_address: tenantProfileDetails.address || '',
         company_logo: tenantProfileDetails.company_logo_url || '',
         company_tagline: tenantProfileDetails.tagline || '',
         instagram_url: tenantProfileDetails.instagram_url || '',
         linkedin_url: tenantProfileDetails.linkedin_url || '',
         whatsapp_url: tenantProfileDetails.whatsapp_url || '',
+        facebook_url: tenantProfileDetails.facebook_url || '',
+        quotation_id: quotationId,
+        quotation_date: quotationDate,
+        valid_till: validTill,
+        currency: "INR",
         total_base_price: calculatedPriceDetails.total_base_price,
         total_discount: calculatedPriceDetails.total_concept_discount,
         total_surcharge: calculatedPriceDetails.total_concept_surcharge,
         final_price: calculatedPriceDetails.final_price,
         items: items,
-        date: Date.now(),
-        event_category: leadRequirementDetails.event_category,
+        date: quotationDate,
+        event_category: leadRequirementDetails.event_category || '',
         services_given: services_given,
         discount_percentage: ' (' + calculatedPriceDetails.total_discount_percentage + '%)',
         surcharge_percentage: ' (' + calculatedPriceDetails.total_surcharge_percentage + '%)',
+        notes: 'Thank you for your business. We look forward to working with you.',
+        terms_conditions: 'Validity: 7 days. All services subject to contract and availability.',
+        prepared_by: tenantDetails.name || 'Sales Team'
       })
       .build();
     const prosalPathDetails = await aiService.generateProposalFromTemplate(placeholderBuilderForEmail, leadRequirementDetails.tenant_id);
@@ -189,7 +228,7 @@ function extractGmailData(fullMessage) {
   const headers = fullMessage.data?.payload?.headers || [];
   const payload = fullMessage.data?.payload || {};
   const globalMsgId = headers.find(h => h.name?.toLowerCase() === 'message-id')?.value;
-  console.log("Global Message ID from headers:", globalMsgId);
+  logger.debug("Global Message ID from headers:", { globalMsgId });
 
   // 1. Extract "From"
   const fromHeader = headers.find(h => h.name?.toLowerCase() === 'from')?.value || "";
@@ -242,12 +281,12 @@ function extractGmailData(fullMessage) {
 async function processIncomingEmail(tenantId, fullMessage, lead_id, messageId) {
   const headers = fullMessage.data.payload.headers;
   if (isSystemGenerated(headers)) {
-    console.log("Dropping system notification/marketing email.");
+    logger.debug("Dropping system notification/marketing email.");
     return;
   }
   const emailData = extractGmailData(fullMessage);
 
-  console.log("Processing incoming email for tenant: {} , and emailData: {}", tenantId, emailData);
+  logger.debug("Processing incoming email:", { tenantId, emailData });
 
   // 2. Upsert the Conversation
   // This uses threadId to group messages into a single chat history
@@ -259,7 +298,7 @@ async function processIncomingEmail(tenantId, fullMessage, lead_id, messageId) {
     metadata: { subject: emailData.subject }
   });
 
-  console.log("Conversation upserted with ID:", conversation);
+  logger.debug("Conversation upserted with ID:", { conversationId: conversation?.id });
 
   // 3. Ensure the Lead is a Participant
   // You can check if they exist first, or write the repo to handle conflicts
@@ -283,7 +322,7 @@ async function processIncomingEmail(tenantId, fullMessage, lead_id, messageId) {
     message_id: messageId, // Save the Gmail message ID for reference
     global_message_id: emailData.globalMessageId // Save the Gmail global message ID for reference
   });
-  console.log("Message saved with conversation ID:", conversation.id);
+  logger.debug("Message saved with conversation ID:", { conversationId: conversation.id, messageId: message?.id });
   const result = {
     conversation_id: conversation.id,
     threadId: emailData.threadId,
@@ -306,25 +345,72 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
   const tenatDetails = await tenatDetailsRepo.findById(tenantId);
 
   if (userIdentityId != null) {
-    const historyId = await gmailWatchService.getLastHistoryId(userIdentityId, tenantId);
+    let historyId = await gmailWatchService.getLastHistoryId(userIdentityId, tenantId);
     logger.debug("Last history ID lookup", { userIdentityId, historyId });
-    if (!historyId) {
-      logger.debug("No history ID found for userIdentityId; initializing watch record");
-      await gmailWatchRepository.create({
+
+    if (!historyId && historyIdFromWebhook) {
+      logger.debug("No history ID found in DB, updating watch record with webhook history ID", { historyIdFromWebhook });
+      await gmailWatchService.initializeWatch({
         tenant_id: tenantId,
         user_identities_id: userIdentityId,
         history_id: historyIdFromWebhook
       });
+      historyId = historyIdFromWebhook;
     }
+
     const oAuth2Client = await googleConfig.getGoogleClientForUser(email);
     const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
 
-    const history = await gmail.users.history.list({
-      userId: "me",
-      startHistoryId: historyId || historyIdFromWebhook,
-      historyTypes: ["messageAdded"],
-    });
-    console.log("History response:", history.data);
+    let startHistoryId = historyId || historyIdFromWebhook;
+
+    if (!startHistoryId) {
+      logger.warn("No startHistoryId found in DB or webhook; attempting to sync current mailbox historyId", { email });
+      try {
+        const profile = await gmail.users.getProfile({ userId: "me" });
+        if (profile?.data?.historyId) {
+          startHistoryId = profile.data.historyId;
+          await gmailWatchService.initializeWatch({
+            tenant_id: tenantId,
+            user_identities_id: userIdentityId,
+            history_id: startHistoryId
+          });
+          logger.info("Initialized watch record with baseline mailbox historyId", { startHistoryId });
+        }
+      } catch (profileErr) {
+        logger.warn("Unable to fetch current Gmail profile historyId", { error: profileErr.message });
+      }
+
+      if (!startHistoryId) {
+        logger.warn("Cannot query Gmail history without a valid startHistoryId; skipping history processing", { email });
+        return;
+      }
+    }
+
+    let history;
+    try {
+      history = await gmail.users.history.list({
+        userId: "me",
+        startHistoryId,
+        historyTypes: ["messageAdded"],
+      });
+    } catch (historyErr) {
+      logger.warn("Failed to fetch Gmail history with startHistoryId; attempting to reset baseline", {
+        startHistoryId,
+        error: historyErr.message,
+      });
+      try {
+        const profile = await gmail.users.getProfile({ userId: "me" });
+        if (profile?.data?.historyId) {
+          await gmailWatchService.updateHistoryId(userIdentityId, profile.data.historyId, tenantId);
+          logger.info("Reset watch record to current mailbox historyId", { historyId: profile.data.historyId });
+        }
+      } catch (profileErr) {
+        logger.error("Failed to reset baseline historyId from Gmail profile", { error: profileErr.message });
+      }
+      return;
+    }
+
+    logger.debug("History response:", { historyData: history.data });
     const messages = history.data.history || [];
 
     for (const record of messages) {
@@ -333,7 +419,7 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
           const messageId = msg.id;
           const existingMessage = await messageRepository.findByMessageId(messageId);
           if (existingMessage) {
-            console.log("Message with ID", messageId, "already exists in the database. Skipping.");
+            logger.debug("Message already exists in database, skipping:", { messageId });
             continue;
           }
 
@@ -347,8 +433,8 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
           const from = headers.find(h => h.name?.toLowerCase() === "from")?.value || "";
           const contact = parseContactInfo(from);
           const body = getEmailBody(fullMessage.data.payload);
-          console.log("subject: " + subject + " from : " + from + " contact: " + JSON.stringify(contact) + " body : " + body);
-          console.log("Checking if email is system generated...");
+          logger.debug("Email payload parsed:", { subject, from, contact });
+          logger.debug("Checking if email is system generated...");
           if (contact && contact.email != email) {
             const leadData = await triggerNewLeadAutomation(tenantId, userId, contact.firstName, contact.lastName, contact.email);
             if (!leadData?.id) {
@@ -359,16 +445,16 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
 
             const result = await processIncomingEmail(tenantId, fullMessage, leadData.id, messageId);
             if (!result) {
-              console.error("Failed to process incoming email for message ID:", messageId);
+              logger.error("Failed to process incoming email for message ID:", { messageId });
               continue;
             }
             const conversation_id = result.conversation_id;
             const threadId = result.threadId;
             const global_message_id = result.global_message_id;
-            console.log("Email saved to conversation with ID:", conversation_id);
+            logger.debug("Email saved to conversation:", { conversation_id });
             if (tenatDetails?.email !== from && conversation_id != null) {
               const resultToReturn = await createLeadRequirementViaPrompt(body, leadData, tenantId, conversation_id, global_message_id);
-              console.log("Result from createLeadRequirementViaPrompt:", resultToReturn);
+              logger.debug("Result from createLeadRequirementViaPrompt:", { type: resultToReturn?.type });
               const type = resultToReturn.type;
               const leadRequirementDetails = resultToReturn.leadRequirementDetails;
               const values = resultToReturn.values;
@@ -384,11 +470,11 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
                   oAuth2Client: oAuth2Client,
                   attachments: [{ filename: "Proposal.pdf", url: resultToReturn.proposalDetails.gcs_storage_path, type: "application/pdf" }], // Optional: handle if passed
                 });
-                console.log(`Sent AI-generated existing proposal email response to ${contact.email} with Gmail response:`, gmailResponse);
+                logger.info("Sent AI-generated existing proposal email response", { to: contact.email, messageId: gmailResponse?.data?.id });
                 const id = gmailResponse.data.id;
                 await conversationService.createConversationAndConversationMessages(tenantId, contact.email, reSendSubject, content, [], id, global_message_id);
               } else if (type === "DISCOVERY_EMAIL") {
-                console.log("The email was classified as a DISCOVERY_EMAIL. No lead requirement was created. AI's suggested email reply content:", content);
+                logger.info("Email classified as DISCOVERY_EMAIL; sending response", { to: contact.email });
                 const reSendSubject = subject.startsWith("Re:") ? subject : `Re: ${subject}`;
                 const gmailResponse = await gmailSendService.sendGmailRaw({
                   to: contact.email,
@@ -399,22 +485,20 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
                   oAuth2Client: oAuth2Client
                 });
                 const id = gmailResponse.data.id;
-                console.log(`Sent AI-generated discovery email response to ${contact.email} with Gmail response:`, gmailResponse);
+                logger.info("Sent AI-generated discovery email response", { to: contact.email, messageId: id });
                 await conversationService.createConversationAndConversationMessages(tenantId, contact.email, reSendSubject, content, [], id, global_message_id);
               } else if (type === "BUDGET_REQUEST" || type === "RETURNING_CLIENT_QUOTE") {
-                console.log("Lead requirement details:", leadRequirementDetails);
-                console.log("Saved requirement values:", values);
+                logger.debug("Lead requirement details resolved for draft:", { type, leadRequirementId: leadRequirementDetails?.id });
 
                 await createProposalDraft(leadRequirementDetails, leadData, body, conversation_id, global_message_id, threadId, subject, oAuth2Client, content);
               } else {
-                console.log("Lead requirement details:", leadRequirementDetails);
-                console.log("Saved requirement values:", values);
+                logger.debug("Creating default proposal draft for lead requirement:", { leadRequirementId: leadRequirementDetails?.id });
 
                 await createProposalDraft(leadRequirementDetails, leadData, body, conversation_id, global_message_id, threadId, subject, oAuth2Client);
                 // // process emails...
               }
             } else {
-              console.log("Email is from tenant's own email address, skipping lead creation and proposal drafting.");
+              logger.debug("Email is from tenant's own email address, skipping lead creation and proposal drafting.");
             }
           }
         }
@@ -527,27 +611,27 @@ async function triggerNewLeadAutomation(tenantId, userId, first_name, last_name,
 }
 
 async function createLeadRequirementViaPrompt(body, leadData, tenant_id, conversation_id, global_message_id) {
-  console.log(leadData.id)
+  const leadId = typeof leadData === 'object' ? leadData?.id : leadData;
+  logger.debug("Processing lead requirement prompt", { leadId, tenant_id });
   try {
-
-    console.log("Testing AI prompt :", body);
+    logger.debug("Testing AI prompt:", { prompt: body });
     // Extract newly requested service config keys from the active custom configurations
     const activeConfigs = await lead_requirement_configRepository.findByTenantAndActive(tenant_id);
 
     const response = await aiService.generateAIResponse(body, tenant_id, conversation_id, leadData, global_message_id, activeConfigs);
 
-    console.log("Generated AI response:", response);
+    logger.debug("Generated AI response:", { type: response?.type });
     if (response.type === "DISCOVERY_EMAIL") {
-      console.log("Received a general inquiry. No lead requirement will be created. AI's suggested email reply:", response.content);
+      logger.info("Received a general inquiry; returning discovery reply without creating requirement");
       return response;
     }
 
     const lastMessageWithDraft = response.lastMessageWithDraft;
     if (lastMessageWithDraft && lastMessageWithDraft.proposal_draft_id != null) {
-      console.log("Found existing proposal draft link:", lastMessageWithDraft.proposal_draft_id);
+      logger.debug("Found existing proposal draft link:", { proposalDraftId: lastMessageWithDraft.proposal_draft_id });
 
       // Fetch the service config IDs tied to that prior draft configuration
-      const oldItems = await proposalDraftItemsRepository.findItemsByMessageId(lastMessageWithDraft.proposal_draft_id);
+      const oldItems = await proposalDraftItemsRepository.findItemsByMessageId(lastMessageWithDraft.proposal_draft_id, tenant_id);
       const oldConfigIds = oldItems.map(item => item.requirement_config_id);
 
       // Filter out keys that the AI evaluated as active numbers (non-null and greater than 0)
@@ -562,10 +646,10 @@ async function createLeadRequirementViaPrompt(body, leadData, tenant_id, convers
         oldSorted.every((val, index) => val === newSorted[index]);
 
       if (isSameServicesPattern) {
-        console.log("Services match exactly! Bypassing generation and returning original asset tracking URLs.");
+        logger.info("Services match exactly! Bypassing generation and returning original asset tracking URLs.");
 
         // Fetch the full original draft metadata records (which contain your existing GCS URL and historical message configurations)
-        const activeDraftDetails = await proposalDraftRepository.findById(lastMessageWithDraft.proposal_draft_id);
+        const activeDraftDetails = await proposalDraftRepository.findById(lastMessageWithDraft.proposal_draft_id, tenant_id);
 
         return {
           type: "EXISTING_PROPOSAL_MATCH",
@@ -575,19 +659,19 @@ async function createLeadRequirementViaPrompt(body, leadData, tenant_id, convers
         };
       }
 
-      console.log("New services detected in the quote request. Proceeding with new proposal configuration generation.");
+      logger.debug("New services detected in the quote request. Proceeding with new proposal configuration generation.");
     }
     const data = response.data;
-    data.lead_id = leadData.id;
+    data.lead_id = leadId;
     data.tenant_id = tenant_id;
     const leadRequirementDetails = await leadRequirementRepository.create(data);
-    console.log("Lead requirement created with :", leadRequirementDetails);
+    logger.debug("Lead requirement created successfully:", { leadRequirementDetailsId: leadRequirementDetails?.id });
 
     const results = await leadRequirementValueRepo.saveRequirementValues(tenant_id, leadRequirementDetails.id, data.dynamic_requirements);
     const resultToReturn = { type: response.type, leadRequirementDetails: leadRequirementDetails, values: results, content: response.data.text_reply }
     return resultToReturn;
   } catch (err) {
-    console.error("Error in createLeadRequirementViaPrompt:", err);
+    logger.error("Error in createLeadRequirementViaPrompt:", err);
     throw err;
   }
 }

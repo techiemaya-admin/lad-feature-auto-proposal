@@ -58,10 +58,7 @@ CREATE TABLE IF NOT EXISTS user_identities (
     provider_data jsonb DEFAULT '{}'::jsonb,
     created_at timestamptz DEFAULT now(),
     updated_at timestamptz DEFAULT now(),
-    UNIQUE (user_id, provider),
-    FOREIGN KEY (user_id)
-        REFERENCES users (id)
-        ON DELETE CASCADE
+    UNIQUE (user_id, provider)
 );
 
 -- ============================================
@@ -109,10 +106,7 @@ CREATE TABLE IF NOT EXISTS leads (
     UNIQUE (tenant_id, id),
     FOREIGN KEY (tenant_id)
         REFERENCES tenants (id)
-        ON DELETE CASCADE,
-    FOREIGN KEY (user_id)
-        REFERENCES users (id)
-        ON DELETE SET NULL
+        ON DELETE CASCADE
 );
 
 -- ============================================
@@ -330,9 +324,6 @@ CREATE TABLE IF NOT EXISTS lead_attachments (
     FOREIGN KEY (tenant_id, lead_id)
         REFERENCES leads (tenant_id, id)
         ON DELETE CASCADE,
-    FOREIGN KEY (uploaded_by)
-        REFERENCES users (id)
-        ON DELETE SET NULL,
     
     FOREIGN KEY (quotation_template_metadata_id)
         REFERENCES quotation_template_metadata (id)

@@ -16,6 +16,26 @@ jest.mock('../ai-response.service', () => ({
   callGeminiWithRetry: jest.fn(),
 }));
 
+const mockHistoryList = jest.fn();
+const mockGetProfile = jest.fn();
+const mockMessagesGet = jest.fn();
+
+jest.mock('googleapis', () => ({
+  google: {
+    gmail: jest.fn(() => ({
+      users: {
+        history: {
+          list: mockHistoryList,
+        },
+        getProfile: mockGetProfile,
+        messages: {
+          get: mockMessagesGet,
+        },
+      },
+    })),
+  },
+}));
+
 const finalPriceCalculationRepository = require('../../repositories/final-price-calculation.repository');
 const leadRequirementValueRepo = require('../../repositories/lead_requirement_values.repository');
 const tenatDetailsRepo = require('../../repositories/tenant.repository');
@@ -26,6 +46,9 @@ const proposalDraftRepository = require('../../repositories/proposal-draft.repos
 const messageRepository = require('../../repositories/conversation-message.repository');
 const userIdentityRepository = require('../../repositories/user-identity.repository');
 const leadService = require('../lead.service');
+const gmailWatchService = require('../gmail-watch.service');
+const gmailWatchRepository = require('../../repositories/gmail-watch.repository');
+const googleConfig = require('../../../../config/google.config');
 
 jest.mock('../../repositories/final-price-calculation.repository');
 jest.mock('../../repositories/lead_requirement_values.repository');
@@ -176,6 +199,77 @@ describe('GmailReadEmailService - fetchNewEmails', () => {
       'notenant@example.com'
     );
     expect(tenatDetailsRepo.findById).not.toHaveBeenCalled();
+  });
+
+  it('updates watch record via initializeWatch when DB historyId is null but webhook historyId is present', async () => {
+    userIdentityRepository.findTenantContextByProviderUserId.mockResolvedValue({
+      userIdentityId: 'ident-1',
+      userId: 'user-1',
+      tenantId: 'tenant-123'
+    });
+    tenatDetailsRepo.findById.mockResolvedValue({ id: 'tenant-123' });
+    gmailWatchService.getLastHistoryId.mockResolvedValue(null);
+    googleConfig.getGoogleClientForUser.mockResolvedValue({});
+    mockHistoryList.mockResolvedValue({ data: { history: [] } });
+
+    await gmailReadEmailService.fetchNewEmails('user@example.com', 'hist-from-webhook');
+
+    expect(gmailWatchService.initializeWatch).toHaveBeenCalledWith({
+      tenant_id: 'tenant-123',
+      user_identities_id: 'ident-1',
+      history_id: 'hist-from-webhook'
+    });
+    expect(gmailWatchRepository.create).not.toHaveBeenCalled();
+    expect(mockHistoryList).toHaveBeenCalledWith(expect.objectContaining({
+      startHistoryId: 'hist-from-webhook'
+    }));
+  });
+
+  it('syncs baseline historyId from profile when neither DB nor webhook provides a historyId', async () => {
+    userIdentityRepository.findTenantContextByProviderUserId.mockResolvedValue({
+      userIdentityId: 'ident-1',
+      userId: 'user-1',
+      tenantId: 'tenant-123'
+    });
+    tenatDetailsRepo.findById.mockResolvedValue({ id: 'tenant-123' });
+    gmailWatchService.getLastHistoryId.mockResolvedValue(null);
+    googleConfig.getGoogleClientForUser.mockResolvedValue({});
+    mockGetProfile.mockResolvedValue({ data: { historyId: 'profile-hist-999' } });
+    mockHistoryList.mockResolvedValue({ data: { history: [] } });
+
+    await gmailReadEmailService.fetchNewEmails('user@example.com', null);
+
+    expect(mockGetProfile).toHaveBeenCalledWith({ userId: 'me' });
+    expect(gmailWatchService.initializeWatch).toHaveBeenCalledWith({
+      tenant_id: 'tenant-123',
+      user_identities_id: 'ident-1',
+      history_id: 'profile-hist-999'
+    });
+    expect(gmailWatchRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('re-syncs baseline historyId and exits cleanly when history.list throws an error', async () => {
+    userIdentityRepository.findTenantContextByProviderUserId.mockResolvedValue({
+      userIdentityId: 'ident-1',
+      userId: 'user-1',
+      tenantId: 'tenant-123'
+    });
+    tenatDetailsRepo.findById.mockResolvedValue({ id: 'tenant-123' });
+    gmailWatchService.getLastHistoryId.mockResolvedValue('stale-hist-111');
+    googleConfig.getGoogleClientForUser.mockResolvedValue({});
+    mockHistoryList.mockRejectedValue(new Error('History id out of date'));
+    mockGetProfile.mockResolvedValue({ data: { historyId: 'fresh-hist-222' } });
+
+    await expect(
+      gmailReadEmailService.fetchNewEmails('user@example.com', null)
+    ).resolves.not.toThrow();
+
+    expect(mockGetProfile).toHaveBeenCalledWith({ userId: 'me' });
+    expect(gmailWatchService.updateHistoryId).toHaveBeenCalledWith(
+      'ident-1',
+      'fresh-hist-222',
+      'tenant-123'
+    );
   });
 });
 

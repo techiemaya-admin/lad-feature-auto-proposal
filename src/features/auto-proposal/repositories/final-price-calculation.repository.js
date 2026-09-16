@@ -66,26 +66,28 @@ async function calculateFinalPrice(tenantId, leadRequirementId, event_type) {
       let itemSurcharge = 0;
       let appliedRules = [];
 
-      // --- HANDLE SERVICES OUTSIDE THE CONCEPT (ADD-ONS) ---
+      // Check for service rules matching this item (by requirement_config_id OR condition_field)
+      const serviceRules = allRules.filter(r => 
+        r.target_type === 'service' && 
+        (r.requirement_config_id === item.field_id || r.condition_field === item.field_id || r.condition_field === item.field_key)
+      );
+
+      const ruleResult = applyRuleMathWithDetails(itemBasePrice, serviceRules, inputValues, false);
+      itemFinalPrice = ruleResult.finalAmount;
+      itemDiscount = ruleResult.discount;
+      itemSurcharge = ruleResult.surcharge;
+      discountPercentage = ruleResult.discountPercentage;
+      surchargePercentage = ruleResult.surchargePercentage;
+      appliedRules = ruleResult.appliedRules;
+
+      // --- HANDLE SERVICES OUTSIDE THE CONCEPT (ADD-ONS) VS INSIDE ---
       if (!conceptFieldIds.includes(item.field_id)) {
         console.log(`7a. Item [${item.label}] is an ADD-ON. Checking Service Rules.`);
-        const serviceRules = allRules.filter(r => r.target_type === 'service' && r.requirement_config_id === item.field_id);
-
-        const ruleResult = applyRuleMathWithDetails(itemBasePrice, serviceRules, inputValues, false);
         console.log(`7b. Rule Result for Add-on [${item.label}]:`, JSON.stringify(ruleResult));
-
-        itemFinalPrice = ruleResult.finalAmount;
-        itemDiscount = ruleResult.discount;
-        itemSurcharge = ruleResult.surcharge;
-        discountPercentage = ruleResult.discountPercentage;
-        surchargePercentage = ruleResult.surchargePercentage;
-        appliedRules = ruleResult.appliedRules;
-
         addonServicesSubtotal += itemFinalPrice;
       } else {
-        // --- HANDLE SERVICES INSIDE THE CONCEPT ---
-        console.log(`8. Item [${item.label}] is INSIDE Concept. Adding to Concept Bucket.`);
-        conceptServicesSubtotal += itemBasePrice;
+        console.log(`8. Item [${item.label}] is INSIDE Concept. Adding discounted amount ${itemFinalPrice} to Concept Bucket.`);
+        conceptServicesSubtotal += itemFinalPrice;
       }
 
       breakdown.push({

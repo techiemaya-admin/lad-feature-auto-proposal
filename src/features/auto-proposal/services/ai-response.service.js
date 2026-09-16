@@ -25,7 +25,7 @@ const storage = new Storage({
 });
 
 const ImageModule = require("docxtemplater-image-module-free");
-const convertAsync = promisify(libre.convert);
+const { convertDocxBufferToPdf } = require("../../../utils/docxToPdf");
 const conversationMessageRepository = require("../repositories/conversation-message.repository");
 const tenantRepository = require("../repositories/tenant.repository");
 const tenantProfileRepository = require("../repositories/tenant-profile.repository");
@@ -643,17 +643,15 @@ class AIService {
     }
 
     try {
-
       let result = await this.generateDirectPdfFromDocx(tenantId, localPath, fileName, data);
       if (result === null) {
         return await this.generateProposalWithoutQuotationTemplate(data, localPath, fileName);
       } else {
         return result;
       }
-
     } catch (err) {
-      console.error("PDF Generation Failed:", err);
-      throw err;
+      logger.warn("Direct Docx PDF generation failed; falling back to HTML proposal generation:", err.message);
+      return await this.generateProposalWithoutQuotationTemplate(data, localPath, fileName);
     }
   }
 
@@ -724,24 +722,23 @@ class AIService {
           return [100, 40]; // Fallback to a default size
         },
       };
-      let doc;
+      const docxOptions = {
+        paragraphLoop: true,
+        linebreaks: true,
+        delimiters: { start: "[", end: "]" },
+        nullGetter: () => ""
+      };
+
       if (typeof templateData.company_logo === 'string' && templateData.company_logo.trim() !== '') {
-        // 2. Initialize Docxtemplater with the Image Module
+        // Initialize Docxtemplater with the Image Module
         const imageModule = new ImageModule(imageOptions);
-        doc = new Docxtemplater(zip, {
-          paragraphLoop: true,
-          linebreaks: true,
-          modules: [imageModule],
-          delimiters: { start: "[", end: "]" }
-        });
+        docxOptions.modules = [imageModule];
       } else {
-        console.log("image not ")
-        doc = new Docxtemplater(zip, {
-          paragraphLoop: true,
-          linebreaks: true,
-          delimiters: { start: "[", end: "]" }
-        });
+        templateData['%company_logo'] = "";
+        templateData['company_logo'] = "";
       }
+
+      const doc = new Docxtemplater(zip, docxOptions);
 
       // 5. Replace placeholders in the Docx
       await doc.renderAsync(templateData);
@@ -751,7 +748,7 @@ class AIService {
 
       // 7. Convert that Word Buffer directly to PDF using LibreOffice
       // This preserves all branding, margins, and fonts from the original file
-      const pdfBuffer = await convertAsync(updatedDocxBuffer, '.pdf', undefined);
+      const pdfBuffer = await convertDocxBufferToPdf(updatedDocxBuffer);
 
       // 8. Save to Local Path (if needed) and Upload to GCS
       // You can upload the buffer directly to GCS instead of saving to disk
