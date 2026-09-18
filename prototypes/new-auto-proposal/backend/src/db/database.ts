@@ -28,6 +28,27 @@ export function getStorageDir(): string {
   return defaultDir;
 }
 
+const COMPANY_VARIABLES_DDL = `
+    CREATE TABLE IF NOT EXISTS company_variables (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      variable_name TEXT NOT NULL,
+      natural_name TEXT NOT NULL,
+      category TEXT NOT NULL CHECK (category IN ('customer_input', 'pricing', 'paragraph', 'table_loop', 'comparison_matrix', 'compound_table')),
+      data_type TEXT NOT NULL CHECK (data_type IN ('string', 'number', 'currency', 'enum', 'date', 'paragraph', 'table')),
+      is_custom INTEGER DEFAULT 0,
+      is_deleted INTEGER DEFAULT 0,
+      sort_order INTEGER DEFAULT 0,
+      descriptor_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (company_id) REFERENCES company_sessions(company_id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_company_variables_lookup
+    ON company_variables (company_id, category, is_deleted);
+`;
+
 export function initDatabase(dbPath?: string): DatabaseSync {
   let finalPath: string;
 
@@ -74,24 +95,7 @@ export function initDatabase(dbPath?: string): DatabaseSync {
       updated_at TEXT NOT NULL
     );
 
-    CREATE TABLE IF NOT EXISTS company_variables (
-      id TEXT PRIMARY KEY,
-      company_id TEXT NOT NULL,
-      variable_name TEXT NOT NULL,
-      natural_name TEXT NOT NULL,
-      category TEXT NOT NULL CHECK (category IN ('customer_input', 'pricing', 'paragraph', 'table_loop', 'comparison_matrix', 'compound_table')),
-      data_type TEXT NOT NULL CHECK (data_type IN ('string', 'number', 'currency', 'enum', 'paragraph', 'table')),
-      is_custom INTEGER DEFAULT 0,
-      is_deleted INTEGER DEFAULT 0,
-      sort_order INTEGER DEFAULT 0,
-      descriptor_json TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      FOREIGN KEY (company_id) REFERENCES company_sessions(company_id) ON DELETE CASCADE
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_company_variables_lookup 
-    ON company_variables (company_id, category, is_deleted);
+    ${COMPANY_VARIABLES_DDL}
 
     CREATE TABLE IF NOT EXISTS app_settings (
       key TEXT PRIMARY KEY,
@@ -132,6 +136,23 @@ export function initDatabase(dbPath?: string): DatabaseSync {
   }
   if (!columnNames.has("briefing_locked")) {
     db.exec("ALTER TABLE company_sessions ADD COLUMN briefing_locked INTEGER DEFAULT 0;");
+  }
+
+  // SQLite cannot alter a CHECK: databases created before the `date` data_type get the table rebuilt in place.
+  const variablesDdl = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'company_variables'").get() as { sql: string } | undefined;
+  if (variablesDdl && !variablesDdl.sql.includes("'date'")) {
+    // Standard SQLite rebuild recipe: FK checks off (must be outside the transaction) so the copy never trips on them.
+    db.exec(`
+      PRAGMA foreign_keys = OFF;
+      BEGIN;
+      DROP INDEX IF EXISTS idx_company_variables_lookup;
+      ALTER TABLE company_variables RENAME TO company_variables_old;
+      ${COMPANY_VARIABLES_DDL}
+      INSERT INTO company_variables SELECT * FROM company_variables_old;
+      DROP TABLE company_variables_old;
+      COMMIT;
+      PRAGMA foreign_keys = ON;
+    `);
   }
 
   // Auto-seed if table is empty
