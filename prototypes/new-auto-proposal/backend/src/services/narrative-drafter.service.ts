@@ -95,8 +95,12 @@ export function buildNarrativePrompt(input: NarrativeInput): string {
     .filter(([, v]) => v !== null && v !== undefined && v !== "")
     .map(([k, v]) => `- ${labelOf.get(k) ?? k}: ${Array.isArray(v) ? v.join(", ") : String(v)}`);
   const tags = Object.entries(payload)
-    .filter(([, v]) => isScalar(v) && v !== "" && v !== false)
-    .map(([k, v]) => `- {${k}} = ${typeof v === "boolean" ? "yes" : JSON.stringify(v)}`);
+    .filter(([, v]) => (typeof v === "string" && v !== "") || typeof v === "number")
+    .map(([k, v]) => `- {${k}} = ${JSON.stringify(v)}`);
+  // Seen live: with has_tax unmentioned the drafter wrote "sales tax applies" for a lead with no state.
+  const flags = Object.entries(payload)
+    .filter(([, v]) => typeof v === "boolean")
+    .map(([k, v]) => `- ${k}${labelOf.has(k) ? ` (${labelOf.get(k)})` : ""}: ${v ? "yes" : "no"}`);
   const paragraphs = draftedParagraphs(stage2).map((v) => {
     const t = tips[v.variable_name] ?? {};
     const covered = coveredBy[v.variable_name] ?? [];
@@ -127,6 +131,10 @@ ${leadText}
 
 ==================== LEAD FACTS (confirmed) ====================
 ${facts.join("\n") || "(none)"}
+
+==================== WHAT APPLIES TO THIS LEAD ====================
+Settled by the pricing rules — write to them, never against them (a "no" means that thing is NOT part of this proposal):
+${flags.join("\n") || "(none)"}
 
 ==================== AVAILABLE TAGS ====================
 Every number, price, percentage, tier or package name, count and date in the proposal is a tag. Write the tag — e.g. "billed at {selected_tier_rate}" — wherever such a value belongs. NEVER type the value itself, never do arithmetic, never invent a figure that has no tag. Tags you may use (with their current values, so you know what each one means):

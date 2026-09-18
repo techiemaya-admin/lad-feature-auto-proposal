@@ -51,8 +51,13 @@ test("substitutePlaceholders: known tags are filled, unknown tags stripped and r
 });
 
 test("leadFields: rules inputs plus the undefined non-date customer inputs, per company", () => {
-  const brief = (id: string) => leadFields(rulesOf(id), stage2Of(id)).map((f) => `${f.name}:${f.input_type}${f.required ? "!" : ""}${f.options.length ? `[${f.options.join("|")}]` : ""}`);
+  const brief = (id: string, extra: Stage2Context["variables"] = []) => {
+    const s2 = stage2Of(id);
+    return leadFields(rulesOf(id), { ...s2, variables: [...s2.variables, ...extra] }).map((f) => `${f.name}:${f.input_type}${f.required ? "!" : ""}${f.options.length ? `[${f.options.join("|")}]` : ""}`);
+  };
   assert.deepEqual(brief("co1_seo"), ["location_count:integer!", "client_state:us_state!", "annual_prepay:boolean", "client_name:text!"]);
+  // seen live on co2: a "14 days" validity window extracted as a customer input is copied, never asked
+  assert.deepEqual(brief("co1_seo", [{ variable_name: "proposal_validity_period", category: "customer_input", sample_value: "14 days" }]).at(-1), "client_name:text!");
   assert.deepEqual(brief("co2_msp"), ["seat_count:integer!", "selected_tier:choice![Essential|Standard|Premium]", "extra_device_count:integer", "client_state:us_state!", "client_name:text!"]);
   const co3 = brief("co3_dev");
   assert.equal(co3[0], "product_count:integer!");

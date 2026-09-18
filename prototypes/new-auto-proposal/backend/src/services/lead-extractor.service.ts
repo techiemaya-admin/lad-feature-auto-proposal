@@ -5,12 +5,12 @@ import { getAISettings } from "./ai-settings.service.js";
 import { logPipelineArtifact } from "./pipeline-log.js";
 import { inputOptions } from "./pricing-calculator.js";
 import type { InputType, PricingRules, Stage2Context, Value } from "./pricing-rules.types.js";
-import { isDateVariable } from "./proposal-generator.service.js";
+import { isDateVariable, isDurationVariable } from "./proposal-generator.service.js";
 
 /**
  * Stage 5 step 1: an inbound lead message → the facts the calculator needs. The field list is built per
  * company from the rules' `input` variables plus the Stage 2 customer inputs the rules do not define
- * (client name); dates are never asked. Plan: docs/plans/06-lead-simulator.md §1.1.
+ * (client name); dates and validity windows are never asked — code fills them. Plan: docs/plans/06-lead-simulator.md §1.1.
  */
 
 export interface LeadField {
@@ -26,11 +26,12 @@ export function leadFields(rules: PricingRules, stage2: Stage2Context): LeadFiel
   for (const v of rules.variables) {
     if (v.kind !== "input") continue;
     const s2 = stage2.variables.find((x) => x.variable_name === v.name);
+    if (s2 && isDateVariable(s2)) continue; // the calendar fills dates, even when a compile asked for them
     fields.push({ name: v.name, label: s2?.natural_name || v.label, input_type: v.input_type, options: inputOptions(v, rules), required: v.required });
   }
   const defined = new Set(fields.map((f) => f.name));
   for (const v of stage2.variables) {
-    if (v.category !== "customer_input" || defined.has(v.variable_name) || isDateVariable(v)) continue;
+    if (v.category !== "customer_input" || defined.has(v.variable_name) || isDateVariable(v) || isDurationVariable(v)) continue;
     fields.push({ name: v.variable_name, label: v.natural_name || v.variable_name, input_type: "text", options: [], required: true });
   }
   return fields;

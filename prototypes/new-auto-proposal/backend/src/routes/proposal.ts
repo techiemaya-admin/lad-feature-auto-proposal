@@ -87,7 +87,8 @@ router.post("/:id/proposal/generate", async (req: Request, res: Response): Promi
     const inputs = req.body?.inputs;
     if (!inputs || typeof inputs !== "object" || Array.isArray(inputs)) return void fail(res, 400, "Body must be { inputs, lead_text }");
     const stage2 = loadStage2Context(company.company_id);
-    const missing = missingFields(leadFields(state.rules, stage2), inputs);
+    const fields = leadFields(state.rules, stage2);
+    const missing = missingFields(fields, inputs);
     if (missing.length) {
       res.status(400).json({ success: false, error: `Missing required facts: ${missing.join(", ")}`, missing });
       return;
@@ -103,7 +104,9 @@ router.post("/:id/proposal/generate", async (req: Request, res: Response): Promi
       res.json({ success: false, declined: true, needs_review: result.needs_review, evaluation: result.evaluation });
       return;
     }
-    const client = encodeURIComponent(String(result.payload.client_name ?? company.company_name));
+    // The client's name for the filename: whatever Stage 2 called it, it is the first free-text fact.
+    const nameField = fields.find((f) => f.input_type === "text");
+    const client = encodeURIComponent(String((nameField && inputs[nameField.name]) || company.company_name));
     const download = (ext: string) => `/api/companies/${company.company_id}/proposal/download?format=${ext}&client=${client}`;
     res.json({
       success: true,

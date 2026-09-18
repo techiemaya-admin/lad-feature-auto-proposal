@@ -42,6 +42,13 @@ export const isDateVariable = (v: Stage2Variable): boolean =>
   (v.data_type === "date" || ((!v.data_type || v.data_type === "string") && parseSampleDate(v.sample_value) !== null));
 
 /**
+ * "14 days", "2 weeks": a validity window the quotation states next to its dates. Not a lead fact and not
+ * computed — copied from the sample like a date suffix (ponytail: same ceiling as fillDates' suffix).
+ */
+export const isDurationVariable = (v: Stage2Variable): boolean =>
+  v.category === "customer_input" && /^\d+\s*(business\s+)?(days?|weeks?|months?)$/i.test(v.sample_value.trim());
+
+/**
  * Earliest sample date → today; every other date keeps its offset from that anchor (calendar days).
  * Output keeps the sample's spelling and any suffix verbatim. ponytail: a "(14 days)" suffix is copied,
  * not recomputed — parse it when a template's validity window differs from its sample's.
@@ -146,7 +153,9 @@ export async function generateProposal(input: GenerateInput): Promise<GenerateRe
   const { company, rules, stage2, inputs } = input;
   const companyId = company.company_id;
 
-  const evaluation = evaluate(rules, inputs);
+  // Dates are computed here and also offered to the sheet, in case a compile made a date an input anyway.
+  const dates = fillDates(stage2.variables, input.today);
+  const evaluation = evaluate(rules, { ...dates, ...inputs });
   if (evaluation.needs_review.length) {
     clearProposalFiles(companyId); // a declined lead must not leave the previous run downloadable
     return { declined: true, needs_review: evaluation.needs_review, evaluation };
@@ -154,14 +163,23 @@ export async function generateProposal(input: GenerateInput): Promise<GenerateRe
 
   const payload: Record<string, unknown> = buildProposalPayload(rules, evaluation, stage2, input.tierMatrix);
 
-  // Customer inputs the rules do not define (client_name, …) come straight from the facts; dates from the calendar.
-  const defined = new Set(rules.variables.map((v) => v.name));
+  // Customer inputs come straight from the facts and dates from the calendar — over whatever the sheet
+  // computed for them (a live compile once defined client_name and the dates as inputs). Numeric facts the
+  // sheet formats (seat counts) keep the sheet's rendering.
   for (const v of stage2.variables) {
-    if (v.category !== "customer_input" || defined.has(v.variable_name) || isDateVariable(v)) continue;
+    if (v.category !== "customer_input" || isDateVariable(v)) continue;
     const raw = inputs[v.variable_name];
-    payload[v.variable_name] = raw === null || raw === undefined ? "" : Array.isArray(raw) ? raw.join(", ") : String(raw);
+    if (isDurationVariable(v)) {
+      payload[v.variable_name] = v.sample_value;
+    } else if (raw === null || raw === undefined) {
+      if (payload[v.variable_name] === undefined) payload[v.variable_name] = "";
+    } else if (typeof raw === "string" || Array.isArray(raw)) {
+      payload[v.variable_name] = Array.isArray(raw) ? raw.join(", ") : raw;
+    } else if (payload[v.variable_name] === undefined) {
+      payload[v.variable_name] = String(raw);
+    }
   }
-  Object.assign(payload, fillDates(stage2.variables, input.today));
+  Object.assign(payload, dates);
 
   const narrative = await draftNarrative({ ...input, payload });
   for (const [name, n] of Object.entries(narrative)) payload[name] = n.text;

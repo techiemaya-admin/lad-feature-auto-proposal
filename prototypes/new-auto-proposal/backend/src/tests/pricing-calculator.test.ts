@@ -188,6 +188,11 @@ test("validate: domain-level errors with paths", () => {
   assert.match(messages(errs((r) => { (r.variables.find((v) => v.name === "tax_amount") as any).condition_flag = "tax_rate"; })), /condition_flag.*tax_rate.*not a condition/);
   assert.match(messages(errs((r) => { r.variables.push({ ...r.variables[0], name: "location_count" }); })), /duplicate.*location_count/i);
   assert.match(messages(errs((r) => { r.variables.push({ ...r.variables[0], name: "Bad Name" }); })), /identifier/);
+  // seen live on co2: the state compared against the jurisdiction-name column, and "Ohio" as the sample state
+  assert.match(messages(errs((r) => { (r.variables.find((v) => v.name === "tax_rate") as any).where[0].column = "state_name"; })), /client_state.*state_name.*names/);
+  assert.match(messages(errs((r) => { r.sample_inputs.client_state = "Texas"; })), /client_state.*"Texas".*2-letter/);
+  // seen live on co2: names and dates defined as "text" inputs — Stage 5 owns those, the sheet must not ask for them
+  assert.match(messages(errs((r) => { r.variables.push({ name: "proposal_date", label: "Date", in_document: true, unit: "text", condition_flag: "", kind: "input", input_type: "text" as any, required: true }); })), /proposal_date.*input_type "text"/);
   // an aggregate over all rows needs no key column (the model leaves it "" — seen live on every first attempt)
   assert.deepEqual(errs((r) => { (r.variables.find((v) => v.name === "tax_match_count") as any).key_column = ""; }), []);
   assert.match(messages(errs((r) => { (r.variables.find((v) => v.name === "addon_items") as any).key_column = ""; }, "co3_dev")), /addon_items.*key column/);

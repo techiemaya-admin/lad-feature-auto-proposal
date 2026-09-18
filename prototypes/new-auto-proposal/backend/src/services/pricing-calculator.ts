@@ -564,6 +564,8 @@ const UNITS = new Set([
   "rows",
 ]);
 const OPS = new Set(["eq", "neq", "gte", "lte", "gt", "lt", "in"]);
+const INPUT_TYPES = new Set(["integer", "choice", "multi_choice", "boolean", "us_state"]);
+const STATE_CODE = /^[A-Za-z]{2}$/;
 const FORMULA_OPS = new Set(["add", "sub", "mul", "div", "min", "max"]);
 
 /**
@@ -655,8 +657,18 @@ export function validate(
       if ("var" in c && c.var !== undefined) ref(`${cp}.var`, v, c.var);
       if ("column" in c && tableId)
         column(`${cp}.column`, v, tableId, c.column, "filter");
-      if (c.value_var) ref(`${cp}.value_var`, v, c.value_var);
-      else if (c.op === "in" && !Array.isArray(c.values))
+      if (c.value_var) {
+        ref(`${cp}.value_var`, v, c.value_var);
+        // Seen live: a us_state lead input compared against a "Jurisdiction" column of full names. The lead
+        // side is always a 2-letter code, so the table side must be too or no row ever matches.
+        const src = vars.get(c.value_var);
+        const t = "column" in c && tableId ? tables.get(tableId) : undefined;
+        if (src?.kind === "input" && src.input_type === "us_state" && t && "column" in c) {
+          const cells = t.rows.map((r) => r[c.column]).filter((x) => x !== null && x !== undefined && x !== "");
+          if (cells.length && !cells.every((x) => STATE_CODE.test(String(x))))
+            err(`${cp}.column`, `${v.name}: "${c.value_var}" is a 2-letter state code but column "${c.column}" holds names — compare the state-code column instead`);
+        }
+      } else if (c.op === "in" && !Array.isArray(c.values))
         err(`${cp}.values`, `${v.name}: "in" needs a values list`);
       else if (c.op !== "in" && c.value === undefined)
         err(`${cp}.value`, `${v.name}: comparison needs a value or value_var`);
@@ -712,6 +724,12 @@ export function validate(
     }
     switch (v.kind) {
       case "input":
+        // Seen live: the model makes client_name / proposal dates "text" inputs. Those are Stage 5's (facts + calendar), never the sheet's.
+        if (!INPUT_TYPES.has(v.input_type))
+          err(
+            `${p}.input_type`,
+            `${v.name}: input_type "${v.input_type}" is not one of integer | choice | multi_choice | boolean | us_state — names, dates and free text are not lead inputs; remove the variable`,
+          );
         if (v.input_type === "choice" || v.input_type === "multi_choice") {
           if (v.options_table) {
             table(`${p}.options_table`, v, v.options_table);
@@ -850,6 +868,11 @@ export function validate(
         `variables[${rules.variables.indexOf(d)}].map`,
         `${loop.loop_tag}: map keys must be exactly [${loop.columns.join(", ")}]${missing.length ? `; missing ${missing.join(", ")}` : ""}${extra.length ? `; unexpected ${extra.join(", ")}` : ""}`,
       );
+  }
+  for (const v of rules.variables ?? []) {
+    const sample = rules.sample_inputs?.[v.name];
+    if (v.kind === "input" && v.input_type === "us_state" && typeof sample === "string" && sample && !STATE_CODE.test(sample))
+      err("sample_inputs", `${v.name}: sample value "${sample}" must be the 2-letter state code`);
   }
   return errors;
 }
