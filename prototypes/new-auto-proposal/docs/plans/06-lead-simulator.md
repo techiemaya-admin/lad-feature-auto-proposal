@@ -30,7 +30,7 @@ Built per company, nothing hardcoded:
 
 Extractor response schema: one **required** property per field (`null` when the message does not say it), plus `assumptions: string[]` (required, may be empty). Rules in the prompt: number words → digits; a range → the higher end, noted in `assumptions`; never infer a state/jurisdiction that is not stated; choice values must be one of `options` (case-insensitive, the option's spelling is returned).
 
-`POST /api/companies/:id/lead/extract` body `{ lead_text }` → `{ success, inputs, missing: string[], assumptions: string[] }` where `missing` = required fields that came back `null`. 400 when `lead_text` is empty or > 12,000 chars; 409 when `stage !== "lead_simulation"` or no rules. Raw response logged via `logPipelineArtifact(id, "lead-raw", …)`.
+`POST /api/companies/:id/lead/extract` body `{ lead_text }` → `{ success, fields: LeadField[], inputs, missing: string[], assumptions: string[] }` (`fields` = the form definition above, so the UI renders the right control per fact) where `missing` = required fields that came back `null`. 400 when `lead_text` is empty or > 12,000 chars; 409 when `stage !== "lead_simulation"` or no rules. Raw response logged via `logPipelineArtifact(id, "lead-raw", …)`.
 
 ### 1.2 Clarification email
 `POST /api/companies/:id/lead/clarify` body `{ lead_text, inputs, missing }` → `{ success, subject, body }`. Prompt inputs: company basics, `clarification_notes` + `style_notes` (Voice drawer; empty → built-in default), the natural names of the missing fields, the lead text. Logged as `clarify-raw`.

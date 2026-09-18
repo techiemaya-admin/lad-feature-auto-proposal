@@ -125,6 +125,7 @@ test("Proposal routes", async (t) => {
     assert.equal(full.status, 200, full.text);
     assert.deepEqual(full.body.inputs, { ...facts, client_state: "TX" });
     assert.deepEqual(full.body.missing, []);
+    assert.deepEqual(full.body.fields.map((f: any) => f.name), ["location_count", "client_state", "annual_prepay", "client_name"]);
     assert.deepEqual(full.body.assumptions, ["Counted two clinics as 2 locations"]);
     assert.match(prompts[0], /client_state \(Client state\): us_state/);
     assert.match(prompts[0], /annual_prepay .* \(optional\)/);

@@ -113,6 +113,8 @@ const callModel: ModelCall = (prompt, fields) =>
   (modelCall ?? ((p, f) => generateJson<Record<string, unknown>>(p, leadFactsSchema(f), leadFactsJsonShape(f))))(prompt, fields);
 
 export interface LeadFacts {
+  /** The per-company form definition, so the UI renders the right control per fact. */
+  fields: LeadField[];
   inputs: Record<string, Value>;
   missing: string[];
   assumptions: string[];
@@ -143,5 +145,5 @@ export async function extractLeadFacts(company: CompanyRow, rules: PricingRules,
                 : String(v);
   }
   const assumptions = Array.isArray(raw.assumptions) ? raw.assumptions.map(String).filter(Boolean) : [];
-  return { inputs, missing: missingFields(fields, inputs), assumptions };
+  return { fields, inputs, missing: missingFields(fields, inputs), assumptions };
 }

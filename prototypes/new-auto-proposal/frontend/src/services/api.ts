@@ -1,5 +1,6 @@
 import type { Company, CompanySummary } from "../types/company";
 import type { Evaluation, PricingRules, PricingRulesState, ValidationError, Value } from "../types/pricing";
+import type { ClarificationEmail, LeadFacts, ProposalResult } from "../types/proposal";
 
 const API_BASE = "/api";
 
@@ -285,8 +286,10 @@ export async function updateAISettings(payload: Partial<AISettings>): Promise<AI
 
 /** A PUT the server refused: `errors` are the structural problems, nothing was persisted. */
 export class RulesValidationError extends Error {
-  constructor(message: string, public errors: ValidationError[]) {
+  errors: ValidationError[];
+  constructor(message: string, errors: ValidationError[]) {
     super(message);
+    this.errors = errors;
   }
 }
 
@@ -320,6 +323,23 @@ export function calculatePricing(companyId: string, inputs: Record<string, Value
 
 export async function proceedToLeadSimulation(companyId: string): Promise<Company> {
   return (await rulesRequest<{ company: Company }>(`${companyId}/rules/proceed`, "proceed", { method: "POST" })).company;
+}
+
+// ---------------------------------------------------------------------------
+// Stage 5: lead simulator (same error unwrapping as the rules routes)
+// ---------------------------------------------------------------------------
+
+export function extractLead(companyId: string, leadText: string): Promise<LeadFacts> {
+  return rulesRequest(`${companyId}/lead/extract`, "read the lead", json({ lead_text: leadText }));
+}
+
+export function draftClarification(companyId: string, leadText: string, inputs: Record<string, Value>, missing: string[]): Promise<ClarificationEmail> {
+  return rulesRequest(`${companyId}/lead/clarify`, "draft the clarification email", json({ lead_text: leadText, inputs, missing }));
+}
+
+/** Facts in, documents out — the email is drafter context only, never re-extracted. */
+export function generateProposal(companyId: string, inputs: Record<string, Value>, leadText: string): Promise<ProposalResult> {
+  return rulesRequest(`${companyId}/proposal/generate`, "generate the proposal", json({ inputs, lead_text: leadText }));
 }
 
 // ---------------------------------------------------------------------------
