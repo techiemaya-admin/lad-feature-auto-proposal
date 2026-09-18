@@ -6,7 +6,7 @@
 
 **Blocked by:** 04: docXMLater Word Template Mutation and Minimal Checkpoint Preview (completed), 05: Pricing Compiler, Visual Rule Cards, and Deterministic Math (completed)
 
-**Status:** ready-for-agent
+**Status:** completed (2026-09-19)
 
 **Decisions (2026-09-16/18):** extract and generate are separate endpoints (generate takes structured facts); missing fact → facts form + clarification email, review rule → declined, never a document; dev seeds (`pricing_spec`, `sample_lead_text`) live in `Mock Data/test_seeds.json`, `companies_dataset.json` keeps only imported data; no proposals table; dates are computed, not extracted (`date` data_type in Stage 2 + parse fallback); drafter writes `{tag}` placeholders, one call for all paragraphs; PDF via `libreoffice-convert`, failure never fails the run; preview is the PDF iframe (no `docx-preview` on Stage 5); no `sampleCheck` banner.
 
@@ -15,4 +15,4 @@
 - [x] Offline tests: `fillDates`, substitution, schema builder on the three rules fixtures, stubbed-model generation on co1 → docx markdown contains `$35,073.00` and no stray braces, route guards (409 pre-stage, 400 missing inputs, declined path).
 - [x] C — `LeadSimulator.tsx`: prefilled textarea + Generate; shimmer bar; facts form (typed inputs, missing highlighted) + clarification email card; assumptions strip; numbers ledger; declined panel; PDF iframe with "unavailable" fallback; download buttons; `api.ts` + `types/proposal.ts`.
 - [x] Manual verification of the three sample leads (`$35,073.00`; `$2,734.80` + `$3,150.00`; `$10,445.00`), the missing-state path and the 140-products declined path. (2026-09-18, live deepseek-flash, API-level: co1 needs `contract_months` typed in — the live rules ask for it; co2/co3 straight through. Browser walk-through pending.)
-- [ ] Flag doc drift (AGENTS/CLAUDE §2 & §5, `docs/plan.md`, `docs/design.md` §3.5, `spec.md` §5) for user confirmation — do not apply silently.
+- [x] Flag doc drift (AGENTS/CLAUDE §2 & §5, `docs/plan.md`, `docs/design.md` §3.5, `spec.md` §5) for user confirmation — do not apply silently. (Applied 2026-09-19 after the user's OK.)

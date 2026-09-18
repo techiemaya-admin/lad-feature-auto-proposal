@@ -69,11 +69,11 @@ The Rush Away Auto-Proposal onboarding workflow is an **agentic configuration wo
                                       ▼
 ┌───────────────────────────────────────────────────────────────────────────┐
 │  STAGE 5: LEAD SIMULATION & PROPOSAL VERIFICATION                         │
-│  - Paste unstructured lead email or click "Load Sample Inquiry"           │
-│  - Gemini extracts lead parameters; deterministic math runs               │
-│  - Gemini drafts tailored narrative based on prompt tips                  │
-│  - easy-template-x renders final .docx proposal                           │
-│  - In-browser preview via docx-preview + one-click download               │
+│  - Lead textarea prefilled with the sample message → [Generate proposal]  │
+│  - Facts read from the message (editable form; missing → clarification)   │
+│  - Deterministic numbers ledger; review rule → "Declined to auto-quote"   │
+│  - Placeholder narrative → easy-template-x .docx → LibreOffice PDF        │
+│  - PDF preview in an iframe + .docx / .pdf downloads                       │
 └───────────────────────────────────────────────────────────────────────────┘
 
 AMBIENT SHELL COMPONENTS:
@@ -172,11 +172,14 @@ The user needs three things here: did it work, is anything wrong, what's next. T
 
 ### 3.5 Stage 5: Lead Simulator & Proposal Verification (`LeadSimulator.tsx`)
 
-1. **Inbound Simulation:**
-   - Multi-line inquiry textarea using the Stage 1 fluid input pattern: auto-resizes to fit email text, padded with `p-1`, equipped with `overflow-y-auto max-h-72 resize-none` to prevent clipped lines, and no internal divider lines.
-   - Clean quick-action button: `Load Sample Inquiry` pre-configured per company.
-2. **Deterministic Calculation Display:** Formatted line-item breakdown using `tabular-nums` on an elevated surface.
-3. **Proposal Preview:** Embedded in-browser preview via `docx-preview` housed in a clean container with `[ Download Proposal (.docx) ]` (`bg-blue-600 hover:bg-blue-500 text-white`).
+Rendered under the pricing deck once `working_state.stage === "lead_simulation"`. Header: inbox icon (emerald tick once a proposal exists), `Lead simulator`, subtitle `Paste what a lead sent you. The numbers come from the rules above, the words from the drafter.`
+
+1. **Lead message:** the Stage 1 fluid textarea (auto-resize, `p-1`, `overflow-y-auto max-h-72 resize-none`, no dividers), prefilled with the company's dev-only `sample_lead_text` and re-synced on company switch; one primary `[ Generate proposal ➔ ]` (`bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-xs btn-tactile`) that runs extract → generate back to back. The `.shimmer-bar` runs on the card edge while any call is in flight; every failure is an explicit panel with `Try again`, never a stuck shimmer.
+2. **Facts form (`What the lead told us`):** one control per fact by type — number input, `Yes / No` toggle, choice dropdown, multi-choice chips, state / text. A required fact the message did not answer is labelled `· not in the message` with an amber ring; the run stops here with `[ Generate ➔ ]` disabled until it is filled, and a **clarification card** (`Reply to ask for it (not sent)`: subject, body, `Copy`) drafts the reply. The form stays editable after a run so the rep can change a fact and generate again.
+3. **Assumptions strip:** amber `Read between the lines:` list of the extractor's judgement calls (range picked, inferred tier, counted devices).
+4. **Numbers ledger (`The numbers`):** the in-document money / percent / integer values in calculation order, `font-mono tabular-nums`, the last money value emphasised. No benchmark banner on Stage 5.
+5. **Declined panel:** `Declined to auto-quote` (destructive tint, shield icon) listing the review-rule reasons; no document is written.
+6. **Split view** (`lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]`): facts, assumptions and ledger left; right a PDF `<iframe>` (or `PDF preview unavailable — download the .docx` with the reason) and `[ Download .docx ]` `[ Download .pdf ]` in the primary style. `docx-preview` is not used here.
 
 ---
 

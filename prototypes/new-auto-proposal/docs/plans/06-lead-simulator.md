@@ -14,10 +14,10 @@ Most of the machinery already exists: `POST /rules/calculate` returns `{evaluati
 - `evaluation.needs_review` non-empty → **no document**; a "Declined to auto-quote" panel lists the reasons. No clarification email for this case.
 - Dev-only seeds (`pricing_spec`, `sample_lead_text`) move to a **separate file** `Mock Data/test_seeds.json`; `companies_dataset.json` keeps only what the main backend imports (`pricing_engine_spec` is removed from it). `sample_lead_text` is not stored — the company response attaches it from the file and the Stage 5 textarea starts with it (as `PromptDocCapsule` starts with `pricing_spec`). "Reset to mock default" stays and re-seeds from both files.
 - No `proposals` table, no persistence of runs. Files overwrite `storage/<id>/proposal.docx` / `proposal.pdf`; a refresh loses the on-screen result, the files stay downloadable.
-- Dates are code, not model: Stage 2 gains `data_type: "date"`; Stage 5 fills every date customer input deterministically (earliest sample date → today, the others keep their offset, sample format and suffix kept). Fallback for old extractions: a `string` whose sample parses as a month-name date (`ponytail:`).
+- Dates are code, not model: Stage 2 gains `data_type: "date"`; Stage 5 fills every date customer input deterministically (earliest sample date → today, the others keep their offset, sample format and suffix kept). Fallback for old extractions: a `string` whose sample parses as a month-name date (`ponytail:`). Duration-shaped customer inputs ("14 days") are copied from the sample, never asked (seen live on co2).
 - Drafter writes `{tag}` placeholders, never numbers; one model call for all `ai_generated` paragraphs, every paragraph a required field.
 - Extractor `assumptions[]` (range picked, number words, inferred devices) shown as an amber strip under the facts form.
-- PDF via `libreoffice-convert` (LibreOffice headless; same binary in a Docker image in production). PDF failure never fails the run: `pdf: null` + reason, docx still returned.
+- PDF via LibreOffice headless (`soffice --headless --convert-to pdf` spawned directly with a persistent profile; `libreoffice-convert` was tried and dropped — a fresh profile per run costs 20–30 s and its harmless stderr "parser error" is mistaken for failure; same binary in a Docker image in production). PDF failure never fails the run: `pdf: null` + reason, docx still returned.
 - Preview = the PDF in an `<iframe>`; `docx-preview` is not used on Stage 5. No benchmark banner / `sampleCheck` on Stage 5.
 - Left panel = facts form + numbers ledger only; prose is visible in the preview.
 
@@ -49,7 +49,7 @@ Steps inside `proposal-generator.service.ts`:
 3. Customer inputs: `payload[name] = inputs[name]` for the extracted text fields; dates via `fillDates(stage2Variables, today)` (§1.4).
 4. Narrative: one `generateJson` call (§1.5); substitute `{tag}` → `payload[tag]` for known keys; unknown tags are stripped and reported in `tags_placed` diagnostics; `payload[paragraph_name] = text`.
 5. `easy-template-x` `TemplateHandler.process(template.docx, payload)` → `storage/<id>/proposal.docx`.
-6. `libreoffice-convert` → `storage/<id>/proposal.pdf`; on error `pdf: null`, `pdf_error`.
+6. headless `soffice` → `storage/<id>/proposal.pdf`; on error `pdf: null`, `pdf_error`.
 7. Log `proposal-payload` and `narrative-raw` artifacts.
 
 `GET /api/companies/:id/proposal/download?format=docx|pdf` — `Content-Disposition: attachment; filename="Proposal - <client_name>.<ext>"`; 404 with a message when the file is absent.
@@ -69,7 +69,7 @@ Prompt sections: company profile (name, value proposition, industry); voice (`st
 
 ## 3. Sub-feature B — backend services & routes
 New files: `services/lead-extractor.service.ts` (schema builder + call + `missing`), `services/clarification-drafter.service.ts`, `services/narrative-drafter.service.ts` (prompt + substitution), `services/proposal-generator.service.ts` (steps §1.3, `fillDates`, docx + pdf), `routes/proposal.ts` (4 routes above), registered in `app.ts`.
-- Dependency: `libreoffice-convert` (+ `@types` if needed). Binary path from `SOFFICE_PATH` env (documented in `.env.example`) with the library's default lookup.
+- No new dependency: `execFile` on the soffice binary (`SOFFICE_PATH` env, documented in `.env.example`, then the platform default paths); persistent profile in the temp dir (storage/ has spaces in its path and soffice fails silently on a spaced profile URL).
 - Hard-reset: `briefing/unlock`, `template` regeneration and `rules/compile` also delete `storage/<id>/proposal.docx|pdf` (one helper `clearProposalFiles(id)`).
 - Tests (offline, `npm test`): `fillDates`; placeholder substitution (known/unknown tags, `covered` tags); extractor schema builder for the co1/co2/co3 rules fixtures (field list + required flags); generation end-to-end with a stubbed model on the co1 fixtures → `proposal.docx` converted with `@firecrawl/anydoc` contains `$35,073.00` and no `{`/`}` left; routes: 409 before Stage 5, 400 on missing inputs, declined path. Live model calls only in `test:live`.
 
@@ -88,7 +88,7 @@ New files: `services/lead-extractor.service.ts` (schema builder + call + `missin
 ## 6. Assumptions & known ceilings (stated, not blocking)
 - Clarification and generation are separate model calls; the extract→generate hop is two HTTP requests (fine for a harness; production would queue them).
 - Date offsets are calendar days from the sample; a "(14 days)" suffix is copied, not recomputed (`ponytail:` — parse the suffix when a template needs it).
-- `libreoffice-convert` spawns a process per run (seconds on Windows); production runs the same converter in a container with a warm instance.
+- One `soffice` process per run (~10–20 s on Windows with the warm profile); production runs the same converter in a container with a warm instance.
 - Unknown `{tags}` written by the drafter are stripped, not retried.
 
 ## 7. Verification

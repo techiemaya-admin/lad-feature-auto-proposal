@@ -10,6 +10,7 @@ Self-contained proof of concept demonstrating zero-configuration proposal genera
 - **Implementation Tickets & Issues:** [.scratch/new-auto-proposal/issues/](file:///c:/Users/syedm/Desktop/Muneer%20Work/TechieMaya%20AI%20Fullstack%20Developer%20Intern/lad-feature-auto-proposal/.scratch/new-auto-proposal/issues/) — read when claiming, updating, or tracking frontier task tickets.
 - **Pricing Verification Guide:** [Mock Data/verification_guide.md](file:///c:/Users/syedm/Desktop/Muneer%20Work/TechieMaya%20AI%20Fullstack%20Developer%20Intern/lad-feature-auto-proposal/prototypes/new-auto-proposal/Mock%20Data/verification_guide.md) — read when verifying pricing formulas and benchmark calculation numbers.
 - **Mock Dataset:** [Mock Data/companies_dataset.json](file:///c:/Users/syedm/Desktop/Muneer%20Work/TechieMaya%20AI%20Fullstack%20Developer%20Intern/lad-feature-auto-proposal/prototypes/new-auto-proposal/Mock%20Data/companies_dataset.json) — read when seeding company profiles, initial state, or ground-truth rule definitions.
+- **Dev Seeds:** [Mock Data/test_seeds.json](file:///c:/Users/syedm/Desktop/Muneer%20Work/TechieMaya%20AI%20Fullstack%20Developer%20Intern/lad-feature-auto-proposal/prototypes/new-auto-proposal/Mock%20Data/test_seeds.json) — dev-only `pricing_spec` (Stage 1 prompt prefill) and `sample_lead_text` (Stage 5 textarea prefill) per company; never imported by the main backend.
 
 ---
 
@@ -32,12 +33,13 @@ Self-contained proof of concept demonstrating zero-configuration proposal genera
 - Keep the golden test (`tests/template-mutator.test.ts` + `tests/fixtures/*.variables.json` ideal responses + `*.raw.json` real model logs) green: it pins the engine against `Mock Data/templated_markdown/*.md` and against real model quirks. `npm test` is offline; the live Gemini contract check is `npm run test:live`.
 - Extraction model: the provider/model default and any change made in the header model picker live in the `app_settings` table (`ai-settings.service.ts`), never in memory, and are stamped into every `logs/<company>/*-variables-raw.json` as `ai`. Default is `deepseek-flash`; `gemini-flash-lite` drops money amounts and must not be the accident.
 - Verify modified `.docx` files by converting to Markdown via `@firecrawl/anydoc` rather than inspecting raw binary XML.
-- Hydrate final proposals using `easy-template-x`.
+- Hydrate final proposals using `easy-template-x`; convert to PDF with headless LibreOffice (`soffice --headless --convert-to pdf`, binary from `SOFFICE_PATH`, warm profile in the temp dir). A PDF failure never fails the run (`pdf: null` + `pdf_error`, the `.docx` still returns). Stage 5 previews the PDF in an `<iframe>`; `docx-preview` is Stage 3 only.
+- Stage 5 never lets the model touch a number: the lead extractor returns structured facts (`null` = not said, `assumptions[]` for judgement calls), `evaluate` + `buildProposalPayload` produce every value, dates are computed (`data_type: "date"`, earliest sample date → today, offsets and suffixes kept), and the narrative drafter writes `{tag}` placeholders that code substitutes from the payload (unknown tags stripped and reported). A missing required fact stops at the facts form and drafts a clarification email; a matching review rule declines with no document.
 
 ### 3. Unidirectional State Discipline (Hard Reset Policy)
 - The workflow progresses strictly forward across the 5 stages: Briefing Capsule ➔ Variable Review ➔ Template Checkpoint ➔ Pricing Engine ➔ Lead Simulation.
 - Once submitted, earlier stages transition into a read-only locked summary.
-- Editing an earlier stage safely rewinds downstream progress behind an explicit confirmation dialog, clearing downstream database records to prevent state desync.
+- Editing an earlier stage safely rewinds downstream progress behind an explicit confirmation dialog, clearing downstream database records and generated files (`template.docx`, `proposal.docx` / `proposal.pdf`) to prevent state desync.
 - User input text in the prompt box and uploaded files are preserved during rewinds.
 
 ### 4. Ambient Decoupling & Two-Tier Exposure
@@ -46,9 +48,9 @@ Self-contained proof of concept demonstrating zero-configuration proposal genera
 - Technical inspection data (AnyDoc Markdown, raw Variables JSON, Rule Schema JSON, AST mutation logs) resides in a docked, collapsible bottom HUD (`DevDock.tsx`).
 
 ### 5. Per-Company Session Isolation
-- Store working files on disk under `backend/storage/<company_id>/`.
+- Store working files on disk under `backend/storage/<company_id>/`. Stage 5 runs are not persisted: `proposal.docx` / `proposal.pdf` are overwritten on every generate, there is no proposals table, and a refresh clears the on-screen result.
 - Persist variable tables, rule schemas, and configurations in SQLite so switching company tabs maintains progress; app-wide settings (AI provider/model) live in `app_settings`.
-- Provide an explicit "Reset to Mock Default" action to re-seed from `companies_dataset.json`.
+- Provide an explicit "Reset to Mock Default" action to re-seed from `companies_dataset.json` + `Mock Data/test_seeds.json`.
 
 ### 6. **Context-Rich Commits:**
 - Format: `<type>(<scope>): <imperative summary>` followed by a blank line.

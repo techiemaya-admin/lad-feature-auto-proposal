@@ -7,12 +7,12 @@ Sales teams running AI outbound/inbound campaigns generate high volumes of inbou
 For small-to-midsize service businesses (marketing agencies, IT MSPs, dev shops), this manual quoting step is slow (hours to days), inconsistent, and bottlenecked against inbound volume.
 
 This prototype (`prototypes/new-auto-proposal`) builds and proves an end-to-end concept for **Zero-Config Quotation Auto-Generation**:
-1. **Import & Ingest:** Preload company profile and natural-language pricing notes (`pricing_engine_spec`).
+1. **Import & Ingest:** Preload company profile (`companies_dataset.json`) and, for the dev harness only, the natural-language pricing notes (`pricing_spec`) and a sample lead message from `Mock Data/test_seeds.json`.
 2. **Document Understanding:** Convert real `.docx` quotations into Markdown via `@firecrawl/anydoc`.
 3. **Variable Detection & Taxonomy:** Discover scalar entities, pricing numbers, table loops, and dynamic paragraphs with human-in-the-loop review.
 4. **Non-Destructive Word Mutation:** Use `docxmlater` to replace text anchors and collapse repeating table rows into dynamic loop syntax while preserving headers and summary footers.
 5. **Interactive Pricing Engine:** Compile natural pricing notes into visual rule cards and deterministic JSON execution logic.
-6. **Proposal Generation & Verification:** Ingest unstructured lead emails, extract parameters via Gemini, compute exact totals deterministically, generate tailored sales copy, and render final `.docx` documents using `easy-template-x`.
+6. **Proposal Generation & Verification:** Ingest an unstructured lead message, extract structured facts (editable; a missing fact drafts a clarification email), compute exact totals deterministically (a review rule declines), draft narrative paragraphs as `{tag}` placeholders that code fills, render the `.docx` with `easy-template-x` and a PDF with headless LibreOffice.
 
 ---
 
@@ -56,12 +56,15 @@ The system runs a **5-stage sequential pipeline** anchored by an **ambient shell
             │
             ▼
 [STAGE 5: LEAD SIMULATION & VERIFICATION]
-  Inbound lead message (email) + "Load Sample Lead Message"
-  ├── Gemini extracts lead deal parameters (seats, locations, addons, state)
-  ├── Deterministic math computes exact subtotal, discounts, taxes, and total
-  ├── Gemini drafts tailored narrative copy using prompt tips
-  ├── easy-template-x renders finalized proposal .docx
-  └── In-browser proposal preview via docx-preview + one-click download
+  Inbound lead message textarea, prefilled with the company's dev-only sample_lead_text
+  ├── POST /lead/extract → structured facts per the rules' inputs (+ client name): null = not said, assumptions[]
+  │     └── required fact missing → editable facts form (field highlighted) + POST /lead/clarify email (Copy, never sent)
+  ├── POST /proposal/generate (facts in, never the email): evaluate → needs_review → "Declined to auto-quote", no file
+  │     ├── buildProposalPayload (every pricing tag, has_* flags, loops, tier matrix) + customer facts + fillDates (code)
+  │     ├── one model call drafts every ai_generated paragraph as {tag} placeholders → code substitutes from the payload
+  │     ├── easy-template-x → storage/<id>/proposal.docx; headless LibreOffice → proposal.pdf (failure → pdf: null)
+  │     └── nothing persisted: files overwritten per run, no proposals table
+  └── Split view: facts form + assumptions + numbers ledger | PDF <iframe> + .docx / .pdf downloads
 
 AMBIENT SHELL COMPONENTS:
 ├── Slide-Over Configuration Drawer ("Voice & inbox"): style notes, reference proposal, clarification-email notes, mock inbox link
@@ -127,6 +130,12 @@ Model choice: provider/model are persisted in `app_settings` (default `deepseek-
 - Expands table loops dynamically to match the lead's exact line items.
 - Payload keys equal `variable_name`; conditionals need boolean `has_*` keys; loops need arrays keyed by `loop_tag`; the tier matrix values come from `buildTierMatrixPayload(template_stats.tier_matrix, selected_tier)`.
 - Outputs the finalized proposal document ready for download and browser preview.
+
+### 4.5 Stage 5 Generation (`proposal-generator.service.ts`)
+- `POST /api/companies/:id/lead/extract` (`{lead_text}` → `{fields, inputs, missing, assumptions}`), `POST /lead/clarify` (`{lead_text, inputs, missing}` → `{subject, body}`), `POST /proposal/generate` (`{inputs, lead_text}` → `{evaluation, payload, narrative, files, pdf_error?}` or `{declined: true, needs_review}`; 400 when a required fact is missing, 409 before `stage === "lead_simulation"`), `GET /proposal/download?format=docx|pdf`.
+- Facts are built per company from the rules' `input` variables plus the Stage 2 customer inputs the rules do not define; dates (`data_type: "date"` or a month-name sample) and duration-shaped samples ("14 days") are never asked — `fillDates` moves the earliest sample date to today and keeps every other date's offset, format and suffix.
+- The drafter gets the voice-drawer notes, the lead message, the facts, every payload tag with its value and every boolean flag with its label; it returns one string per `ai_generated` paragraph; `{tag}` placeholders are substituted in code, unknown tags stripped and reported in `narrative[name].unknown_tags`.
+- PDF via `soffice --headless --convert-to pdf` (`SOFFICE_PATH`, persistent profile in the temp dir); a failure returns the `.docx` with `pdf: null`. Every raw model response and the final payload land in `logs/<company>/` for the Dev Dock. Full design: [docs/plans/06-lead-simulator.md](plans/06-lead-simulator.md).
 
 ---
 
@@ -204,5 +213,5 @@ Verified against `logs/*/variables-raw.json` and `company_variables` on 2026-09-
 | **Phase 3** | **Categorized Variable Review Chip-Deck** | Review dynamic variables in 3 buckets | Gemini variable extraction, 3-bucket chip-deck (Customer Inputs, Pricing Placeholders, Paragraphs), AST-verified custom chip modal, dropdown bucket switcher, [Fixed \| AI] paragraph toggle. |
 | **Phase 4** | **docxmlater Mutation & Minimal Checkpoint** | Mutate .docx AST & confirm template | `docxmlater` replacement pipeline, smart table row collapse, compact inline checkpoint card with tag stats and optional `docx-preview` modal. |
 | **Phase 5** | **Pricing Compiler & Rule Cards** | Compile spec to visual & executable rules | Gemini rule compiler using Prompt + Variables + Sample Quote Values, interactive rule cards UI, collapsible JSON editor, deterministic JS math engine. |
-| **Phase 6** | **Lead Simulator & Proposal Verification** | Generate proposal from lead message & verify math | Inbound email textarea + sample load button, lead parameter extraction, narrative copy generator, `easy-template-x` proposal generation, math verification against benchmarks. |
+| **Phase 6** | **Lead Simulator & Proposal Verification** | Generate proposal from lead message & verify math | Prefilled lead textarea, structured fact extraction with an editable facts form and clarification email on a missing fact, deterministic numbers ledger, placeholder-only narrative drafting, `easy-template-x` + LibreOffice PDF generation with iframe preview and downloads, declined panel on review rules. |
 | **Auxiliary** | **Ambient Shell Enhancements** | Independent settings & developer tools | Slide-Over Configuration Drawer (free-text voice notes, reference proposal, clarification-email notes, mock inbox link) and Bottom Developer Dock (AnyDoc MD, Variables JSON, Rule Schema JSON, pipeline logs + run artifacts). |

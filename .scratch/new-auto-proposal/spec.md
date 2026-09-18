@@ -16,7 +16,7 @@ A zero-configuration, AI-assisted auto-proposal prototype that enables an agency
 2. **Categorized Variable Review Chip-Deck:** Review extracted dynamic variables organized into three clear buckets (`Customer Inputs`, `Pricing Placeholders`, and `Narrative Paragraphs`) as modular interactive chips rather than a dense administrative table.
 3. **Minimal Template Checkpoint:** Confirm XML-safe dynamic template tags and repeating line-item loops with an inline status card and optional quick preview before moving to pricing.
 4. **Interactive Pricing Engine:** Review and fine-tune compiled visual rule cards powered by a 100% deterministic JavaScript math engine.
-5. **Lead Simulator & Verification:** Simulate inbound lead emails to produce mathematically verified `.docx` proposals previewable directly in the browser.
+5. **Lead Simulator & Verification:** Paste an inbound lead message, confirm the facts read from it (a missing one drafts a clarification email), and get a mathematically verified `.docx` + PDF proposal previewed in the browser — or a "Declined to auto-quote" panel when a review rule matches.
 6. **Ambient Controls:** Persistent slide-over drawer for proposal voice notes and a mock inbox link, and a bottom developer dock for raw Markdown, JSON schemas, and pipeline logs.
 
 ## User Stories
@@ -95,6 +95,7 @@ interface PricingRules {
 - Pure module `backend/src/services/pricing-calculator.ts`: `evaluate(rules, inputs)`, `validate(rules, stage2)` (domain-level errors: unknown name, cycle, Stage 2 pricing variable without definition, flag without condition, loop map ≠ columns), `formatLike(sample_value, value)` (`$3,000/mo`, `8.25%`, `10%`), `sampleCheck` (per-variable ✓/✗ against the sample quotation), `buildProposalPayload` (keys = `variable_name`, `has_*` booleans, loops by `loop_tag`, tier matrix via `buildTierMatrixPayload`).
 - Compile validates, evaluates with `sample_inputs`, runs the sample check, and **retries once** with the error list (structural errors and sample mismatches) before persisting; both attempts are logged to `logs/<company>/*-rules-raw.json` / `*-rules-repair.json`. Gemini receives a flat wire shape (table rows as `cells[]`, every kind's fields present) because its response schema has no unions or dynamic keys; DeepSeek gets the same shape in the prompt; `fromWire()` types cells by column unit.
 - API (`/api/companies/:id/rules`): `POST /compile`, `GET`, `PUT` (400 with `errors[{path,message}]` on structural errors, nothing persisted), `POST /calculate` (`{inputs}` → evaluation + payload for an arbitrary lead; Stage 5's entry point — the deck's live check goes through `PUT`, which re-runs the sample), `POST /proceed` (`stage: "lead_simulation"`, 409 while validation errors exist). Any template regeneration or briefing unlock clears `pricing_rules`.
+- Stage 5 API (`/api/companies/:id`): `POST /lead/extract` (`{lead_text}` → `{fields, inputs, missing, assumptions}`; 400 empty / > 12,000 chars, 409 before Stage 5), `POST /lead/clarify` (`{lead_text, inputs, missing}` → `{subject, body}`, never sent), `POST /proposal/generate` (`{inputs, lead_text}` — structured facts, never re-extracted → `{evaluation, payload, narrative, files: {docx, pdf | null}, pdf_error?}` or `{success: false, declined: true, needs_review}`; 400 on a missing required fact), `GET /proposal/download?format=docx|pdf`. Nothing is persisted; `storage/<id>/proposal.docx|pdf` are overwritten per run and cleared by every earlier-stage reset. Contracts: `prototypes/new-auto-proposal/docs/plans/06-lead-simulator.md` §1.
 - UI (`PricingEngineDeck.tsx`): assumptions strip → one editable grid card per `tables[]` entry (icon by `kind`) → "What we ask the lead" (inputs) → Calculation ledger (each variable: readable definition, computed sample value, quote sample value, ✓/✗; tap → tray to change kind/operator/operands/conditions; `[+ Add variable]` for helpers marked "not in document") → review rules → footer with "N of M match", `Regenerate`, `Proceed to Lead Simulation`. Dev Dock tab edits the raw `PricingRules` JSON with validation.
 
 ### 5. UI Architecture: Agentic Briefing & Ambient Controls
@@ -113,7 +114,7 @@ interface PricingRules {
 - Three mock companies (`co1_seo`, `co2_msp`, `co3_dev`).
 - Binary files stored per company under `backend/storage/<company_id>/`.
 - Working state (variable tables, pricing specs, extracted rules, configurations) persisted in SQLite so switching company tabs maintains progress.
-- An explicit "Reset to Mock Default" action re-initializes a company's state from the baseline dataset.
+- An explicit "Reset to Mock Default" action re-initializes a company's state from the baseline dataset plus the dev-only seeds (`Mock Data/test_seeds.json`: `pricing_spec`, `sample_lead_text`).
 
 ## Testing Decisions
 
@@ -138,7 +139,7 @@ interface PricingRules {
 - User authentication, JWT tokens, and multi-tenant database row isolation.
 - Production schema migrations or integrations with legacy TypeORM entities.
 - Direct email sending (SMTP, Gmail API) or inbound webhook receivers.
-- PDF generation or conversion engines (LibreOffice / Gotenberg).
+- Hosted PDF conversion services (Gotenberg or similar); Stage 5 uses a local headless LibreOffice and degrades to `.docx`-only when it is absent.
 - Billing, Stripe integrations, or electronic signature workflows.
 
 ## Further Notes
