@@ -5,6 +5,7 @@ import fs from "node:fs";
 import { toMarkdown } from "@firecrawl/anydoc";
 import { getDatabase, getStorageDir } from "../db/database.js";
 import { formatCompanyResponse, CompanyRow } from "./companies.js";
+import { clearProposalFiles } from "../services/proposal-generator.service.js";
 
 const router = Router();
 
@@ -125,6 +126,7 @@ router.post("/:id/briefing/submit", handleUpload, async (req: Request, res: Resp
     const now = new Date().toISOString();
 
     // Downstream state initialization / clear previous downstream results on re-submit
+    clearProposalFiles(id);
     const workingState = {
       stage: "variable_review",
       briefing_completed_at: now,
@@ -204,7 +206,7 @@ router.post("/:id/briefing/unlock", (req: Request, res: Response): void => {
       // Table may not exist yet in certain unit test runs
     }
 
-    // Clean up downstream generated template.docx if present
+    // Clean up downstream generated template.docx and proposal.* if present
     const templatePath = path.join(getStorageDir(), id, "template.docx");
     if (fs.existsSync(templatePath)) {
       try {
@@ -213,6 +215,7 @@ router.post("/:id/briefing/unlock", (req: Request, res: Response): void => {
         // Ignore file unlink error
       }
     }
+    clearProposalFiles(id);
 
     // Reset downstream progress while preserving prompt text and quotation file
     const resetWorkingState = {

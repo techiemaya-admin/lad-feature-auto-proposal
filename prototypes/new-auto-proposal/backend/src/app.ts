@@ -6,6 +6,7 @@ import briefingRouter from "./routes/briefing.js";
 import variablesRouter from "./routes/variables.js";
 import templateRouter from "./routes/template.js";
 import rulesRouter from "./routes/rules.js";
+import proposalRouter from "./routes/proposal.js";
 import settingsRouter from "./routes/settings.js";
 import configurationsRouter from "./routes/configurations.js";
 import logsRouter from "./routes/logs.js";
@@ -33,6 +34,7 @@ export function createApp(): Express {
   app.use("/api/companies", variablesRouter);
   app.use("/api/companies", templateRouter);
   app.use("/api/companies", rulesRouter);
+  app.use("/api/companies", proposalRouter);
   app.use("/api/companies", configurationsRouter);
   app.use("/api/companies", logsRouter);
   app.use("/api/companies", companiesRouter);

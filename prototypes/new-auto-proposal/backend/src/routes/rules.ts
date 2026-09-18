@@ -3,6 +3,7 @@ import { getDatabase } from "../db/database.js";
 import { buildProposalPayload, evaluate } from "../services/pricing-calculator.js";
 import { buildRulesState, compilePricingRules, loadCompany, loadStage2Context } from "../services/pricing-compiler.service.js";
 import type { PricingRulesState } from "../services/pricing-rules.types.js";
+import { clearProposalFiles } from "../services/proposal-generator.service.js";
 import { formatCompanyResponse, type CompanyRow } from "./companies.js";
 
 const router = Router();
@@ -35,6 +36,7 @@ router.post("/:id/rules/compile", async (req: Request, res: Response): Promise<v
     if (!stage2.variables.some((v) => v.category === "pricing")) return void fail(res, 400, "Confirm the variables first — there are no pricing variables to define");
 
     const state = await compilePricingRules(company.company_id, company, stage2);
+    clearProposalFiles(company.company_id); // new rules → the last proposal is stale (hard-reset policy)
     persist(company, { pricing_rules: state, stage: "pricing_engine" });
     res.json({ success: true, pricing_rules: state });
   } catch (error) {

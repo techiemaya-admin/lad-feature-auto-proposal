@@ -164,6 +164,18 @@ const tableOf = (rules: PricingRules, id: string) =>
 const columnUnit = (t: RuleTable | undefined, key: string) =>
   t?.columns.find((c) => c.key === key)?.unit;
 
+/** The choices a choice / multi_choice input accepts: inline options or a table column. */
+export function inputOptions(
+  v: Extract<RuleVariable, { kind: "input" }>,
+  rules: PricingRules,
+): string[] {
+  if (v.options?.length) return v.options;
+  const t = v.options_table ? tableOf(rules, v.options_table) : undefined;
+  return t && v.options_column
+    ? t.rows.map((r) => String(r[v.options_column!] ?? ""))
+    : [];
+}
+
 /** A lead's answer, coerced by input type; choices are canonicalised to the option's own spelling. */
 function coerceInput(
   v: Extract<RuleVariable, { kind: "input" }>,
@@ -171,14 +183,8 @@ function coerceInput(
   rules: PricingRules,
 ): Value | undefined {
   if (raw === undefined || raw === null || raw === "") return undefined;
-  const options = (): string[] => {
-    if (v.options?.length) return v.options;
-    const t = v.options_table ? tableOf(rules, v.options_table) : undefined;
-    return t && v.options_column
-      ? t.rows.map((r) => String(r[v.options_column!] ?? ""))
-      : [];
-  };
-  const canon = (s: string) => options().find((o) => norm(o) === norm(s));
+  const canon = (s: string) =>
+    inputOptions(v, rules).find((o) => norm(o) === norm(s));
   switch (v.input_type) {
     case "integer":
       return Math.round(num(raw));

@@ -3,6 +3,7 @@ import path from "node:path";
 import { Router, Request, Response } from "express";
 import { getDatabase, getStorageDir } from "../db/database.js";
 import { findSeed, resetCompanyById } from "../db/seed.js";
+import { clearProposalFiles } from "../services/proposal-generator.service.js";
 
 const router = Router();
 
@@ -167,6 +168,7 @@ router.post("/:id/reset", (req: Request, res: Response): void => {
     const { id } = req.params;
     const db = getDatabase();
     const reset = resetCompanyById(db, id);
+    clearProposalFiles(id);
 
     // Clean up downstream generated template.docx if present
     const templatePath = path.join(getStorageDir(), id, "template.docx");

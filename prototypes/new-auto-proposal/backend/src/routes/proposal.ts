@@ -1,0 +1,132 @@
+import fs from "node:fs";
+import { Router, Request, Response } from "express";
+import { draftClarification } from "../services/clarification-drafter.service.js";
+import { extractLeadFacts, leadFields, missingFields } from "../services/lead-extractor.service.js";
+import { loadCompany, loadStage2Context } from "../services/pricing-compiler.service.js";
+import type { PricingRulesState } from "../services/pricing-rules.types.js";
+import { generateProposal, proposalFilePath } from "../services/proposal-generator.service.js";
+import type { MutationLogEntry } from "../services/template-mutator.service.js";
+import type { CompanyRow } from "./companies.js";
+
+const router = Router();
+const fail = (res: Response, status: number, error: string) => res.status(status).json({ success: false, error });
+const MAX_LEAD_CHARS = 12_000;
+
+/** Stage 5 needs a compiled rule set and the stage set by POST /rules/proceed. */
+function loadStage5(req: Request, res: Response): { company: CompanyRow; workingState: any; state: PricingRulesState } | null {
+  const company = loadCompany(req.params.id);
+  if (!company) {
+    fail(res, 404, `Company "${req.params.id}" not found`);
+    return null;
+  }
+  let workingState: any = {};
+  try { workingState = JSON.parse(company.working_state_json || "{}"); } catch { workingState = {}; }
+  const state: PricingRulesState | null = workingState.pricing_rules ?? null;
+  if (workingState.stage !== "lead_simulation" || !state) {
+    fail(res, 409, "Proceed from the pricing engine first — Stage 5 is not open");
+    return null;
+  }
+  return { company, workingState, state };
+}
+
+const leadTextOf = (req: Request, res: Response): string | null => {
+  const text = typeof req.body?.lead_text === "string" ? req.body.lead_text.trim() : "";
+  if (!text) fail(res, 400, "lead_text is required");
+  else if (text.length > MAX_LEAD_CHARS) fail(res, 400, `lead_text is longer than ${MAX_LEAD_CHARS} characters`);
+  else return text;
+  return null;
+};
+
+/** paragraph name → the value tags the template reported as living inside it ("{x} lives inside {para}"). */
+function coveredByParagraph(details: MutationLogEntry[] = []): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const d of details) {
+    const owner = d.action === "covered" ? /lives inside \{([a-z0-9_]+)\}/.exec(d.info ?? "")?.[1] : undefined;
+    if (owner) (out[owner] ??= []).push(d.target);
+  }
+  return out;
+}
+
+// POST /api/companies/:id/lead/extract — body { lead_text } → { inputs, missing, assumptions }
+router.post("/:id/lead/extract", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const s5 = loadStage5(req, res);
+    if (!s5) return;
+    const leadText = leadTextOf(req, res);
+    if (leadText === null) return;
+    const facts = await extractLeadFacts(s5.company, s5.state.rules, loadStage2Context(s5.company.company_id), leadText);
+    res.json({ success: true, ...facts });
+  } catch (error) {
+    fail(res, 500, error instanceof Error ? error.message : "Failed to extract lead facts");
+  }
+});
+
+// POST /api/companies/:id/lead/clarify — body { lead_text, inputs, missing } → { subject, body }
+router.post("/:id/lead/clarify", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const s5 = loadStage5(req, res);
+    if (!s5) return;
+    const leadText = leadTextOf(req, res);
+    if (leadText === null) return;
+    const missing = Array.isArray(req.body?.missing) ? req.body.missing.map(String) : [];
+    if (!missing.length) return void fail(res, 400, "missing must list at least one field");
+    const fields = leadFields(s5.state.rules, loadStage2Context(s5.company.company_id));
+    const email = await draftClarification({ company: s5.company, fields, inputs: req.body?.inputs ?? {}, missing, leadText });
+    res.json({ success: true, ...email });
+  } catch (error) {
+    fail(res, 500, error instanceof Error ? error.message : "Failed to draft the clarification email");
+  }
+});
+
+// POST /api/companies/:id/proposal/generate — body { inputs, lead_text }; facts in, documents out (never re-extracts)
+router.post("/:id/proposal/generate", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const s5 = loadStage5(req, res);
+    if (!s5) return;
+    const { company, workingState, state } = s5;
+    const inputs = req.body?.inputs;
+    if (!inputs || typeof inputs !== "object" || Array.isArray(inputs)) return void fail(res, 400, "Body must be { inputs, lead_text }");
+    const stage2 = loadStage2Context(company.company_id);
+    const missing = missingFields(leadFields(state.rules, stage2), inputs);
+    if (missing.length) {
+      res.status(400).json({ success: false, error: `Missing required facts: ${missing.join(", ")}`, missing });
+      return;
+    }
+
+    const result = await generateProposal({
+      company, rules: state.rules, stage2, inputs,
+      tierMatrix: workingState.template_stats?.tier_matrix,
+      coveredBy: coveredByParagraph(workingState.template_stats?.details),
+      leadText: typeof req.body?.lead_text === "string" ? req.body.lead_text : "",
+    });
+    if (result.declined) {
+      res.json({ success: false, declined: true, needs_review: result.needs_review, evaluation: result.evaluation });
+      return;
+    }
+    const client = encodeURIComponent(String(result.payload.client_name ?? company.company_name));
+    const download = (ext: string) => `/api/companies/${company.company_id}/proposal/download?format=${ext}&client=${client}`;
+    res.json({
+      success: true,
+      evaluation: result.evaluation,
+      payload: result.payload,
+      narrative: result.narrative,
+      files: { docx: download("docx"), pdf: result.pdf ? download("pdf") : null },
+      ...(result.pdf_error ? { pdf_error: result.pdf_error } : {}),
+    });
+  } catch (error) {
+    fail(res, 500, error instanceof Error ? error.message : "Failed to generate the proposal");
+  }
+});
+
+// GET /api/companies/:id/proposal/download?format=docx|pdf[&client=…]
+router.get("/:id/proposal/download", (req: Request, res: Response): void => {
+  const format = req.query.format === "pdf" ? "pdf" : req.query.format === "docx" ? "docx" : null;
+  if (!format) return void fail(res, 400, "format must be docx or pdf");
+  const file = proposalFilePath(req.params.id, format);
+  if (!fs.existsSync(file)) return void fail(res, 404, `No proposal.${format} has been generated for this company yet`);
+  // ponytail: nothing is persisted, so the client name rides on the URL the generate call handed out.
+  const client = String(req.query.client ?? "").replace(/[^\w &'.,-]/g, "").trim() || req.params.id;
+  res.download(file, `Proposal - ${client}.${format}`);
+});
+
+export default router;

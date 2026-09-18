@@ -6,7 +6,10 @@ import path from "node:path";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { createApp } from "../app.js";
-import { initDatabase, closeDatabase } from "../db/database.js";
+import { initDatabase, closeDatabase, getDatabase } from "../db/database.js";
+import { setRulesModelCall } from "../services/pricing-compiler.service.js";
+import { toWire } from "../services/pricing-rules.types.js";
+import { setPdfConverter } from "../services/proposal-generator.service.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -75,5 +78,72 @@ test("Gemini extraction contract (live)", { skip: !process.env.GEMINI_API_KEY ||
         }
       });
     }
+  }
+});
+
+/**
+ * Stage 5 live contract (co1): the lead extractor reads the sample WhatsApp reply correctly and the narrative
+ * drafter writes placeholders, not numbers. Stages 2–4 come from the golden fixtures so only two calls are live.
+ */
+test("Lead extraction + narrative contract (live, co1)", { skip: !process.env.DEEPSEEK_API_KEY && !process.env.GEMINI_API_KEY, timeout: 180000 }, async (t) => {
+  const testDir = fs.mkdtempSync(path.join(os.tmpdir(), "auto-proposal-live-s5-"));
+  process.env.DB_PATH = path.join(testDir, "test.sqlite");
+  process.env.STORAGE_DIR = path.join(testDir, "storage");
+  fs.mkdirSync(process.env.STORAGE_DIR, { recursive: true });
+  initDatabase(process.env.DB_PATH);
+  const app = createApp();
+  const cwd = process.cwd();
+  process.chdir(path.resolve(__dirname, "../.."));
+  t.after(() => {
+    setRulesModelCall(null);
+    setPdfConverter(null);
+    process.chdir(cwd);
+    closeDatabase();
+    try { fs.rmSync(testDir, { recursive: true, force: true }); } catch { /* leaked temp dir is not a failure */ }
+  });
+
+  const fixturesDir = path.join(__dirname, "fixtures");
+  const fx = JSON.parse(fs.readFileSync(path.join(fixturesDir, "co1_seo.variables.json"), "utf8"));
+  const raw = JSON.parse(fs.readFileSync(path.join(fixturesDir, "co1_seo.raw.json"), "utf8"));
+  const submit = await request(app).post("/api/companies/co1_seo/briefing/submit").field("prompt", "Local $1000/mo, Growth $3000/mo, Authority $8000/mo. 10% off annual. Texas tax 8.25%.")
+    .attach("file", path.resolve(__dirname, "../../../Mock Data/docx/Co1_Proposal_Northstar_BloomAndCo.docx"));
+  assert.equal(submit.status, 200, submit.text);
+  const insert = getDatabase().prepare(
+    `INSERT INTO company_variables (id, company_id, variable_name, natural_name, category, data_type, is_custom, is_deleted, sort_order, descriptor_json, created_at, updated_at)
+     VALUES (?, 'co1_seo', ?, ?, ?, ?, 0, 0, ?, ?, datetime('now'), datetime('now'))`);
+  fx.variables.forEach((v: any, i: number) => {
+    const tips = raw.variables?.find((r: any) => r.variable_name === v.variable_name)?.paragraph_config;
+    insert.run(`v${i}`, v.variable_name, v.variable_name, v.category, v.category === "pricing" ? "currency" : "string", i,
+      JSON.stringify({ sample_value: v.sample_text, enum_options: v.enum_options, visibility_rule: v.condition_flag ? { condition_flag: v.condition_flag } : undefined, paragraph_config: tips }));
+  });
+  assert.equal((await request(app).post("/api/companies/co1_seo/template/generate")).status, 200);
+  setRulesModelCall(async () => toWire(JSON.parse(fs.readFileSync(path.join(fixturesDir, "co1_seo.rules.json"), "utf8"))));
+  assert.equal((await request(app).post("/api/companies/co1_seo/rules/compile")).status, 200);
+  assert.equal((await request(app).post("/api/companies/co1_seo/rules/proceed")).status, 200);
+
+  const lead = (await request(app).get("/api/companies/co1_seo")).body.company.sample_lead_text as string;
+  assert.ok(lead.includes("Bloom & Co"));
+
+  const extract = await request(app).post("/api/companies/co1_seo/lead/extract").send({ lead_text: lead }).timeout(90000);
+  assert.equal(extract.status, 200, extract.text);
+  assert.equal(extract.body.inputs.location_count, 2);
+  assert.equal(extract.body.inputs.client_state, "TX");
+  assert.equal(extract.body.inputs.annual_prepay, true);
+  assert.match(String(extract.body.inputs.client_name), /Bloom/);
+  assert.deepEqual(extract.body.missing, []);
+
+  setPdfConverter(async () => Buffer.from("%PDF stub"));
+  const gen = await request(app).post("/api/companies/co1_seo/proposal/generate").send({ inputs: extract.body.inputs, lead_text: lead }).timeout(120000);
+  assert.equal(gen.status, 200, gen.text);
+  assert.equal(gen.body.payload.total_investment_amount, "$35,073.00");
+  const paragraphs = Object.entries(gen.body.narrative as Record<string, { text: string; tags_placed: string[]; unknown_tags: string[] }>);
+  assert.ok(paragraphs.length >= 5, `expected the co1 narrative paragraphs, got ${paragraphs.length}`);
+  const payload = gen.body.payload as Record<string, unknown>;
+  for (const [name, p] of paragraphs) {
+    assert.ok(p.text.trim().length > 40, `${name} is empty`);
+    // Every money figure in the prose must have arrived through a placeholder, never been typed by the model.
+    const placed = new Set(p.tags_placed.map((t) => String(payload[t])));
+    for (const m of p.text.match(/\$[\d,]+(?:\.\d+)?(?:\/mo)?/g) ?? []) assert.ok(placed.has(m), `${name}: the model typed ${m} — "${p.text}"`);
+    assert.deepEqual(p.unknown_tags, [], `${name} used tags the payload has no value for`);
   }
 });

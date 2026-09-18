@@ -4,6 +4,7 @@ import path from "node:path";
 import { getDatabase, getStorageDir } from "../db/database.js";
 import { mutateDocumentTemplate } from "../services/template-mutator.service.js";
 import { logPipelineArtifact } from "../services/pipeline-log.js";
+import { clearProposalFiles } from "../services/proposal-generator.service.js";
 import { toMarkdown } from "@firecrawl/anydoc";
 import type { CompanyRow } from "./companies.js";
 
@@ -28,7 +29,8 @@ router.post("/:id/template/generate", async (req: Request, res: Response): Promi
       return;
     }
 
-    // Execute in-memory AST mutations
+    // Execute in-memory AST mutations; a new template makes any generated proposal stale
+    clearProposalFiles(id);
     const result = await mutateDocumentTemplate(id);
 
     // Log anydoc markdown of the templated docx (best-effort, never blocks the response)
