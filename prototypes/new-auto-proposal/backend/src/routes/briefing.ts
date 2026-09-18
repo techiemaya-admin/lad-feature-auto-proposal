@@ -124,19 +124,6 @@ router.post("/:id/briefing/submit", handleUpload, async (req: Request, res: Resp
 
     const now = new Date().toISOString();
 
-    // Update data_json pricing_engine_spec as well
-    let parsedData: any = {};
-    try {
-      parsedData = JSON.parse(existing.data_json);
-    } catch {
-      parsedData = {};
-    }
-    parsedData.pricing_engine_spec = {
-      ...(parsedData.pricing_engine_spec || {}),
-      pricing_context: promptText,
-    };
-    const updatedDataJson = JSON.stringify(parsedData, null, 2);
-
     // Downstream state initialization / clear previous downstream results on re-submit
     const workingState = {
       stage: "variable_review",
@@ -149,7 +136,6 @@ router.post("/:id/briefing/submit", handleUpload, async (req: Request, res: Resp
     const updateStmt = db.prepare(`
       UPDATE company_sessions SET
         pricing_spec = ?,
-        data_json = ?,
         quotation_filename = ?,
         quotation_filesize = ?,
         quotation_markdown = ?,
@@ -162,7 +148,6 @@ router.post("/:id/briefing/submit", handleUpload, async (req: Request, res: Resp
 
     updateStmt.run(
       promptText,
-      updatedDataJson,
       originalFilename,
       fileSize,
       markdown,

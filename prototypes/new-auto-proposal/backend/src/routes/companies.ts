@@ -222,7 +222,6 @@ router.put("/:id/profile", (req: Request, res: Response): void => {
       company_details,
       ideal_customer,
       offer,
-      pricing_engine_spec,
       pricing_spec,
       data,
     } = req.body;
@@ -248,20 +247,8 @@ router.put("/:id/profile", (req: Request, res: Response): void => {
       parsedData.offer = { ...(parsedData.offer || {}), ...offer };
     }
 
-    // Determine final pricing spec string
-    let finalPricingSpec = existing.pricing_spec;
-    if (typeof pricing_spec === "string") {
-      finalPricingSpec = pricing_spec;
-    } else if (pricing_engine_spec?.pricing_context) {
-      finalPricingSpec = pricing_engine_spec.pricing_context;
-    } else if (typeof pricing_engine_spec === "string") {
-      finalPricingSpec = pricing_engine_spec;
-    }
-
-    parsedData.pricing_engine_spec = {
-      ...(parsedData.pricing_engine_spec || {}),
-      pricing_context: finalPricingSpec,
-    };
+    // pricing_spec column is the only home of the pricing text (dev seed lives in test_seeds.json)
+    const finalPricingSpec = typeof pricing_spec === "string" ? pricing_spec : existing.pricing_spec;
 
     const companyName = parsedData.company_basics?.company_name || existing.company_name;
     const industry = parsedData.company_details?.industry || existing.industry;
