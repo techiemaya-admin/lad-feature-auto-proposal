@@ -37,9 +37,17 @@ export interface CompanyRecord {
     why_buyers_pick_you?: string;
     guarantee_risk_reversal?: string;
   };
-  pricing_engine_spec: {
-    pricing_context: string;
-  };
+}
+
+export interface SeedRecord {
+  company_id: string;
+  pricing_spec?: string;
+  sample_lead_text?: string;
+}
+
+export interface SeedsFile {
+  note?: string;
+  companies: SeedRecord[];
 }
 
 export interface DatasetFile {
@@ -47,12 +55,12 @@ export interface DatasetFile {
   companies: CompanyRecord[];
 }
 
-export function findDatasetPath(): string {
+function findMockDataFile(filename: string): string {
   const candidatePaths = [
-    path.resolve(__dirname, "../../../Mock Data/companies_dataset.json"),
-    path.resolve(process.cwd(), "Mock Data/companies_dataset.json"),
-    path.resolve(process.cwd(), "../Mock Data/companies_dataset.json"),
-    path.resolve(process.cwd(), "prototypes/new-auto-proposal/Mock Data/companies_dataset.json"),
+    path.resolve(__dirname, `../../../Mock Data/${filename}`),
+    path.resolve(process.cwd(), `Mock Data/${filename}`),
+    path.resolve(process.cwd(), `../Mock Data/${filename}`),
+    path.resolve(process.cwd(), `prototypes/new-auto-proposal/Mock Data/${filename}`),
   ];
 
   for (const candidate of candidatePaths) {
@@ -61,9 +69,11 @@ export function findDatasetPath(): string {
     }
   }
 
-  throw new Error(
-    `companies_dataset.json not found in candidate paths: ${candidatePaths.join(", ")}`
-  );
+  throw new Error(`${filename} not found in candidate paths: ${candidatePaths.join(", ")}`);
+}
+
+export function findDatasetPath(): string {
+  return findMockDataFile("companies_dataset.json");
 }
 
 export function loadDataset(): DatasetFile {
@@ -72,9 +82,19 @@ export function loadDataset(): DatasetFile {
   return JSON.parse(raw) as DatasetFile;
 }
 
-export function upsertCompany(db: DatabaseSync, company: CompanyRecord): void {
+/** Dev-only seeds (Stage 1 pricing text, Stage 5 sample lead) — never part of the imported dataset. */
+export function loadSeeds(): SeedsFile {
+  const raw = fs.readFileSync(findMockDataFile("test_seeds.json"), "utf-8");
+  return JSON.parse(raw) as SeedsFile;
+}
+
+export function findSeed(companyId: string): SeedRecord | undefined {
+  return loadSeeds().companies.find((c) => c.company_id === companyId);
+}
+
+export function upsertCompany(db: DatabaseSync, company: CompanyRecord, seed?: SeedRecord): void {
   const now = new Date().toISOString();
-  const pricingSpec = company.pricing_engine_spec?.pricing_context || "";
+  const pricingSpec = seed?.pricing_spec || "";
   const dataJson = JSON.stringify(company, null, 2);
 
   const stmt = db.prepare(`
@@ -120,7 +140,7 @@ export function upsertCompany(db: DatabaseSync, company: CompanyRecord): void {
 export function seedAllCompanies(db: DatabaseSync): void {
   const dataset = loadDataset();
   for (const company of dataset.companies) {
-    upsertCompany(db, company);
+    upsertCompany(db, company, findSeed(company.company_id));
   }
 }
 
@@ -131,7 +151,7 @@ export function resetCompanyById(db: DatabaseSync, companyId: string): CompanyRe
     throw new Error(`Company with id "${companyId}" not found in dataset.`);
   }
 
-  upsertCompany(db, found);
+  upsertCompany(db, found, findSeed(companyId));
 
   try {
     const deleteVarsStmt = db.prepare("DELETE FROM company_variables WHERE company_id = ?");

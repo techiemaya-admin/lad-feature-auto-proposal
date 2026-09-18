@@ -1,23 +1,18 @@
 # 06: Lead Simulator, Proposal Generation, and Verification
 
-**What to build:** An end-to-end proposal generation simulator and verification harness. The tenant provides an unstructured inbound inquiry email via a freeform textarea or clicks a "Load Sample Lead Message" button (pre-loading Bloom & Co for Northstar, Whitfield for Fortress, or Rosewood for Fieldstone). Clicking "Generate Proposal" triggers Gemini to extract structured lead parameters (seats, locations, addons, state), passes them to the deterministic math engine to compute exact prices and line items, directs Gemini to draft personalized narrative paragraphs using configured prompt tips, and invokes `easy-template-x` to hydrate the `template.docx` into a completed `.docx` proposal. The resulting proposal is rendered in the browser via `docx-preview`, accompanied by an instant download button and a verification banner checking calculated totals against ground truth.
+**What to build:** Stage 5. The tenant pastes an inbound lead message (the Stage 5 textarea starts with the company's dev-only `sample_lead_text` from `Mock Data/test_seeds.json`) and clicks "Generate proposal". The UI runs two backend steps back-to-back: `POST /lead/extract` turns the message into structured lead facts (the rules' `input` variables + non-date Stage 2 customer inputs; `null` when the message does not say it, `assumptions[]` for judgement calls), then `POST /proposal/generate` takes the **facts, never the email**, runs the deterministic calculator, fills dates in code (Stage 2 gains `data_type: "date"`), drafts every `ai_generated` paragraph in one model call using `{tag}` placeholders that code substitutes, hydrates `template.docx` with `easy-template-x`, converts to PDF with `libreoffice-convert`, and returns both. A required fact missing → stop at the editable facts form (field highlighted) and draft a clarification email (`POST /lead/clarify`, shown with Copy, not sent). `evaluation.needs_review` non-empty → "Declined to auto-quote" panel, no document. Split view: facts form + assumptions strip + numbers ledger on the left, the PDF in an `<iframe>` on the right, `.docx` / `.pdf` download buttons. Nothing is persisted (files overwrite `storage/<id>/proposal.docx|pdf`); no benchmark banner.
 
-**Blocked by:** 04: docXMLater Word Template Mutation and Minimal Checkpoint Preview, 05: Pricing Compiler, Visual Rule Cards, and Deterministic Math
+**Design & plan:** `prototypes/new-auto-proposal/docs/plans/06-lead-simulator.md` (contracts, prompt inputs, date fill, file-by-file steps, tests).
+
+**Blocked by:** 04: docXMLater Word Template Mutation and Minimal Checkpoint Preview (completed), 05: Pricing Compiler, Visual Rule Cards, and Deterministic Math (completed)
 
 **Status:** ready-for-agent
 
-- [ ] Install `easy-template-x` in backend dependencies.
-- [ ] Implement backend endpoint `POST /api/companies/:id/lead/extract` using Gemini to extract lead parameters (seats, locations, selected package/addons, state, billing preference) from raw email text.
-- [ ] Implement backend endpoint `POST /api/companies/:id/proposal/generate` that:
-  1. Calls parameter extraction on the inbound email.
-  2. Executes deterministic math calculation to compute line items, taxes, and totals.
-  3. Generates tailored sales narratives for AI paragraph variables based on lead pain points and prompt tips.
-  4. Merges computed data and narrative into `storage/<company_id>/template.docx` via `easy-template-x`.
-  5. Saves output to `storage/<company_id>/generated_proposal.docx`.
-- [ ] Provide download endpoint `GET /api/companies/:id/proposal/download`.
-- [ ] Build Lead Simulation Panel in the frontend with inquiry textarea and "Load Sample Lead Message" pre-fill button.
-- [ ] Implement ambient gradient "thinking" shimmer top-border across the panel during Gemini extraction and narrative synthesis (replacing static spinners).
-- [ ] Implement clean split-view layout: structured calculation breakdown on the left, full in-browser `docx-preview` on the right.
-- [ ] Embed `docx-preview` container to display the generated proposal `.docx` directly in the browser DOM.
-- [ ] Add "Download Generated Proposal .docx" button with tactile button feedback.
-- [ ] Build Verification Status Banner comparing output numbers with `verification_guide.md` ground truth ($35,073.00, $2,734.80/mo + $3,150.00, $10,445.00) and showing green checkmarks when exact match is achieved.
+**Decisions (2026-09-16/18):** extract and generate are separate endpoints (generate takes structured facts); missing fact → facts form + clarification email, review rule → declined, never a document; dev seeds (`pricing_spec`, `sample_lead_text`) live in `Mock Data/test_seeds.json`, `companies_dataset.json` keeps only imported data; no proposals table; dates are computed, not extracted (`date` data_type in Stage 2 + parse fallback); drafter writes `{tag}` placeholders, one call for all paragraphs; PDF via `libreoffice-convert`, failure never fails the run; preview is the PDF iframe (no `docx-preview` on Stage 5); no `sampleCheck` banner.
+
+- [x] A — `Mock Data/test_seeds.json` (pricing text moved out of `companies_dataset.json`, sample lead emails from `verification_guide.md`); `seed.ts` reads both; `sample_lead_text` attached on the company response; `date` added to the Stage 2 `data_type` enum (schema + prompt + frontend type).
+- [ ] B — `lead-extractor.service.ts` (per-company schema, `missing[]`, `assumptions[]`), `clarification-drafter.service.ts`, `narrative-drafter.service.ts` (placeholder substitution), `proposal-generator.service.ts` (`fillDates`, payload merge, easy-template-x, libreoffice-convert), `routes/proposal.ts` (`lead/extract`, `lead/clarify`, `proposal/generate`, `proposal/download?format=docx|pdf`); hard-reset clears `proposal.*`; raw responses logged for the Dev Dock.
+- [ ] Offline tests: `fillDates`, substitution, schema builder on the three rules fixtures, stubbed-model generation on co1 → docx markdown contains `$35,073.00` and no stray braces, route guards (409 pre-stage, 400 missing inputs, declined path).
+- [ ] C — `LeadSimulator.tsx`: prefilled textarea + Generate; shimmer bar; facts form (typed inputs, missing highlighted) + clarification email card; assumptions strip; numbers ledger; declined panel; PDF iframe with "unavailable" fallback; download buttons; `api.ts` + `types/proposal.ts`.
+- [ ] Manual verification of the three sample leads (`$35,073.00`; `$2,734.80` + `$3,150.00`; `$10,445.00`), the missing-state path and the 140-products declined path.
+- [ ] Flag doc drift (AGENTS/CLAUDE §2 & §5, `docs/plan.md`, `docs/design.md` §3.5, `spec.md` §5) for user confirmation — do not apply silently.

@@ -34,17 +34,12 @@ export interface Offer {
   guarantee_risk_reversal?: string;
 }
 
-export interface PricingEngineSpec {
-  pricing_context: string;
-}
-
 export interface CompanyData {
   company_id: string;
   company_basics: CompanyBasics;
   company_details?: CompanyDetails;
   ideal_customer?: IdealCustomer;
   offer?: Offer;
-  pricing_engine_spec: PricingEngineSpec;
 }
 
 export interface DocumentMetadata {
@@ -90,6 +85,8 @@ export interface Company {
   phone: string | null;
   data: CompanyData;
   pricing_spec: string;
+  /** Dev-only Stage 5 prefill from Mock Data/test_seeds.json ("" when absent). */
+  sample_lead_text: string;
   working_state: CompanyWorkingState | null;
   briefing_locked?: boolean;
   document_metadata?: DocumentMetadata | null;

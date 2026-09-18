@@ -46,6 +46,9 @@ test("Companies: reset re-seeds the mock default", async (t) => {
     const getRes = await request(app).get("/api/companies/co1_seo");
     assert.equal(getRes.status, 200);
     assert.ok(getRes.body.company.pricing_spec.includes("Local is $1000/mo"));
+    // Dev-only seeds come from test_seeds.json: the pricing text lands in pricing_spec,
+    // the sample lead is attached to the response (never stored).
+    assert.ok(getRes.body.company.sample_lead_text.includes("Bloom & Co"));
 
     // Verify company_variables was cleared
     const postResetVars = await request(app).get("/api/companies/co1_seo/variables");

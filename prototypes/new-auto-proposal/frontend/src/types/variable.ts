@@ -5,6 +5,7 @@ export type VariableDataType =
   | "number"
   | "currency"
   | "enum"
+  | "date"
   | "paragraph"
   | "table";
 

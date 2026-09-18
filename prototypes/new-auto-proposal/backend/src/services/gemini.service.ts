@@ -22,7 +22,7 @@ export interface ExtractedVariable {
   variable_name: string;
   natural_name: string;
   category: "customer_input" | "pricing" | "paragraph";
-  data_type: "string" | "number" | "currency" | "enum" | "paragraph";
+  data_type: "string" | "number" | "currency" | "enum" | "date" | "paragraph";
   /** Verbatim text copied from the quotation. Multi-line for paragraph blocks. */
   sample_text: string;
   description: string;
@@ -75,7 +75,7 @@ export const extractionResponseSchema: ResponseSchema = {
           data_type: {
             type: SchemaType.STRING,
             format: "enum",
-            enum: ["string", "number", "currency", "enum", "paragraph"],
+            enum: ["string", "number", "currency", "enum", "date", "paragraph"],
           },
           sample_text: { type: SchemaType.STRING },
           description: { type: SchemaType.STRING },
@@ -161,6 +161,7 @@ Name: "${params.companyName}"  Location: "${b?.location || ""}"  Email: "${b?.em
 
 3. category:
    - "customer_input": facts the client supplies — client company name, dates, headcount/seat count, number of locations, number of products, servers, etc.
+     * Proposal dates and validity dates ("September 7, 2026", "Valid until October 5, 2026") get data_type "date"; the engine computes them, they are never asked of the client.
    - "pricing": every money amount, rate, percentage, and the selected tier/package name.
      * The chosen tier gets variable_name "selected_tier", data_type "enum", enum_options = all tiers offered. Its sample_text is just the tier name (e.g. "Growth"). Do not create tier-specific names like "growth_monthly_rate" — use role names like "selected_tier_rate".
    - "paragraph": prose written for THIS client — the intro describing their situation, why the recommended tier fits, their payment preference, the upgrade path, an add-on menu with ✓/○ selections, a "what's included" bullet list, tax or minimum-commitment notes that depend on their numbers. If a salesperson would rewrite it for the next lead, it is a paragraph variable. Set data_type "paragraph" and paragraph_config { mode: "ai_generated", purpose, tone, length_guideline }.

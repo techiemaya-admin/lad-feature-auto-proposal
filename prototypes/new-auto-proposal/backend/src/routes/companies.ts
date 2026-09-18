@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Router, Request, Response } from "express";
 import { getDatabase, getStorageDir } from "../db/database.js";
-import { resetCompanyById } from "../db/seed.js";
+import { findSeed, resetCompanyById } from "../db/seed.js";
 
 const router = Router();
 
@@ -63,6 +63,8 @@ export function formatCompanyResponse(row: CompanyRow) {
     phone: row.phone,
     data: parsedData,
     pricing_spec: row.pricing_spec,
+    // Dev-only Stage 5 prefill; read from test_seeds.json, never stored.
+    sample_lead_text: findSeed(row.company_id)?.sample_lead_text || "",
     working_state: parsedWorkingState,
     briefing_locked: Boolean(row.briefing_locked),
     document_metadata: documentMetadata,
