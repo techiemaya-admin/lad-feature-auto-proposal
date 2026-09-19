@@ -27,8 +27,9 @@ export const AiAutoFillModal: React.FC<AiAutoFillModalProps> = ({
     // Realistic AI extraction simulation
     setTimeout(() => {
       setStep("completed");
-    }, 1800);
+    }, 1500);
   };
+
 
   const handleApplyData = () => {
     onApply({
@@ -71,26 +72,22 @@ export const AiAutoFillModal: React.FC<AiAutoFillModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-[#1A2A43] border border-slate-200 dark:border-blue-950/60 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl text-slate-900 dark:text-[#E0E0E0] transition-colors">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+      <div className="bg-[#1A2A43] border border-[#2B7CFF]/30 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl text-[#E0E0E0]">
         {/* Modal Header */}
-        <div className="p-5 border-b border-slate-200/80 dark:border-blue-900/30 flex items-center justify-between">
+        <div className="p-5 border-b border-border/60 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="size-9 rounded-xl bg-blue-50 dark:bg-[#0B1957] border border-blue-200 dark:border-[#2B7CFF]/40 flex items-center justify-center text-[#0B1957] dark:text-[#2B7CFF]">
+            <div className="size-9 rounded-xl bg-[#0B1957] border border-[#2B7CFF]/40 flex items-center justify-center text-[#2B7CFF]">
               <Sparkles className="size-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                Auto-fill Profile with AI
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Scrape and analyze positioning, ICP & offer
-              </p>
+              <h3 className="text-base font-bold text-white">Auto-fill Profile with AI</h3>
+              <p className="text-xs text-muted-foreground">Scrape and analyze positioning, ICP & offer</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="size-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            className="size-8 rounded-lg flex items-center justify-center text-muted-foreground hover:text-white hover:bg-white/10"
           >
             <X className="size-4" />
           </button>
@@ -110,11 +107,11 @@ export const AiAutoFillModal: React.FC<AiAutoFillModalProps> = ({
                   }}
                   className={`p-3 rounded-xl border flex items-center gap-2.5 text-xs font-semibold transition-all ${
                     sourceType === "website"
-                      ? "border-[#0B1957] dark:border-[#2B7CFF] bg-blue-50 dark:bg-[#2B7CFF]/15 text-[#0B1957] dark:text-white"
-                      : "border-slate-200 dark:border-blue-900/30 bg-slate-50 dark:bg-[#14233a] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                      ? "border-[#2B7CFF] bg-[#2B7CFF]/15 text-white"
+                      : "border-border/60 bg-[#14233a] text-muted-foreground hover:text-white"
                   }`}
                 >
-                  <Globe className="size-4 text-[#0B1957] dark:text-[#2B7CFF]" />
+                  <Globe className="size-4 text-[#2B7CFF]" />
                   <span>Company Website</span>
                 </button>
 
@@ -126,32 +123,28 @@ export const AiAutoFillModal: React.FC<AiAutoFillModalProps> = ({
                   }}
                   className={`p-3 rounded-xl border flex items-center gap-2.5 text-xs font-semibold transition-all ${
                     sourceType === "linkedin"
-                      ? "border-[#0B1957] dark:border-[#2B7CFF] bg-blue-50 dark:bg-[#2B7CFF]/15 text-[#0B1957] dark:text-white"
-                      : "border-slate-200 dark:border-blue-900/30 bg-slate-50 dark:bg-[#14233a] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                      ? "border-[#2B7CFF] bg-[#2B7CFF]/15 text-white"
+                      : "border-border/60 bg-[#14233a] text-muted-foreground hover:text-white"
                   }`}
                 >
-                  <Share2 className="size-4 text-[#0B1957] dark:text-[#2B7CFF]" />
+                  <Share2 className="size-4 text-[#2B7CFF]" />
                   <span>LinkedIn Company</span>
                 </button>
               </div>
 
               {/* URL Input */}
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-slate-900 dark:text-slate-200">
+                <label className="text-xs font-semibold text-slate-200">
                   {sourceType === "website" ? "Website URL" : "LinkedIn Company Page URL"}
                 </label>
                 <input
                   type="url"
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
-                  placeholder={
-                    sourceType === "website"
-                      ? "https://yourcompany.com"
-                      : "https://linkedin.com/company/yourbrand"
-                  }
-                  className="w-full h-10 px-3.5 rounded-xl border border-slate-200 dark:border-blue-900/40 bg-white dark:bg-[#14233a] text-xs text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-hidden focus:ring-2 focus:ring-[#0B1957] dark:focus:ring-[#2B7CFF]"
+                  placeholder={sourceType === "website" ? "https://yourcompany.com" : "https://linkedin.com/company/yourbrand"}
+                  className="w-full h-10 px-3.5 rounded-xl border border-border/80 bg-[#14233a] text-xs text-white placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-[#2B7CFF]"
                 />
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                <p className="text-[11px] text-muted-foreground">
                   AI will extract company positioning, value proposition, ideal customer profiles, and offer details.
                 </p>
               </div>
@@ -163,7 +156,7 @@ export const AiAutoFillModal: React.FC<AiAutoFillModalProps> = ({
                 <Button
                   size="sm"
                   onClick={handleAnalyze}
-                  className="h-9 px-5 bg-[#0B1957] dark:bg-[#2B7CFF] hover:bg-[#0B1957]/90 dark:hover:bg-[#2563eb] text-white font-semibold text-xs rounded-xl flex items-center gap-1.5 shadow-xs"
+                  className="h-9 px-5 bg-[#2B7CFF] hover:bg-[#2563eb] text-white font-semibold text-xs rounded-xl flex items-center gap-1.5 shadow-md shadow-[#2B7CFF]/20"
                 >
                   <Sparkles className="size-3.5" />
                   <span>Analyze & Extract</span>
@@ -175,15 +168,13 @@ export const AiAutoFillModal: React.FC<AiAutoFillModalProps> = ({
           {step === "analyzing" && (
             <div className="py-8 flex flex-col items-center justify-center text-center space-y-4">
               <div className="relative">
-                <div className="size-14 rounded-full bg-blue-50 dark:bg-[#0B1957] border border-blue-200 dark:border-[#2B7CFF] flex items-center justify-center text-[#0B1957] dark:text-[#2B7CFF]">
-                  <Loader2 className="size-7 animate-spin text-[#0B1957] dark:text-[#2B7CFF]" />
+                <div className="size-14 rounded-full bg-[#0B1957] border border-[#2B7CFF] flex items-center justify-center text-[#2B7CFF]">
+                  <Loader2 className="size-7 animate-spin text-[#2B7CFF]" />
                 </div>
               </div>
               <div className="space-y-1">
-                <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Extracting 14-Factor Business Signals
-                </h4>
-                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs">
+                <h4 className="text-sm font-bold text-white">Extracting 14-Factor Business Signals</h4>
+                <p className="text-xs text-muted-foreground max-w-xs">
                   Parsing {url} for value props, buyer triggers, pricing models, and case proofs...
                 </p>
               </div>
@@ -192,36 +183,28 @@ export const AiAutoFillModal: React.FC<AiAutoFillModalProps> = ({
 
           {step === "completed" && (
             <div className="py-4 space-y-5 text-center">
-              <div className="size-12 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 mx-auto flex items-center justify-center">
+              <div className="size-12 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 mx-auto flex items-center justify-center">
                 <CheckCircle className="size-6" />
               </div>
               <div className="space-y-1">
-                <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Extraction Completed Successfully!
-                </h4>
-                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+                <h4 className="text-sm font-bold text-white">Extraction Completed Successfully!</h4>
+                <p className="text-xs text-muted-foreground max-w-sm mx-auto">
                   Identified 14 core factors including Company Index, Target ICP, Job Titles, and B2B Offer metrics with 96% confidence.
                 </p>
               </div>
 
-              <div className="p-3 bg-slate-50 dark:bg-[#14233a] rounded-xl border border-slate-200 dark:border-blue-900/30 text-left text-xs space-y-1 text-slate-700 dark:text-slate-300">
+              <div className="p-3 bg-[#14233a] rounded-xl border border-border/60 text-left text-xs space-y-1 text-slate-300">
                 <div className="flex justify-between">
-                  <span className="text-slate-500 dark:text-slate-400">Found Target ICP:</span>
-                  <span className="font-semibold text-slate-900 dark:text-white">
-                    Founders, CXO, VP Sales
-                  </span>
+                  <span className="text-muted-foreground">Found Target ICP:</span>
+                  <span className="font-semibold text-white">Founders, CXO, VP Sales</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500 dark:text-slate-400">Extracted Domain:</span>
-                  <span className="font-semibold text-slate-900 dark:text-white">
-                    B2B Lead Generation
-                  </span>
+                  <span className="text-muted-foreground">Extracted Domain:</span>
+                  <span className="font-semibold text-white">B2B Lead Generation</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500 dark:text-slate-400">Target Completion:</span>
-                  <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                    100% (14 / 14)
-                  </span>
+                  <span className="text-muted-foreground">Target Completion:</span>
+                  <span className="font-semibold text-emerald-400">100% (14 / 14)</span>
                 </div>
               </div>
 
@@ -229,7 +212,7 @@ export const AiAutoFillModal: React.FC<AiAutoFillModalProps> = ({
                 <Button
                   size="sm"
                   onClick={handleApplyData}
-                  className="w-full h-10 bg-[#0B1957] dark:bg-[#2B7CFF] hover:bg-[#0B1957]/90 dark:hover:bg-[#2563eb] text-white font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-xs"
+                  className="w-full h-10 bg-[#2B7CFF] hover:bg-[#2563eb] text-white font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-md shadow-[#2B7CFF]/20"
                 >
                   <Sparkles className="size-3.5" />
                   <span>Apply Extracted Data to Profile</span>
