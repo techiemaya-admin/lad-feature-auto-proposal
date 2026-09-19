@@ -168,4 +168,15 @@
   .tabular-nums {
     font-variant-numeric: tabular-nums;
   }
+
+  .shimmer-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, #2B7CFF, #60a5fa, transparent);
+    animation: ambient-shimmer 1.5s infinite linear;
+    z-index: 20;
+  }
 }

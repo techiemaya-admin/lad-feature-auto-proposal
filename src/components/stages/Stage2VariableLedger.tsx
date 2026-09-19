@@ -74,6 +74,12 @@ const CATEGORY_OPTIONS = [
   { value: "paragraph", label: "Paragraph" },
 ];
 
+const GHOST_ROWS = [
+  ["110px", "140px", "95px", "125px", "105px"],
+  ["130px", "100px", "150px", "115px", "85px", "120px"],
+  ["160px", "140px", "180px", "125px"],
+];
+
 const SCAN_TRACE = [
   "Reading the quotation document...",
   "Discovering dynamic variables per client...",
@@ -183,7 +189,9 @@ export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
   const leftOut = variables.filter((v) => v.is_deleted).length;
 
   return (
-    <div className="rounded-2xl border border-border/80 bg-card p-5 sm:p-6 space-y-5 shadow-xs animate-in fade-in duration-200">
+    <div className="relative rounded-2xl border border-border/80 bg-card p-5 sm:p-6 space-y-5 shadow-xs animate-in fade-in duration-200 overflow-hidden">
+      {isExtracting && <div className="shimmer-bar" />}
+
       {/* Header Sub-banner */}
       <div className="flex items-start justify-between gap-3 border-b border-border/50 pb-4">
         <div className="flex items-start gap-3.5">
@@ -231,16 +239,79 @@ export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
         </div>
       </div>
 
-      {/* Extraction in progress HUD */}
+      {/* Extraction in progress HUD with animated trace and ghost skeleton chips */}
       {isExtracting ? (
-        <div className="p-8 rounded-xl border border-dashed border-[#2B7CFF]/40 bg-blue-50/20 dark:bg-[#000724]/30 text-center space-y-3 animate-pulse">
-          <Loader2 className="size-6 text-[#2B7CFF] animate-spin mx-auto" />
-          <div className="text-xs font-bold text-foreground">
-            {SCAN_TRACE[traceStep]}
+        <div className="space-y-5">
+          <div className="p-4 sm:p-5 rounded-xl border border-blue-200/60 dark:border-[#2B7CFF]/30 bg-blue-50/20 dark:bg-[#000724]/40 space-y-3">
+            <div className="flex items-center gap-2 text-xs font-bold text-[#0B1957] dark:text-[#2B7CFF]">
+              <Sparkles className="size-4 animate-spin text-[#2B7CFF]" />
+              <span>AI Quotation Analysis &amp; Variable Extraction in Progress</span>
+            </div>
+            <ol className="space-y-1.5" aria-live="polite">
+              {SCAN_TRACE.map((label, i) => {
+                const done = i < traceStep;
+                const active = i === traceStep;
+                return (
+                  <li
+                    key={label}
+                    className={`flex items-center gap-2 text-xs transition-colors duration-300 ${
+                      active
+                        ? "text-foreground font-semibold"
+                        : done
+                        ? "text-muted-foreground"
+                        : "text-muted-foreground/40"
+                    }`}
+                  >
+                    <span className="size-4 flex items-center justify-center shrink-0">
+                      {done ? (
+                        <Check className="size-3 text-emerald-500 animate-in zoom-in-50 duration-200" />
+                      ) : active ? (
+                        <Loader2 className="size-3 text-[#2B7CFF] animate-spin" />
+                      ) : (
+                        <span className="size-1 rounded-full bg-current" />
+                      )}
+                    </span>
+                    <span>
+                      {label}
+                      {active ? "…" : ""}
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
           </div>
-          <p className="text-[11px] text-muted-foreground">
-            AI is scanning the document markdown AST and mapping placeholders.
-          </p>
+
+          {/* Ghost Skeleton Chips with Staggered Pulse */}
+          <div className="space-y-4 pt-1" aria-hidden="true">
+            {GROUPS.map((g, gi) => (
+              <div key={g.category} className="space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-muted-foreground/60">
+                  <span>{g.label}</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {GHOST_ROWS[gi].map((w, i) => (
+                    <div
+                      key={i}
+                      className="h-7 rounded-full bg-muted/60 dark:bg-muted/40 animate-pulse border border-border/40"
+                      style={{
+                        width: w,
+                        animationDelay: `${(gi * 4 + i) * 100}ms`,
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            {/* Ghost Preview Inspector Card */}
+            <div className="mt-4 rounded-xl border border-dashed border-border/80 bg-muted/20 p-4 space-y-3 animate-pulse">
+              <div className="h-4 w-48 rounded bg-muted/70" />
+              <div className="space-y-2">
+                <div className="h-3 w-full rounded bg-muted/50" />
+                <div className="h-3 w-3/4 rounded bg-muted/50" />
+              </div>
+            </div>
+          </div>
         </div>
       ) : (
         <div ref={ledgerRef} className="space-y-4">

@@ -158,11 +158,8 @@ export function App() {
       }
       setCompletedStages(completed);
 
-      if (!comp.briefing_locked) {
-        setCurrentStage(1);
-      } else {
-        setCurrentStage(2);
-      }
+      // Default initial view to Stage 1 (Briefing & Document Upload)
+      setCurrentStage(1);
     } finally {
       setIsLoading(false);
     }
