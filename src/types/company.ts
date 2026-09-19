@@ -92,6 +92,7 @@ export interface Company {
   pricing_spec: string;
   working_state: CompanyWorkingState | null;
   briefing_locked?: boolean;
+  quotation_filename?: string | null;
   document_metadata?: DocumentMetadata | null;
   created_at: string;
   updated_at: string;

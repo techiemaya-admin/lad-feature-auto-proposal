@@ -244,6 +244,10 @@ export const Stage1Briefing: React.FC<Stage1BriefingProps> = ({
 
   const handleSubmit = async () => {
     if (!promptText.trim()) return;
+    if (!selectedFile && !company.document_metadata?.filename && !company.quotation_filename) {
+      alert("Please upload a Microsoft Word (.docx) quotation document before proceeding.");
+      return;
+    }
     await onSubmit(promptText.trim(), selectedFile);
   };
 
@@ -391,7 +395,14 @@ export const Stage1Briefing: React.FC<Stage1BriefingProps> = ({
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
+            onClick={() => {
+              if (!selectedFile) {
+                fileInputRef.current?.click();
+              }
+            }}
             className={`relative rounded-xl border-2 border-dashed p-4 transition-all text-center ${
+              !selectedFile ? "cursor-pointer" : ""
+            } ${
               isDragging
                 ? "border-[#2B7CFF] bg-[#2B7CFF]/5"
                 : selectedFile
@@ -428,8 +439,11 @@ export const Stage1Briefing: React.FC<Stage1BriefingProps> = ({
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="h-7 px-2.5 text-[11px]"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fileInputRef.current?.click();
+                    }}
+                    className="h-7 px-2.5 text-[11px] cursor-pointer"
                   >
                     Change File
                   </Button>
@@ -437,8 +451,11 @@ export const Stage1Briefing: React.FC<Stage1BriefingProps> = ({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    onClick={() => setSelectedFile(null)}
-                    className="size-7 p-0 text-muted-foreground hover:text-destructive"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedFile(null);
+                    }}
+                    className="size-7 p-0 text-muted-foreground hover:text-destructive cursor-pointer"
                   >
                     <X className="size-3.5" />
                   </Button>
@@ -452,7 +469,10 @@ export const Stage1Briefing: React.FC<Stage1BriefingProps> = ({
                 <div>
                   <button
                     type="button"
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fileInputRef.current?.click();
+                    }}
                     className="text-xs font-bold text-[#0B1957] dark:text-[#2B7CFF] hover:underline cursor-pointer"
                   >
                     Upload quotation .docx
