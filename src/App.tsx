@@ -160,8 +160,6 @@ export function App() {
 
       if (!comp.briefing_locked) {
         setCurrentStage(1);
-      } else if (!varsData.variables || varsData.variables.length === 0) {
-        setCurrentStage(2);
       } else {
         setCurrentStage(2);
       }
