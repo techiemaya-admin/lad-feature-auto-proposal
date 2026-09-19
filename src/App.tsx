@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { LadSettingsHeader } from "./components/layout/LadSettingsHeader";
 import { HeroBanner } from "./components/layout/HeroBanner";
 import { StageStepper } from "./components/layout/StageStepper";
@@ -26,6 +26,7 @@ export function App() {
   const [completedStages, setCompletedStages] = useState<ProposalStage[]>([]);
   const [isBriefingLocked, setIsBriefingLocked] = useState<boolean>(false);
   const [activeAiModel, setActiveAiModel] = useState<string>("deepseek-flash");
+  const [focusTarget, setFocusTarget] = useState<string | null>(null);
 
   // Dynamic Pipeline States
   const [variables, setVariables] = useState<CompanyVariable[]>([]);
@@ -34,6 +35,10 @@ export function App() {
   const [templateFilesize, setTemplateFilesize] = useState<number | null>(null);
   const [pricingRulesState, setPricingRulesState] = useState<PricingRulesState | null>(null);
   const [rulesStatus, setRulesStatus] = useState<RulesStatus>({ status: "idle" });
+
+  const attentionTargets = useMemo(() => {
+    return (templateStats?.details ?? []).filter((d) => !d.applied).map((d) => d.target);
+  }, [templateStats]);
 
   // Async In-Flight Flags
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -565,6 +570,8 @@ export function App() {
                 isLoading={isLoading}
                 isExtracting={isExtractingVariables}
                 isGeneratingTemplate={isGeneratingTemplate}
+                attentionTargets={attentionTargets}
+                focusTarget={focusTarget}
                 onVariablesChange={handleVariablesChange}
                 onRescan={() => handleExtractVariables(currentCompany.company_id)}
                 onAddCustomVariable={handleAddCustomVariable}
@@ -591,7 +598,10 @@ export function App() {
                 naturalNames={naturalNames}
                 onProceed={handleProceedFromStage3}
                 onRegenerate={handleRegenerateTemplate}
-                onFixVariable={() => setCurrentStage(2)}
+                onFixVariable={(target) => {
+                  setFocusTarget(target);
+                  setCurrentStage(2);
+                }}
                 isRegenerating={isGeneratingTemplate}
               />
             )}

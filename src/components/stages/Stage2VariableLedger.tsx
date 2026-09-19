@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
+import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
 import {
   Sparkles,
   Table2,
@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Plus,
   Loader2,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { CustomDropdown } from "../ui/custom-dropdown";
@@ -28,6 +29,7 @@ interface Stage2VariableLedgerProps {
   isExtracting?: boolean;
   isGeneratingTemplate?: boolean;
   attentionTargets?: string[];
+  focusTarget?: string | null;
   onVariablesChange: (variables: CompanyVariable[], tables?: CompoundTable[]) => void;
   onRescan: () => Promise<void>;
   onAddCustomVariable: (payload: {
@@ -98,6 +100,7 @@ export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
   isExtracting = false,
   isGeneratingTemplate = false,
   attentionTargets = [],
+  focusTarget = null,
   onVariablesChange,
   onRescan,
   onAddCustomVariable,
@@ -112,12 +115,48 @@ export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
   const ledgerRef = useRef<HTMLDivElement>(null);
   const chipRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
 
-  // Auto-select first active variable on mount
+  // Auto-select focused variable or first active variable on mount/change
   useEffect(() => {
-    if (!selectedKey && variables.length > 0) {
+    if (focusTarget) {
+      const match = variables.find(
+        (v) =>
+          v.variable_name === focusTarget ||
+          v.natural_name === focusTarget ||
+          v.id === focusTarget
+      );
+      if (match) setSelectedKey(match.id || match.variable_name);
+    } else if (!selectedKey && variables.length > 0) {
       setSelectedKey(variables[0].id || variables[0].variable_name);
     }
-  }, [variables, selectedKey]);
+  }, [focusTarget, variables, selectedKey]);
+
+  // Compute issue variables detected while analyzing document
+  const issueVariables = useMemo(() => {
+    return variables.filter((v) => {
+      if (v.is_deleted) return false;
+      const targetMatch =
+        attentionTargets.includes(v.variable_name) ||
+        attentionTargets.includes(v.natural_name) ||
+        (focusTarget && (focusTarget === v.variable_name || focusTarget === v.natural_name));
+      if (targetMatch) return true;
+
+      if (quotationMarkdown && v.descriptor?.sample_value) {
+        const rawSample = String(v.descriptor.sample_value).trim();
+        if (rawSample && rawSample.length > 2 && v.category !== "customer_input") {
+          const normMarkdown = quotationMarkdown.replace(/\s+/g, " ").toLowerCase();
+          const normSample = rawSample.replace(/\s+/g, " ").toLowerCase();
+          const cleanSample = normSample.replace(/[\$,]/g, "");
+          const isFound =
+            normMarkdown.includes(normSample) ||
+            normMarkdown.includes(cleanSample) ||
+            (v.descriptor?.context_text &&
+              normMarkdown.includes(v.descriptor.context_text.toLowerCase()));
+          if (!isFound) return true;
+        }
+      }
+      return false;
+    });
+  }, [variables, attentionTargets, focusTarget, quotationMarkdown]);
 
   // Trace step progress when extracting
   useEffect(() => {
@@ -315,6 +354,40 @@ export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
         </div>
       ) : (
         <div ref={ledgerRef} className="space-y-4">
+          {/* Document Analysis Issues / Unplaced Fields Alert */}
+          {issueVariables.length > 0 && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3.5 space-y-2 shadow-2xs animate-in fade-in">
+              <div className="flex items-center gap-2 text-xs font-bold text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="size-3.5 shrink-0 text-amber-500" />
+                <span>
+                  {issueVariables.length} {issueVariables.length === 1 ? "field was not placed / verified" : "fields were not placed / verified"}. Click a variable to review its snippet context:
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {issueVariables.map((v: CompanyVariable) => {
+                  const key = v.id || v.variable_name;
+                  const isSel = selectedKey === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setSelectedKey(key)}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all cursor-pointer ${
+                        isSel
+                          ? "bg-amber-600 text-white shadow-xs"
+                          : "bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 hover:bg-amber-500/20"
+                      }`}
+                    >
+                      <span className={`size-1.5 rounded-full ${isSel ? "bg-white" : "bg-amber-500 animate-pulse"}`} />
+                      <span>{v.natural_name || v.variable_name}</span>
+                      <span className={`text-[10px] ${isSel ? "text-white/80" : "text-amber-600/70"}`}>→ Fix</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Categorized Chips Container */}
           <div className="space-y-4">
             {GROUPS.map((g) => {
@@ -337,10 +410,12 @@ export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
                         No variables in this category
                       </span>
                     ) : (
-                      groupVars.map((v) => {
+                      groupVars.map((v: CompanyVariable) => {
                         const key = v.id || v.variable_name;
                         const isSelected = selectedKey === key;
-                        const needsAttention = attentionTargets.includes(v.variable_name);
+                        const isIssue = issueVariables.some(
+                          (iv: CompanyVariable) => (iv.id && iv.id === v.id) || iv.variable_name === v.variable_name
+                        );
 
                         return (
                           <button
@@ -350,13 +425,23 @@ export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
                             onClick={() => setSelectedKey(key)}
                             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
                               isSelected
-                                ? "bg-[#0B1957] dark:bg-[#2B7CFF] text-white border-transparent shadow-xs ring-2 ring-[#2B7CFF]/40 scale-102"
-                                : needsAttention
-                                ? "bg-amber-500/10 border-amber-500/40 text-amber-600 dark:text-amber-400"
+                                ? isIssue
+                                  ? "bg-amber-600 text-white border-transparent shadow-xs ring-2 ring-amber-500/40 scale-102"
+                                  : "bg-[#0B1957] dark:bg-[#2B7CFF] text-white border-transparent shadow-xs ring-2 ring-[#2B7CFF]/40 scale-102"
+                                : isIssue
+                                ? "bg-amber-500/10 border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20"
                                 : g.idleChipClass
                             }`}
                           >
                             <span>{v.natural_name || v.variable_name}</span>
+                            {isIssue && (
+                              <span
+                                className={`size-1.5 rounded-full ${
+                                  isSelected ? "bg-white" : "bg-amber-500 animate-pulse"
+                                }`}
+                                title="Snippet not verified / unplaced tag"
+                              />
+                            )}
                             {v.data_type && (
                               <span
                                 className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
@@ -459,6 +544,23 @@ export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
                   className="absolute -top-2 size-3.5 rotate-45 border-t border-l border-border/80 bg-muted/30 dark:bg-[#14233a]"
                   style={{ left: connectorLeft - 7 }}
                 />
+              )}
+
+              {/* Snippet Verification Warning Banner if Issue Variable */}
+              {issueVariables.some(
+                (iv: CompanyVariable) =>
+                  (iv.id && iv.id === selectedVariable.id) ||
+                  iv.variable_name === selectedVariable.variable_name
+              ) && (
+                <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-xs text-amber-700 dark:text-amber-300 space-y-1">
+                  <div className="font-bold flex items-center gap-1.5">
+                    <AlertTriangle className="size-3.5 text-amber-500 shrink-0" />
+                    <span>Quotation Snippet Verification Issue</span>
+                  </div>
+                  <p className="text-[11px] text-foreground/80 leading-relaxed font-sans">
+                    The sample snippet &ldquo;{selectedVariable.descriptor?.sample_value || selectedVariable.natural_name}&rdquo; was not verified in the quotation document or failed OpenXML AST placement. Verify wording or adjust the category below.
+                  </p>
+                </div>
               )}
 
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
