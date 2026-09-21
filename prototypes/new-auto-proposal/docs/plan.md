@@ -51,13 +51,14 @@ The system runs a **5-stage sequential pipeline** anchored by an **ambient shell
 [STAGE 4: PRICING ENGINE & RULE CARDS]
   Gemini compiles rules from: Prompt Spec + Confirmed Variables + Sample Quote Values
   ├── Interactive visual cards for Tiers, Breakpoints, Add-ons, and Taxes
+  ├── Per lead input: "If the lead doesn't say it" = ask (required) / assume a default (amber chip, header count) / leave blank, plus an assume_when reading hint
   ├── Pure JavaScript deterministic math execution engine (100% calculation precision)
   └── [Proceed to Check & Generate Proposal ➔]
             │
             ▼
 [STAGE 5: LEAD SIMULATION & VERIFICATION]
   Inbound lead message textarea, prefilled with the company's dev-only sample_lead_text
-  ├── POST /lead/extract → structured facts per the rules' inputs (+ client name): null = not said, assumptions[]
+  ├── POST /lead/extract → structured facts per the rules' inputs (+ client name): null = not said, assumptions[]; code fills Assume defaults → assumed[]
   │     └── required fact missing → read-only facts panel (field highlighted) + POST /lead/clarify ask → reply box (typed, or POST /lead/reply drafts it as the lead) → re-extract the thread
   ├── POST /proposal/generate (facts in, never the email): evaluate → needs_review → "Declined to auto-quote", no file
   │     ├── buildProposalPayload (every pricing tag, has_* flags, loops, tier matrix) + customer facts + fillDates (code)
@@ -132,8 +133,8 @@ Model choice: provider/model are persisted in `app_settings` (default `deepseek-
 - Outputs the finalized proposal document ready for download and browser preview.
 
 ### 4.5 Stage 5 Generation (`proposal-generator.service.ts`)
-- `POST /api/companies/:id/lead/extract` (`{lead_text}` → `{fields, inputs, missing, assumptions}`), `POST /lead/clarify` (`{lead_text, inputs, missing}` → `{subject, body}`), `POST /lead/reply` (`{lead_text: thread}` → `{subject, body}`, the model playing the lead), `POST /proposal/generate` (`{inputs, lead_text}` → `{evaluation, payload, narrative, files, pdf_error?}` or `{declined: true, needs_review}`; 400 when a required fact is missing, 409 before `stage === "lead_simulation"`), `GET /proposal/download?format=docx|pdf`.
-- Facts are built per company from the rules' `input` variables plus the Stage 2 customer inputs the rules do not define; dates (`data_type: "date"` or a month-name sample) and duration-shaped samples ("14 days") are never asked — `fillDates` moves the earliest sample date to today and keeps every other date's offset, format and suffix.
+- `POST /api/companies/:id/lead/extract` (`{lead_text}` → `{fields, inputs, missing, assumptions, assumed}`), `POST /lead/clarify` (`{lead_text, inputs, missing, assumed?}` → `{subject, body}`), `POST /lead/reply` (`{lead_text: thread}` → `{subject, body}`, the model playing the lead), `POST /proposal/generate` (`{inputs, lead_text, assumed?}` → `{evaluation, payload, narrative, files, pdf_error?}` or `{declined: true, needs_review}`; defaults re-applied server-side before the missing check, 400 when a required fact is missing, 409 before `stage === "lead_simulation"`), `GET /proposal/download?format=docx|pdf`.
+- Facts are built per company from the rules' `input` variables plus the Stage 2 customer inputs no rule variable defines (a validity window the compiler holds as a constant is not re-asked); dates (`data_type: "date"` or a month-name sample) are never asked — `fillDates` moves the earliest sample date to today and keeps every other date's offset, format and suffix. A silent input follows its Ask / Assume / Blank setting: `fillDefaults` (the one place a gap is filled) applies `default` on extract and again on generate, and names the fields in `assumed[]`.
 - The drafter gets the voice-drawer notes, the lead message, the facts, every payload tag with its value and every boolean flag with its label; it returns one string per `ai_generated` paragraph; `{tag}` placeholders are substituted in code, unknown tags stripped and reported in `narrative[name].unknown_tags`.
 - PDF via `soffice --headless --convert-to pdf` (`SOFFICE_PATH`, persistent profile in the temp dir); a failure returns the `.docx` with `pdf: null`. Every raw model response and the final payload land in `logs/<company>/` for the Dev Dock. Full design: [docs/plans/06-lead-simulator.md](plans/06-lead-simulator.md).
 
