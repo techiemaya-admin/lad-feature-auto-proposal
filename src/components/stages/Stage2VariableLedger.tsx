@@ -3,6 +3,7 @@ import {
   Sparkles,
   Table2,
   Quote,
+  WandSparkles,
   RefreshCw,
   Check,
   ChevronRight,
@@ -132,31 +133,28 @@ export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
 
   // Compute issue variables detected while analyzing document
   const issueVariables = useMemo(() => {
-    return variables.filter((v) => {
+    return variables.filter((v: CompanyVariable) => {
       if (v.is_deleted) return false;
+      // Definite issue if reported by template generator (unplaced tag in OpenXML AST)
       const targetMatch =
         attentionTargets.includes(v.variable_name) ||
-        attentionTargets.includes(v.natural_name) ||
-        (focusTarget && (focusTarget === v.variable_name || focusTarget === v.natural_name));
+        attentionTargets.includes(v.natural_name);
       if (targetMatch) return true;
 
-      if (quotationMarkdown && v.descriptor?.sample_value) {
+      // Only check pricing variables if their numerical amount is completely absent from quotation
+      if (quotationMarkdown && v.category === "pricing" && v.descriptor?.sample_value) {
         const rawSample = String(v.descriptor.sample_value).trim();
-        if (rawSample && rawSample.length > 2 && v.category !== "customer_input") {
-          const normMarkdown = quotationMarkdown.replace(/\s+/g, " ").toLowerCase();
-          const normSample = rawSample.replace(/\s+/g, " ").toLowerCase();
-          const cleanSample = normSample.replace(/[\$,]/g, "");
-          const isFound =
-            normMarkdown.includes(normSample) ||
-            normMarkdown.includes(cleanSample) ||
-            (v.descriptor?.context_text &&
-              normMarkdown.includes(v.descriptor.context_text.toLowerCase()));
-          if (!isFound) return true;
+        const cleanSample = rawSample.replace(/[\$,%]/g, "").trim();
+        if (cleanSample && cleanSample.length >= 2 && !isNaN(Number(cleanSample))) {
+          const normMarkdown = quotationMarkdown.replace(/[\$,%]/g, " ");
+          if (!normMarkdown.includes(cleanSample)) {
+            return true;
+          }
         }
       }
       return false;
     });
-  }, [variables, attentionTargets, focusTarget, quotationMarkdown]);
+  }, [variables, attentionTargets, quotationMarkdown]);
 
   // Trace step progress when extracting
   useEffect(() => {
@@ -196,11 +194,58 @@ export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
   };
 
   const handleCategory = (id: string, category: VariableCategory) => {
-    const updated = variables.map((v) =>
-      (v.id === id || v.variable_name === id) ? { ...v, category } : v
-    );
+    const updated = variables.map((v) => {
+      if (v.id !== id && v.variable_name !== id) return v;
+      const descriptor = { ...v.descriptor };
+      if (category === "paragraph" && !descriptor.paragraph_config) {
+        descriptor.paragraph_config = {
+          mode: "ai_generated",
+          purpose: "Dynamic quotation paragraph",
+          tone: "Professional and consultative",
+          length_guideline: "2-3 sentences",
+          guidance: "",
+        };
+      }
+      return {
+        ...v,
+        category,
+        data_type: (category === "paragraph" ? "paragraph" : v.data_type),
+        descriptor,
+      };
+    });
     onVariablesChange(updated, compoundTables);
     flash(`Moved to ${category}`);
+  };
+
+  const handleParagraphMode = (id: string, mode: "fixed" | "ai_generated") => {
+    const updated = variables.map((v) => {
+      if (v.id !== id && v.variable_name !== id) return v;
+      return {
+        ...v,
+        descriptor: {
+          ...v.descriptor,
+          paragraph_config: {
+            mode,
+            purpose: v.descriptor?.paragraph_config?.purpose || "Executive overview and scope",
+            tone: v.descriptor?.paragraph_config?.tone || "Professional and consultative",
+            length_guideline: v.descriptor?.paragraph_config?.length_guideline || "2-3 sentences",
+            guidance: v.descriptor?.paragraph_config?.guidance || "",
+          },
+        },
+      };
+    });
+    onVariablesChange(updated, compoundTables);
+    flash(mode === "fixed" ? "Kept as fixed text" : "Will be drafted per client");
+  };
+
+  const handleSampleValue = (id: string, sample_value: string) => {
+    const updated = variables.map((v) =>
+      (v.id === id || v.variable_name === id)
+        ? { ...v, descriptor: { ...v.descriptor, sample_value } }
+        : v
+    );
+    onVariablesChange(updated, compoundTables);
+    flash("Text updated");
   };
 
   const handleToggleLeaveOut = (id: string, is_deleted: boolean) => {
@@ -608,18 +653,84 @@ export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
                 </div>
               </div>
 
-              {/* Exact Quotation Snippet Context Highlight */}
-              {(selectedVariable.descriptor?.context_text || selectedVariable.descriptor?.description) && (
-                <div className="p-3 rounded-lg bg-card border border-border/80 space-y-1 shadow-2xs">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
-                    <Quote className="size-3 text-[#2B7CFF]" />
-                    <span>Quotation Context in Document</span>
+              {/* Paragraph Mode & Guidance Section */}
+              {selectedVariable.category === "paragraph" && (
+                <div className="p-3.5 rounded-xl bg-card border border-border/80 space-y-3 shadow-2xs">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                      Paragraph Drafting Mode
+                    </span>
+                    <div className="flex items-center rounded-lg bg-muted/60 p-0.5 border border-border/60">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleParagraphMode(
+                            selectedVariable.id || selectedVariable.variable_name,
+                            "fixed"
+                          )
+                        }
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
+                          selectedVariable.descriptor?.paragraph_config?.mode === "fixed"
+                            ? "bg-[#0B1957] dark:bg-[#2B7CFF] text-white shadow-xs"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <Quote className="size-3" />
+                        <span>Fixed Text</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleParagraphMode(
+                            selectedVariable.id || selectedVariable.variable_name,
+                            "ai_generated"
+                          )
+                        }
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
+                          selectedVariable.descriptor?.paragraph_config?.mode !== "fixed"
+                            ? "bg-[#0B1957] dark:bg-[#2B7CFF] text-white shadow-xs"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <WandSparkles className="size-3" />
+                        <span>Drafted per Client</span>
+                      </button>
+                    </div>
                   </div>
-                  <div className="text-xs text-foreground/90 font-mono leading-relaxed bg-muted/20 p-2 rounded-md">
-                    &ldquo;{selectedVariable.descriptor.context_text || selectedVariable.descriptor.description}&rdquo;
+
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-semibold text-foreground">
+                      Paragraph Sample / Reference Text:
+                    </label>
+                    <textarea
+                      value={String(selectedVariable.descriptor?.sample_value || "")}
+                      onChange={(e) =>
+                        handleSampleValue(
+                          selectedVariable.id || selectedVariable.variable_name,
+                          e.target.value
+                        )
+                      }
+                      rows={3}
+                      className="w-full text-xs p-2.5 rounded-lg border border-border/80 bg-background text-foreground focus:ring-2 focus:ring-[#2B7CFF]/30 outline-hidden leading-relaxed font-sans"
+                      placeholder="Enter the quotation paragraph text..."
+                    />
                   </div>
                 </div>
               )}
+
+              {/* Exact Quotation Snippet Context Highlight */}
+              {selectedVariable.category !== "paragraph" &&
+                (selectedVariable.descriptor?.context_text || selectedVariable.descriptor?.description) && (
+                  <div className="p-3 rounded-lg bg-card border border-border/80 space-y-1 shadow-2xs">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1">
+                      <Quote className="size-3 text-[#2B7CFF]" />
+                      <span>Quotation Context in Document</span>
+                    </div>
+                    <div className="text-xs text-foreground/90 font-mono leading-relaxed bg-muted/20 p-2 rounded-md">
+                      &ldquo;{selectedVariable.descriptor.context_text || selectedVariable.descriptor.description}&rdquo;
+                    </div>
+                  </div>
+                )}
 
               {/* Variable Metadata */}
               <div className="flex items-center gap-4 text-[11px] text-muted-foreground flex-wrap">
@@ -631,7 +742,7 @@ export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
                     Data Type: <strong className="text-foreground font-mono">{selectedVariable.data_type}</strong>
                   </span>
                 )}
-                {selectedVariable.descriptor?.sample_value !== undefined && (
+                {selectedVariable.descriptor?.sample_value !== undefined && selectedVariable.category !== "paragraph" && (
                   <span>
                     Sample Value: <strong className="text-foreground">{String(selectedVariable.descriptor.sample_value)}</strong>
                   </span>

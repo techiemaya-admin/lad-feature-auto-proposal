@@ -533,9 +533,7 @@ export function App() {
             <HeroBanner
               companyName={currentCompany?.company_name || "Company"}
               onCreateProposal={() => {
-                setCurrentStage(1);
-                setIsBriefingLocked(false);
-                showNotification("info", "Started new proposal draft.");
+                handleBriefingUnlock();
               }}
               onRescanPipeline={() => handleExtractVariables(activeCompanyId)}
             />

@@ -275,15 +275,26 @@ export const Stage1Briefing: React.FC<Stage1BriefingProps> = ({
         </div>
 
         {isLocked && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onUnlock}
-            className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
-          >
-            <Edit2 className="size-3.5 mr-1.5" />
-            <span>Unlock &amp; Edit</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onUnlock}
+              className="h-8 px-3 text-xs font-semibold text-foreground hover:bg-muted cursor-pointer"
+            >
+              <Upload className="size-3.5 mr-1.5 text-[#2B7CFF]" />
+              <span>Upload New .docx</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onUnlock}
+              className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
+            >
+              <Edit2 className="size-3.5 mr-1.5" />
+              <span>Unlock &amp; Edit</span>
+            </Button>
+          </div>
         )}
       </div>
 
