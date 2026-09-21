@@ -5,12 +5,14 @@ import { getAISettings } from "./ai-settings.service.js";
 import { logPipelineArtifact } from "./pipeline-log.js";
 import { inputOptions } from "./pricing-calculator.js";
 import type { InputType, PricingRules, Stage2Context, Value } from "./pricing-rules.types.js";
-import { isDateVariable, isDurationVariable } from "./proposal-generator.service.js";
+import { isDateVariable } from "./proposal-generator.service.js";
 
 /**
  * Stage 5 step 1: an inbound lead message → the facts the calculator needs. The field list is built per
- * company from the rules' `input` variables plus the Stage 2 customer inputs the rules do not define
- * (client name); dates and validity windows are never asked — code fills them. Plan: docs/plans/06-lead-simulator.md §1.1.
+ * company from the rules' `input` variables plus the Stage 2 customer inputs the rules do not define at all
+ * (client name); dates are never asked — code fills them. A silent lead follows the input's own setting:
+ * required → asked, default → assumed by code (never by the model), neither → blank.
+ * Plan: docs/plans/06-lead-simulator.md §1.1.
  */
 
 export interface LeadField {
@@ -19,6 +21,10 @@ export interface LeadField {
   input_type: InputType | "text";
   options: string[];
   required: boolean;
+  /** Filled in by `fillDefaults` when the lead does not say it. */
+  default?: Value;
+  /** Seller-authorised reading of the lead's words for this field. */
+  assume_when?: string;
 }
 
 export function leadFields(rules: PricingRules, stage2: Stage2Context): LeadField[] {
@@ -27,11 +33,15 @@ export function leadFields(rules: PricingRules, stage2: Stage2Context): LeadFiel
     if (v.kind !== "input") continue;
     const s2 = stage2.variables.find((x) => x.variable_name === v.name);
     if (s2 && isDateVariable(s2)) continue; // the calendar fills dates, even when a compile asked for them
-    fields.push({ name: v.name, label: s2?.natural_name || v.label, input_type: v.input_type, options: inputOptions(v, rules), required: v.required });
+    fields.push({
+      name: v.name, label: s2?.natural_name || v.label, input_type: v.input_type, options: inputOptions(v, rules), required: v.required,
+      ...(v.default === undefined ? {} : { default: v.default }), ...(v.assume_when ? { assume_when: v.assume_when } : {}),
+    });
   }
-  const defined = new Set(fields.map((f) => f.name));
+  // Every rule variable counts as defined: a Stage 2 input the sheet holds as a constant (validity days) is not re-asked as text.
+  const defined = new Set(rules.variables.map((v) => v.name));
   for (const v of stage2.variables) {
-    if (v.category !== "customer_input" || defined.has(v.variable_name) || isDateVariable(v) || isDurationVariable(v)) continue;
+    if (v.category !== "customer_input" || defined.has(v.variable_name) || isDateVariable(v)) continue;
     fields.push({ name: v.variable_name, label: v.natural_name || v.variable_name, input_type: "text", options: [], required: true });
   }
   return fields;
@@ -42,6 +52,17 @@ export const isBlank = (v: unknown) => v === null || v === undefined || v === ""
 /** Required fields the facts do not answer. */
 export const missingFields = (fields: LeadField[], inputs: Record<string, unknown>) =>
   fields.filter((f) => f.required && isBlank(inputs[f.name])).map((f) => f.name);
+
+/** Blank facts take their field's default (in place); returns the names filled. The only place a gap is ever filled. */
+export function fillDefaults(fields: LeadField[], inputs: Record<string, Value>): string[] {
+  const assumed: string[] = [];
+  for (const f of fields) {
+    if (f.default === undefined || !isBlank(inputs[f.name])) continue;
+    inputs[f.name] = f.default;
+    assumed.push(f.name);
+  }
+  return assumed;
+}
 
 // --- schema: one required, nullable property per field + assumptions ---------------------------------
 
@@ -81,7 +102,7 @@ Respond with ONLY a single JSON object — no markdown fences, no commentary —
 
 export function buildExtractPrompt(company: CompanyRow, fields: LeadField[], leadText: string): string {
   const line = (f: LeadField) =>
-    `- ${f.name} (${f.label}): ${f.input_type}${f.options.length ? ` — one of ${f.options.map((o) => `"${o}"`).join(", ")}` : ""}${f.required ? "" : " (optional)"}`;
+    `- ${f.name} (${f.label}): ${f.input_type}${f.options.length ? ` — one of ${f.options.map((o) => `"${o}"`).join(", ")}` : ""}${f.required ? "" : " (optional)"}${f.assume_when ? ` (read it as: ${f.assume_when})` : ""}`;
   return `
 You read an inbound lead message for "${company.company_name}" and fill in the facts the pricing calculator needs.
 
@@ -100,7 +121,7 @@ ${fields.map(line).join("\n")}
 4. choice fields must be exactly one of the listed options, spelled as listed; pick the option whose description the lead's words match and record why in assumptions. multi_choice fields list every matching option (empty array when the lead asked for none).
 5. boolean fields: true only when the message says so ("we'd rather pay once a year" → true); null when unmentioned.
 6. Servers, kiosks or shared machines beyond one device per person count as extra devices.
-7. assumptions: one short sentence per judgement call you made (range picked, inferred choice, counted devices). Empty when every value was explicit.
+7. assumptions: one short sentence per interpretation of the lead's own words (range picked, option matched, devices counted, a "read it as" hint applied). Never a value the message does not contain — gaps are filled elsewhere, not by you. Empty when every value was explicit.
 8. The message may be a thread (parts headed "From: the lead" / "From: ${company.company_name}"). Only the lead's parts carry facts; our parts only ask. When a later part from the lead changes or adds to an earlier one, the later part wins.
 `;
 }
@@ -120,9 +141,11 @@ export interface LeadFacts {
   inputs: Record<string, Value>;
   missing: string[];
   assumptions: string[];
+  /** Fields the lead left blank that code filled from the seller's default. */
+  assumed: string[];
 }
 
-/** Extract, canonicalise choices to the option's own spelling, list the required fields still null. */
+/** Extract, canonicalise choices, fill defaults, list the required fields still null. */
 export async function extractLeadFacts(company: CompanyRow, rules: PricingRules, stage2: Stage2Context, leadText: string): Promise<LeadFacts> {
   const fields = leadFields(rules, stage2);
   const raw = await callModel(buildExtractPrompt(company, fields, leadText), fields);
@@ -147,5 +170,6 @@ export async function extractLeadFacts(company: CompanyRow, rules: PricingRules,
                 : String(v);
   }
   const assumptions = Array.isArray(raw.assumptions) ? raw.assumptions.map(String).filter(Boolean) : [];
-  return { fields, inputs, missing: missingFields(fields, inputs), assumptions };
+  const assumed = fillDefaults(fields, inputs);
+  return { fields, inputs, missing: missingFields(fields, inputs), assumptions, assumed };
 }

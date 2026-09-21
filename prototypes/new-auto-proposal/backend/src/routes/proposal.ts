@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Router, Request, Response } from "express";
 import { draftClarification, draftLeadReply } from "../services/clarification-drafter.service.js";
-import { extractLeadFacts, leadFields, missingFields } from "../services/lead-extractor.service.js";
+import { extractLeadFacts, fillDefaults, leadFields, missingFields } from "../services/lead-extractor.service.js";
 import { loadCompany, loadStage2Context } from "../services/pricing-compiler.service.js";
 import type { PricingRulesState } from "../services/pricing-rules.types.js";
 import { generateProposal, proposalFilePath } from "../services/proposal-generator.service.js";
@@ -62,17 +62,19 @@ router.post("/:id/lead/extract", async (req: Request, res: Response): Promise<vo
   }
 });
 
-// POST /api/companies/:id/lead/clarify — body { lead_text, inputs, missing } → { subject, body }
+const namesOf = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
+
+// POST /api/companies/:id/lead/clarify — body { lead_text, inputs, missing, assumed? } → { subject, body }
 router.post("/:id/lead/clarify", async (req: Request, res: Response): Promise<void> => {
   try {
     const s5 = loadStage5(req, res);
     if (!s5) return;
     const leadText = leadTextOf(req, res);
     if (leadText === null) return;
-    const missing = Array.isArray(req.body?.missing) ? req.body.missing.map(String) : [];
+    const missing = namesOf(req.body?.missing);
     if (!missing.length) return void fail(res, 400, "missing must list at least one field");
     const fields = leadFields(s5.state.rules, loadStage2Context(s5.company.company_id));
-    const email = await draftClarification({ company: s5.company, fields, inputs: req.body?.inputs ?? {}, missing, leadText });
+    const email = await draftClarification({ company: s5.company, fields, inputs: req.body?.inputs ?? {}, missing, assumed: namesOf(req.body?.assumed), leadText });
     res.json({ success: true, ...email });
   } catch (error) {
     fail(res, 500, error instanceof Error ? error.message : "Failed to draft the clarification email");
@@ -93,7 +95,7 @@ router.post("/:id/lead/reply", async (req: Request, res: Response): Promise<void
   }
 });
 
-// POST /api/companies/:id/proposal/generate — body { inputs, lead_text }; facts in, documents out (never re-extracts)
+// POST /api/companies/:id/proposal/generate — body { inputs, lead_text, assumed? }; facts in, documents out (never re-extracts)
 router.post("/:id/proposal/generate", async (req: Request, res: Response): Promise<void> => {
   try {
     const s5 = loadStage5(req, res);
@@ -103,6 +105,9 @@ router.post("/:id/proposal/generate", async (req: Request, res: Response): Promi
     if (!inputs || typeof inputs !== "object" || Array.isArray(inputs)) return void fail(res, 400, "Body must be { inputs, lead_text }");
     const stage2 = loadStage2Context(company.company_id);
     const fields = leadFields(state.rules, stage2);
+    // Defaults are applied here too (server-side truth); the client's assumed[] names what extract already filled.
+    const assumable = new Set(fields.filter((f) => f.default !== undefined).map((f) => f.name));
+    const assumed = [...new Set([...namesOf(req.body?.assumed).filter((n) => assumable.has(n)), ...fillDefaults(fields, inputs)])];
     const missing = missingFields(fields, inputs);
     if (missing.length) {
       res.status(400).json({ success: false, error: `Missing required facts: ${missing.join(", ")}`, missing });
@@ -110,7 +115,7 @@ router.post("/:id/proposal/generate", async (req: Request, res: Response): Promi
     }
 
     const result = await generateProposal({
-      company, rules: state.rules, stage2, inputs,
+      company, rules: state.rules, stage2, inputs, assumed,
       tierMatrix: workingState.template_stats?.tier_matrix,
       coveredBy: coveredByParagraph(workingState.template_stats?.details),
       leadText: typeof req.body?.lead_text === "string" ? req.body.lead_text : "",

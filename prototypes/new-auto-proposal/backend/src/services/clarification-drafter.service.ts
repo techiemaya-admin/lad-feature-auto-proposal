@@ -18,6 +18,8 @@ export interface ClarificationInput {
   fields: LeadField[];
   inputs: Record<string, Value>;
   missing: string[];
+  /** Facts filled from a rule default; the email states them and invites a correction. */
+  assumed?: string[];
   leadText: string;
 }
 
@@ -30,13 +32,15 @@ const DEFAULT_NOTES = "Friendly and brief. Thank them, confirm what you understo
 
 export function buildClarifyPrompt(input: ClarificationInput): string {
   const { company, fields, inputs, missing, leadText } = input;
+  const assumed = input.assumed ?? [];
   const config = getCompanyConfiguration(company.company_id);
   let data: any = {};
   try { data = JSON.parse(company.data_json); } catch { data = {}; }
   const label = (n: string) => fields.find((f) => f.name === n)?.label ?? n;
-  const known = fields
-    .filter((f) => !missing.includes(f.name) && inputs[f.name] !== null && inputs[f.name] !== undefined && inputs[f.name] !== "")
-    .map((f) => `- ${f.label}: ${Array.isArray(inputs[f.name]) ? (inputs[f.name] as string[]).join(", ") : String(inputs[f.name])}`);
+  const line = (f: LeadField) => `- ${f.label}: ${Array.isArray(inputs[f.name]) ? (inputs[f.name] as string[]).join(", ") : String(inputs[f.name])}`;
+  const answered = fields.filter((f) => !missing.includes(f.name) && inputs[f.name] !== null && inputs[f.name] !== undefined && inputs[f.name] !== "");
+  const known = answered.filter((f) => !assumed.includes(f.name)).map(line);
+  const assuming = answered.filter((f) => assumed.includes(f.name)).map(line);
 
   return `
 You write a reply for "${company.company_name}"${data.company_details?.industry ? ` (${data.company_details.industry})` : ""} to an inbound lead whose message left out something the quote needs.
@@ -53,6 +57,9 @@ ${leadText}
 ==================== WHAT WE ALREADY KNOW ====================
 ${known.join("\n") || "(nothing usable yet)"}
 
+==================== WHAT WE'RE ASSUMING ====================
+${assuming.join("\n") || "(nothing)"}
+
 ==================== WHAT WE STILL NEED ====================
 ${missing.map((n) => `- ${label(n)}`).join("\n")}
 
@@ -62,6 +69,7 @@ ${missing.map((n) => `- ${label(n)}`).join("\n")}
 3. Sign off as the ${company.company_name} team. Plain text, short paragraphs, no markdown.
 4. subject: a short reply-style subject line.
 5. The message may already be a thread (parts headed "From: the lead" / "From: ${company.company_name}"). Never re-ask what the lead answered in a later part.
+6. State each assumption in one plain line and invite a correction; do not ask for it.
 `;
 }
 

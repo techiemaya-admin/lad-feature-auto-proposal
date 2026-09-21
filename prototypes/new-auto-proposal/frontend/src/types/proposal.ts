@@ -12,6 +12,10 @@ export interface LeadField {
   input_type: InputType | "text";
   options: string[];
   required: boolean;
+  /** Filled in by the backend when the lead does not say it. */
+  default?: Value;
+  /** Seller-authorised reading of the lead's words for this field. */
+  assume_when?: string;
 }
 
 export interface LeadFacts {
@@ -19,8 +23,10 @@ export interface LeadFacts {
   inputs: Record<string, Value>;
   /** Required fields the message did not answer. */
   missing: string[];
-  /** Judgement calls the extractor made (range picked, inferred choice, counted devices). */
+  /** Interpretations the extractor made of the lead's own words (range picked, option matched). */
   assumptions: string[];
+  /** Fields the lead left blank that code filled from the seller's default. */
+  assumed: string[];
 }
 
 export interface ClarificationEmail {

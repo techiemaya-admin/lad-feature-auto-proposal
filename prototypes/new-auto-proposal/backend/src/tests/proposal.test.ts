@@ -51,13 +51,17 @@ test("substitutePlaceholders: known tags are filled, unknown tags stripped and r
 });
 
 test("leadFields: rules inputs plus the undefined non-date customer inputs, per company", () => {
-  const brief = (id: string, extra: Stage2Context["variables"] = []) => {
+  const brief = (id: string, extra: Stage2Context["variables"] = [], rules = rulesOf(id)) => {
     const s2 = stage2Of(id);
-    return leadFields(rulesOf(id), { ...s2, variables: [...s2.variables, ...extra] }).map((f) => `${f.name}:${f.input_type}${f.required ? "!" : ""}${f.options.length ? `[${f.options.join("|")}]` : ""}`);
+    return leadFields(rules, { ...s2, variables: [...s2.variables, ...extra] }).map((f) => `${f.name}:${f.input_type}${f.required ? "!" : ""}${f.options.length ? `[${f.options.join("|")}]` : ""}`);
   };
   assert.deepEqual(brief("co1_seo"), ["location_count:integer!", "client_state:us_state!", "annual_prepay:boolean", "client_name:text!"]);
-  // seen live on co2: a "14 days" validity window extracted as a customer input is copied, never asked
-  assert.deepEqual(brief("co1_seo", [{ variable_name: "proposal_validity_period", category: "customer_input", sample_value: "14 days" }]).at(-1), "client_name:text!");
+  // seen live on co2: a "14 days" validity window is a Stage 2 customer input the sheet holds as a constant — never asked
+  const validity = [{ variable_name: "proposal_validity_period", category: "customer_input", sample_value: "14 days" }];
+  const withConstant = rulesOf("co1_seo");
+  withConstant.variables.push({ name: "proposal_validity_period", label: "Validity", in_document: true, unit: "text", condition_flag: "", kind: "constant", value: "14 days" });
+  assert.deepEqual(brief("co1_seo", validity, withConstant).at(-1), "client_name:text!");
+  assert.deepEqual(brief("co1_seo", validity).at(-1), "proposal_validity_period:text!");
   assert.deepEqual(brief("co2_msp"), ["seat_count:integer!", "selected_tier:choice![Essential|Standard|Premium]", "extra_device_count:integer", "client_state:us_state!", "client_name:text!"]);
   const co3 = brief("co3_dev");
   assert.equal(co3[0], "product_count:integer!");
@@ -141,14 +145,33 @@ test("Proposal routes", async (t) => {
     assert.equal((await request(app).post("/api/companies/co1_seo/lead/extract").send({ lead_text: "" })).status, 400);
   });
 
+  await t.test("a silent lead gets the seller's default from code", async () => {
+    const rules = rulesOf("co1_seo");
+    const prepay = rules.variables.find((v) => v.name === "annual_prepay") as any;
+    prepay.default = true;
+    prepay.assume_when = "a yearly plan or paying up front means yes";
+    assert.equal((await request(app).put("/api/companies/co1_seo/rules").send({ rules })).status, 200);
+    let prompt = "";
+    setLeadModelCall(async (p) => { prompt = p; return { ...facts, annual_prepay: null, assumptions: [] }; });
+    const res = await request(app).post("/api/companies/co1_seo/lead/extract").send({ lead_text: lead });
+    assert.equal(res.status, 200, res.text);
+    assert.match(prompt, /annual_prepay .*\(read it as: a yearly plan or paying up front means yes\)/);
+    assert.equal(res.body.inputs.annual_prepay, true);
+    assert.deepEqual(res.body.assumed, ["annual_prepay"]);
+    assert.deepEqual(res.body.missing, []);
+    assert.equal(res.body.fields.find((f: any) => f.name === "annual_prepay").default, true);
+    assert.equal((await request(app).put("/api/companies/co1_seo/rules").send({ rules: rulesOf("co1_seo") })).status, 200);
+  });
+
   await t.test("clarify drafts an email naming the missing facts in natural language", async () => {
     let seen = "";
     setClarifyModelCall(async (prompt) => { seen = prompt; return { subject: "Re: local SEO", body: "Which state are the clinics in?" }; });
-    const res = await request(app).post("/api/companies/co1_seo/lead/clarify").send({ lead_text: lead, inputs: { ...facts, client_state: null }, missing: ["client_state"] });
+    const res = await request(app).post("/api/companies/co1_seo/lead/clarify").send({ lead_text: lead, inputs: { ...facts, client_state: null }, missing: ["client_state"], assumed: ["annual_prepay"] });
     assert.equal(res.status, 200, res.text);
     assert.equal(res.body.subject, "Re: local SEO");
     assert.match(seen, /WHAT WE STILL NEED[\s\S]*- Client state/);
-    assert.match(seen, /Number of locations: 2/);
+    assert.match(seen, /WHAT WE ALREADY KNOW[\s\S]*Number of locations: 2[\s\S]*WHAT WE'RE ASSUMING[\s\S]*Pays annually up front: true[\s\S]*WHAT WE STILL NEED/);
+    assert.match(seen, /State each assumption in one plain line/);
     assert.equal((await request(app).post("/api/companies/co1_seo/lead/clarify").send({ lead_text: lead, inputs: facts, missing: [] })).status, 400);
   });
 
@@ -216,6 +239,23 @@ test("Proposal routes", async (t) => {
     assert.match(preview.headers["content-type"], /application\/pdf/);
     assert.match((await request(app).get(`${res.body.files.pdf}&download=1`)).headers["content-disposition"], /attachment.*Proposal - Bloom & Co\.pdf/);
     assert.equal((await request(app).get("/api/companies/co1_seo/proposal/download?format=txt")).status, 400);
+  });
+
+  await t.test("generate fills a silent fact from its default itself, so a client cannot skip the policy", async () => {
+    const rules = rulesOf("co1_seo");
+    (rules.variables.find((v) => v.name === "location_count") as any).default = 1;
+    (rules.variables.find((v) => v.name === "annual_prepay") as any).default = true;
+    assert.equal((await request(app).put("/api/companies/co1_seo/rules").send({ rules })).status, 200);
+    let narrativePrompt = "";
+    setNarrativeModelCall(async (prompt, names) => { narrativePrompt = prompt; return Object.fromEntries(names.map((n) => [n, n])); });
+    // The client's assumed[] is trusted only for fields that actually carry a default (client_state has none).
+    const res = await request(app).post("/api/companies/co1_seo/proposal/generate").send({ inputs: { ...facts, location_count: null }, lead_text: lead, assumed: ["annual_prepay", "client_state"] });
+    assert.equal(res.status, 200, res.text);
+    assert.equal(res.body.evaluation.values.location_count, 1);
+    assert.match(narrativePrompt, /- Number of locations: 1 \(assumed — write "based on", never "as you said"\)/);
+    assert.match(narrativePrompt, /- Pays annually up front: true \(assumed/);
+    assert.match(narrativePrompt, /- Client state: tx\n/);
+    assert.equal((await request(app).put("/api/companies/co1_seo/rules").send({ rules: rulesOf("co1_seo") })).status, 200);
   });
 
   await t.test("a PDF failure keeps the docx and reports pdf: null", async () => {

@@ -71,6 +71,8 @@ export interface NarrativeInput {
   stage2: Stage2Context;
   payload: Record<string, unknown>;
   inputs: Record<string, Value>;
+  /** Facts filled from a rule default, not the lead's words. */
+  assumed?: string[];
   leadText: string;
   coveredBy: Record<string, string[]>;
   tips?: Record<string, ParagraphTips>;
@@ -91,9 +93,10 @@ export function buildNarrativePrompt(input: NarrativeInput): string {
   for (const v of stage2.variables) labelOf.set(v.variable_name, v.natural_name || v.variable_name);
   for (const v of rules.variables) if (!labelOf.has(v.name)) labelOf.set(v.name, v.label);
 
+  const assumed = input.assumed ?? [];
   const facts = Object.entries(inputs)
     .filter(([, v]) => v !== null && v !== undefined && v !== "")
-    .map(([k, v]) => `- ${labelOf.get(k) ?? k}: ${Array.isArray(v) ? v.join(", ") : String(v)}`);
+    .map(([k, v]) => `- ${labelOf.get(k) ?? k}: ${Array.isArray(v) ? v.join(", ") : String(v)}${assumed.includes(k) ? ' (assumed — write "based on", never "as you said")' : ""}`);
   const tags = Object.entries(payload)
     .filter(([, v]) => (typeof v === "string" && v !== "") || typeof v === "number")
     .map(([k, v]) => `- {${k}} = ${JSON.stringify(v)}`);

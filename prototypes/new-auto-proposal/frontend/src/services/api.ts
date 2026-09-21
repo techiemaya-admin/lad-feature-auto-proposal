@@ -333,8 +333,8 @@ export function extractLead(companyId: string, leadText: string): Promise<LeadFa
   return rulesRequest(`${companyId}/lead/extract`, "read the lead", json({ lead_text: leadText }));
 }
 
-export function draftClarification(companyId: string, leadText: string, inputs: Record<string, Value>, missing: string[]): Promise<ClarificationEmail> {
-  return rulesRequest(`${companyId}/lead/clarify`, "draft the clarification email", json({ lead_text: leadText, inputs, missing }));
+export function draftClarification(companyId: string, leadText: string, inputs: Record<string, Value>, missing: string[], assumed: string[]): Promise<ClarificationEmail> {
+  return rulesRequest(`${companyId}/lead/clarify`, "draft the clarification email", json({ lead_text: leadText, inputs, missing, assumed }));
 }
 
 /** The simulator playing the lead: `leadText` is the whole thread, ending with our ask. */
@@ -342,9 +342,9 @@ export function draftLeadReply(companyId: string, leadText: string): Promise<Cla
   return rulesRequest(`${companyId}/lead/reply`, "draft the lead's reply", json({ lead_text: leadText }));
 }
 
-/** Facts in, documents out — the thread is drafter context only, never re-extracted. */
-export function generateProposal(companyId: string, inputs: Record<string, Value>, leadText: string): Promise<ProposalResult> {
-  return rulesRequest(`${companyId}/proposal/generate`, "generate the proposal", json({ inputs, lead_text: leadText }));
+/** Facts in, documents out — the thread is drafter context only, never re-extracted; `assumed` names the defaults extract filled. */
+export function generateProposal(companyId: string, inputs: Record<string, Value>, leadText: string, assumed: string[]): Promise<ProposalResult> {
+  return rulesRequest(`${companyId}/proposal/generate`, "generate the proposal", json({ inputs, lead_text: leadText, assumed }));
 }
 
 // ---------------------------------------------------------------------------

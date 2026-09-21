@@ -42,13 +42,6 @@ export const isDateVariable = (v: Stage2Variable): boolean =>
   (v.data_type === "date" || ((!v.data_type || v.data_type === "string") && parseSampleDate(v.sample_value) !== null));
 
 /**
- * "14 days", "2 weeks": a validity window the quotation states next to its dates. Not a lead fact and not
- * computed — copied from the sample like a date suffix (ponytail: same ceiling as fillDates' suffix).
- */
-export const isDurationVariable = (v: Stage2Variable): boolean =>
-  v.category === "customer_input" && /^\d+\s*(business\s+)?(days?|weeks?|months?)$/i.test(v.sample_value.trim());
-
-/**
  * Earliest sample date → today; every other date keeps its offset from that anchor (calendar days).
  * Output keeps the sample's spelling and any suffix verbatim. ponytail: a "(14 days)" suffix is copied,
  * not recomputed — parse it when a template's validity window differs from its sample's.
@@ -132,6 +125,8 @@ export interface GenerateInput {
   /** Which values the template reported as covered by a drafted paragraph: paragraph name → tags. */
   coveredBy: Record<string, string[]>;
   inputs: Record<string, Value>;
+  /** Facts filled from a rule default rather than the lead's words; the drafter words them as "based on". */
+  assumed?: string[];
   /** Drafter context only — never re-extracted. */
   leadText: string;
   today?: Date;
@@ -165,13 +160,11 @@ export async function generateProposal(input: GenerateInput): Promise<GenerateRe
 
   // Customer inputs come straight from the facts and dates from the calendar — over whatever the sheet
   // computed for them (a live compile once defined client_name and the dates as inputs). Numeric facts the
-  // sheet formats (seat counts) keep the sheet's rendering.
+  // sheet formats (seat counts) and seller-owned constants (validity days) keep the sheet's rendering.
   for (const v of stage2.variables) {
     if (v.category !== "customer_input" || isDateVariable(v)) continue;
     const raw = inputs[v.variable_name];
-    if (isDurationVariable(v)) {
-      payload[v.variable_name] = v.sample_value;
-    } else if (raw === null || raw === undefined) {
+    if (raw === null || raw === undefined) {
       if (payload[v.variable_name] === undefined) payload[v.variable_name] = "";
     } else if (typeof raw === "string" || Array.isArray(raw)) {
       payload[v.variable_name] = Array.isArray(raw) ? raw.join(", ") : raw;

@@ -107,7 +107,7 @@ Name: "${input.companyName}"  Home state: "${input.homeState || "unknown"}"
 ==================== CELLS YOU MUST DEFINE (in_document: true, exactly these names) ====================
 ${pricing.map(line).join("\n") || "(none)"}
 
-Customer inputs already in the document (define as kind "input" with in_document: true ONLY the ones the maths needs, e.g. seat counts; names, dates and free text are NOT yours):
+Customer inputs already in the document (define as kind "input" with in_document: true ONLY the ones the maths needs, e.g. seat counts; a value the agency sets rather than the lead — validity days, payment terms — is kind "constant" with in_document: true and the sample value; names, dates and free text are NOT yours):
 ${inputs.map(line).join("\n") || "(none)"}
 
 Flags to define as kind "condition" (name exactly as listed; each must be TRUE for the sample lead):
@@ -124,7 +124,7 @@ ${input.covered.join(", ") || "(none)"}
 2. Units: money | percent | integer | text | boolean | rows. Percent values are FRACTIONS (8.25% → "0.0825"). Money has no symbol. An empty cell in an integer column means "unbounded" (no cap).
 3. formula: op add | mul | min | max take 1+ args; sub | div take exactly 2. args are variable names or numeric literals (as strings). Never put text variables in a formula.
 4. lookup: first row of the table, in table order, where ALL where-conditions hold; take = the column to read. Put cheapest / smallest tier first so caps resolve upward. where uses column op value_var|value; ops eq neq gte lte gt lt in.
-5. A tier the LEAD picks (support tier, project template) → kind input, input_type choice, options_table + options_column. A tier the RULES pick from a number (locations, seats) → lookup with column gte value_var.
+5. A tier the LEAD picks (support tier, project template) → kind input, input_type choice, options_table + options_column. A tier the RULES pick from a number (locations, seats) → lookup with column gte value_var. A value the AGENCY sets and the lead never decides (validity days, payment terms, a fixed contract length) → kind constant, never input.
 6. Bands (volume discounts by seat count): table kind "bands" with min/max integer columns (max empty = open-ended), lookup where min lte X AND max gte X. Floors / minimum commitments → formula max. Whole quantity gets the band rate; bands never stack.
 7. Add-ons the lead picks: table kind "addons" + a multi_choice input + aggregate (sum/count, rows: "selected", selected_var, key_column) + a rows variable for the document's loop.
 8. Payment splits: table kind "splits" with a percent column "share" and a rows variable whose amount map entry is { op: "mul", args: ["col:share", "<total variable>"] }.
@@ -132,8 +132,9 @@ ${input.covered.join(", ") || "(none)"}
 10. Flags are condition variables named EXACTLY as the flag (has_tax, has_annual_discount, ...). condition_flag on a variable is an OPTIONAL skip guard: set it only on variables that cannot be computed unless the flag holds (a tax lookup for a state with no tax row). Leave amounts that feed a flag unguarded — never create a cycle.
 11. Variable, table and column names: snake_case identifiers. Every table row lists every column. Every variable object carries every field; use "" / [] / false for the ones its kind does not use.
 12. When the notes leave something open (tax basis, rush pricing, monthly vs annual), decide, record it in assumptions[] (text = what was unclear, resolved_as = what you did), and if a lead must NOT be auto-quoted add a review_rules[] entry (when: conditions, reason). A cap the notes state for the chosen option ("up to 100 products", "up to 8 pages") that a lead's number can exceed is exactly that: the sheet cannot price past it, so a review rule must fire (compare the lead input against the cap column).
-13. sample_inputs = the lead facts behind the SAMPLE QUOTATION (one entry per input variable: value for scalars, values for multi_choice). Running your sheet on sample_inputs must reproduce every sample value above exactly.
-14. Return only the JSON object.
+13. sample_inputs = the lead facts behind the SAMPLE QUOTATION (one entry per input variable, defaults do not count: value for scalars, values for multi_choice). Running your sheet on sample_inputs must reproduce every sample value above exactly.
+14. For every input decide what happens when the lead does not say it: required true (we ask them), or a default (we assume it: default for scalars, default_values for multi_choice) plus assume_when (one line telling the reader how to read the lead's words for this field, e.g. "a yearly plan means 12"), or neither (left blank). Never a default for a us_state input or for any input a tax lookup reads. Put the reasoning behind each default in assumptions[].
+15. Return only the JSON object.
 ${retry}`;
 }
 
@@ -157,6 +158,7 @@ export const pricingRulesResponseSchema: ResponseSchema = obj({
   variables: arr(obj({
     name: STR, label: STR, in_document: BOOL, unit: STR, condition_flag: STR, kind: STR,
     input_type: STR, options_table: STR, options_column: STR, options: STRS, required: BOOL,
+    default: STR, default_values: STRS, assume_when: STR,
     value: STR,
     table: STR, where: arr(condSchema), take: STR,
     op: STR, args: STRS,
@@ -182,6 +184,7 @@ Respond with ONLY a single JSON object — no markdown fences, no commentary —
       "name": string, "label": string, "in_document": boolean, "unit": "money" | "percent" | "integer" | "text" | "boolean" | "rows", "condition_flag": string,
       "kind": "input" | "constant" | "lookup" | "formula" | "condition" | "aggregate" | "rows",
       "input_type": "integer" | "choice" | "multi_choice" | "boolean" | "us_state" | "", "options_table": string, "options_column": string, "options": string[], "required": boolean,
+      "default": string, "default_values": string[], "assume_when": string,
       "value": string,
       "table": string, "where": [ { "column": string, "var": "", "op": string, "value_var": string, "value": string, "values": string[] } ], "take": string,
       "op": "add" | "sub" | "mul" | "div" | "min" | "max" | "", "args": string[],

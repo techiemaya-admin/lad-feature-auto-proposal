@@ -49,10 +49,15 @@ export function readableFormula(rules: PricingRules, f: Formula): string {
   return args.join(` ${FORMULA_SYMBOL[f.op]} `);
 }
 
+/** An input's default as the seller reads it in the chip and the ledger. */
+export const readableDefault = (v: Extract<RuleVariable, { kind: "input" }>) =>
+  Array.isArray(v.default) ? v.default.join(", ") || "none" : formatValue(v.unit, v.default);
+
 export function readable(rules: PricingRules, v: RuleVariable): string {
   switch (v.kind) {
     case "input":
-      return `asked from the lead${v.required ? "" : " (optional)"}`;
+      if (v.required || v.default === undefined) return `asked from the lead${v.required ? "" : " (optional)"}`;
+      return `assumes ${readableDefault(v)} unless the lead says otherwise`;
     case "constant":
       return formatValue(v.unit, v.value);
     case "lookup": {

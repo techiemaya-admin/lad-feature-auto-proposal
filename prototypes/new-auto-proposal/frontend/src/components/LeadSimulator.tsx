@@ -76,7 +76,7 @@ export const LeadSimulator: React.FC<LeadSimulatorProps> = ({ company, rules }) 
     setPhase("generating");
     setError(null);
     try {
-      setResult(await generateProposal(company.company_id, f.inputs, transcript(t)));
+      setResult(await generateProposal(company.company_id, f.inputs, transcript(t), f.assumed));
       setPhase("done");
     } catch (e) {
       setError({ message: e instanceof Error ? e.message : "Generating the proposal failed.", retry: () => runGenerate(f, t) });
@@ -87,7 +87,7 @@ export const LeadSimulator: React.FC<LeadSimulatorProps> = ({ company, rules }) 
   const runClarify = async (f: LeadFacts, t: Msg[]) => {
     setIsClarifying(true);
     try {
-      const email = await draftClarification(company.company_id, transcript(t), f.inputs, f.missing);
+      const email = await draftClarification(company.company_id, transcript(t), f.inputs, f.missing, f.assumed);
       setThread([...t, { from: "us", subject: email.subject, text: email.body }]);
     } catch (e) {
       setError({ message: e instanceof Error ? e.message : "Drafting the clarification email failed.", retry: () => runClarify(f, t) });
@@ -214,7 +214,7 @@ export const LeadSimulator: React.FC<LeadSimulatorProps> = ({ company, rules }) 
         {facts && phase !== "extracting" && (
           /* One column, read top to bottom: what we read -> what we assumed -> what it costs -> the document. */
           <div className="space-y-4">
-            <FactsForm fields={facts.fields} inputs={facts.inputs} missing={facts.missing} />
+            <FactsForm fields={facts.fields} inputs={facts.inputs} missing={facts.missing} assumed={facts.assumed} />
 
             {facts.assumptions.length > 0 && (
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 space-y-1.5">
@@ -412,13 +412,14 @@ export const LeadSimulator: React.FC<LeadSimulatorProps> = ({ company, rules }) 
 };
 
 // ---------------------------------------------------------------------------
-// Facts panel: what the thread said, one line per field; missing required fields glow amber.
-// Read-only on purpose: the lead's words are the only way a fact gets in.
+// Facts panel: what the thread said, one line per field; missing required fields glow amber, a default the
+// seller set for a silent lead reads "(Assumed)" in neutral. Read-only on purpose: the lead's words are the
+// only way a fact gets in.
 // ---------------------------------------------------------------------------
 
 const showValue = (v: Value | undefined) => (typeof v === "boolean" ? (v ? "Yes" : "No") : Array.isArray(v) ? v.join(", ") : String(v));
 
-const FactsForm: React.FC<{ fields: LeadField[]; inputs: Record<string, Value>; missing: string[] }> = ({ fields, inputs, missing }) => (
+const FactsForm: React.FC<{ fields: LeadField[]; inputs: Record<string, Value>; missing: string[]; assumed: string[] }> = ({ fields, inputs, missing, assumed }) => (
   <div className="rounded-xl border border-border/80 bg-muted/20 p-3.5">
     <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide mb-2.5">What the lead told us</p>
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
@@ -429,7 +430,7 @@ const FactsForm: React.FC<{ fields: LeadField[]; inputs: Record<string, Value>; 
           <div key={f.name} className="space-y-1 min-w-0">
             <span className="text-[11px] text-muted-foreground flex items-center gap-1.5">
               {f.label}
-              {!f.required && <span className="opacity-60">(optional)</span>}
+              {assumed.includes(f.name) ? <span className="opacity-60" title="The lead did not say it; this is the default set in the pricing rules">(Assumed)</span> : !f.required && <span className="opacity-60">(optional)</span>}
             </span>
             <p className={`h-8 flex items-center rounded-lg border bg-card px-2.5 text-xs truncate ${isMissing ? "border-amber-500/60 ring-2 ring-amber-500/15 text-amber-600 dark:text-amber-400 font-medium" : "border-border/80 text-foreground"} ${f.input_type === "integer" ? "font-mono tabular-nums" : ""}`}>
               {isMissing ? "not in the message" : isBlank(v) ? "—" : showValue(v)}

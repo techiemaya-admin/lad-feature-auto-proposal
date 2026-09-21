@@ -126,6 +126,79 @@ const TableFields: React.FC<{
   );
 };
 
+type InputVar = Extract<RuleVariable, { kind: "input" }>;
+/** The choices a choice / multi_choice input accepts (mirror of the backend's inputOptions). */
+const inputOptions = (v: InputVar, rules: PricingRules): string[] =>
+  v.options?.length ? v.options : (rules.tables.find((t) => t.id === v.options_table)?.rows ?? []).map((r) => String(r[v.options_column ?? ""] ?? ""));
+
+/** Ask / Assume / Blank is not stored: it is read off `required` + `default`. */
+const silentPolicy = (v: InputVar) => (v.required ? "ask" : v.default !== undefined ? "assume" : "blank");
+const without = (v: InputVar, key: "default" | "assume_when"): InputVar => { const c = { ...v }; delete c[key]; return c; };
+
+const tableColsOf = (rules: PricingRules, id: string) => (rules.tables.find((t) => t.id === id)?.columns ?? []).map((c) => ({ value: c.key, label: c.label }));
+
+const InputFields: React.FC<{ rules: PricingRules; v: InputVar; onChange: (v: RuleVariable) => void }> = ({ rules, v, onChange }) => {
+  const tableCols = (id: string) => tableColsOf(rules, id);
+  const options = inputOptions(v, rules);
+  const firstDefault = (): InputVar["default"] =>
+    v.input_type === "integer" ? 1 : v.input_type === "boolean" ? false : v.input_type === "multi_choice" ? options.slice(0, 1) : options[0] ?? "";
+  const setPolicy = (p: string) => {
+    const rest = without(v, "default");
+    onChange(p === "ask" ? { ...rest, required: true } : p === "assume" ? { ...rest, required: false, default: firstDefault() } : { ...rest, required: false });
+  };
+  // A state is never assumed (the backend rejects it), so the option is not offered.
+  const policies = [{ value: "ask", label: "ask them" }, ...(v.input_type === "us_state" ? [] : [{ value: "assume", label: "assume a value" }]), { value: "blank", label: "leave it blank" }];
+  const chosen = Array.isArray(v.default) ? v.default : [];
+  // ponytail: direct lookup refs only (where.value_var === this input), not the transitive graph.
+  const affects = rules.variables.filter((x) => x.kind === "lookup" && x.where.some((w) => w.value_var === v.name)).map((x) => x.label || x.name);
+
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <Field label="Answer type"><CustomDropdown size="xs" className="w-full" value={v.input_type} options={INPUT_TYPES} onChange={(input_type) => onChange({ ...without(v, "default"), input_type: input_type as InputVar["input_type"] })} /></Field>
+        <Field label="If the lead doesn't say it"><CustomDropdown size="xs" className="w-full" value={silentPolicy(v)} options={policies} onChange={setPolicy} /></Field>
+        {(v.input_type === "choice" || v.input_type === "multi_choice") && (
+          <>
+            <Field label="Options from"><CustomDropdown size="xs" className="w-full" value={v.options_table ?? ""} options={rules.tables.map((t) => ({ value: t.id, label: t.label }))} onChange={(options_table) => onChange({ ...v, options_table, options_column: tableCols(options_table)[0]?.value })} /></Field>
+            <Field label="Column"><CustomDropdown size="xs" className="w-full" value={v.options_column ?? ""} options={tableCols(v.options_table ?? "")} onChange={(options_column) => onChange({ ...v, options_column })} /></Field>
+          </>
+        )}
+      </div>
+      {v.default !== undefined && (
+        <Field label="Assume">
+          {v.input_type === "choice" ? (
+            <CustomDropdown size="xs" className="max-w-64" value={String(v.default)} options={options.map((o) => ({ value: o, label: o }))} onChange={(s) => onChange({ ...v, default: s })} />
+          ) : v.input_type === "multi_choice" ? (
+            <div className="flex flex-wrap gap-x-3 gap-y-1">
+              {options.map((o) => (
+                <label key={o} className="inline-flex items-center gap-1.5 text-xs text-foreground">
+                  <input type="checkbox" className="size-3.5" checked={chosen.includes(o)} onChange={(e) => onChange({ ...v, default: e.target.checked ? [...chosen, o] : chosen.filter((x) => x !== o) })} />
+                  {o}
+                </label>
+              ))}
+            </div>
+          ) : v.input_type === "boolean" ? (
+            <CustomDropdown size="xs" value={v.default ? "true" : "false"} options={[{ value: "true", label: "Yes" }, { value: "false", label: "No" }]} onChange={(s) => onChange({ ...v, default: s === "true" })} />
+          ) : (
+            <Commit mono className="max-w-32" value={String(v.default)} onCommit={(s) => onChange({ ...v, default: Math.round(Number(s)) || 0 })} />
+          )}
+          {affects.length > 0 && <p className="text-[11px] text-muted-foreground mt-1">affects: {affects.join(", ")}</p>}
+        </Field>
+      )}
+      <Field label="How to read the lead's words for this (optional)">
+        <textarea
+          defaultValue={v.assume_when ?? ""}
+          key={v.name}
+          rows={1}
+          placeholder='e.g. "a yearly plan means 12"'
+          onBlur={(e) => { const assume_when = e.target.value.trim(); if (assume_when !== (v.assume_when ?? "")) onChange(assume_when ? { ...v, assume_when } : without(v, "assume_when")); }}
+          className={`${box} h-auto py-1.5 resize-none`}
+        />
+      </Field>
+    </div>
+  );
+};
+
 interface LedgerTrayProps {
   rules: PricingRules;
   variable: RuleVariable;
@@ -139,7 +212,7 @@ interface LedgerTrayProps {
 export const LedgerTray: React.FC<LedgerTrayProps> = ({ rules, variable: v, sample, onChange, onDelete, onClose }) => {
   const varOptions = rules.variables.filter((x) => x.name !== v.name && x.unit !== "text" && x.unit !== "rows").map((x) => ({ value: x.name, label: x.label || x.name }));
   const flagOptions = [{ value: "", label: "always" }, ...rules.variables.filter((x) => x.kind === "condition" && x.name !== v.name).map((x) => ({ value: x.name, label: `only when ${x.label || x.name}` }))];
-  const tableCols = (id: string) => (rules.tables.find((t) => t.id === id)?.columns ?? []).map((c) => ({ value: c.key, label: c.label }));
+  const tableCols = (id: string) => tableColsOf(rules, id);
 
   return (
     <div className="space-y-3">
@@ -254,18 +327,7 @@ export const LedgerTray: React.FC<LedgerTrayProps> = ({ rules, variable: v, samp
         </div>
       )}
 
-      {v.kind === "input" && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <Field label="Answer type"><CustomDropdown size="xs" className="w-full" value={v.input_type} options={INPUT_TYPES} onChange={(input_type) => onChange({ ...v, input_type: input_type as typeof v.input_type })} /></Field>
-          <Field label="Required"><CustomDropdown size="xs" className="w-full" value={v.required ? "yes" : "no"} options={[{ value: "yes", label: "yes" }, { value: "no", label: "optional" }]} onChange={(s) => onChange({ ...v, required: s === "yes" })} /></Field>
-          {(v.input_type === "choice" || v.input_type === "multi_choice") && (
-            <>
-              <Field label="Options from"><CustomDropdown size="xs" className="w-full" value={v.options_table ?? ""} options={rules.tables.map((t) => ({ value: t.id, label: t.label }))} onChange={(options_table) => onChange({ ...v, options_table, options_column: tableCols(options_table)[0]?.value })} /></Field>
-              <Field label="Column"><CustomDropdown size="xs" className="w-full" value={v.options_column ?? ""} options={tableCols(v.options_table ?? "")} onChange={(options_column) => onChange({ ...v, options_column })} /></Field>
-            </>
-          )}
-        </div>
-      )}
+      {v.kind === "input" && <InputFields rules={rules} v={v} onChange={onChange} />}
 
       {sample !== undefined && (
         <p className="text-[11px] text-muted-foreground">

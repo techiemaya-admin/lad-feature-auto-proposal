@@ -35,7 +35,8 @@ export type InputType = "integer" | "choice" | "multi_choice" | "boolean" | "us_
 interface VariableBase { name: string; label: string; in_document: boolean; unit: Unit; /** "" = none; when the flag is false the variable is skipped. */ condition_flag: string }
 
 export type RuleVariable = VariableBase & (
-  | { kind: "input"; input_type: InputType; options_table?: string; options_column?: string; options?: string[]; required: boolean }
+  /** When the lead is silent: required → ask; default set → assume it; neither → leave blank. assume_when = a one-line reading hint. */
+  | { kind: "input"; input_type: InputType; options_table?: string; options_column?: string; options?: string[]; required: boolean; default?: Cell | string[]; assume_when?: string }
   | { kind: "constant"; value: Cell }
   | { kind: "lookup"; table: string; where: Where[]; take: string }
   | ({ kind: "formula" } & Formula)

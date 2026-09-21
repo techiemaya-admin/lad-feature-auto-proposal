@@ -746,6 +746,27 @@ export function validate(
               `${v.name}: a ${v.input_type} input needs options or an options_table + options_column`,
             );
         }
+        if (v.default !== undefined) {
+          // The default is fed to the calculator untouched by the model, so it must already be a clean answer.
+          const d = coerceInput(v, v.default, rules);
+          const opts = inputOptions(v, rules);
+          const listed = (x: unknown) => opts.some((o) => norm(o) === norm(String(x)));
+          const taxRead = (rules.variables ?? []).some((x) => x.kind === "lookup" && tables.get(x.table)?.kind === "taxes" && x.where.some((w) => w.value_var === v.name));
+          const bad =
+            taxRead ? true
+            : v.input_type === "integer" ? typeof v.default !== "number"
+            : v.input_type === "boolean" ? typeof v.default !== "boolean"
+            : v.input_type === "us_state" ? true
+            : v.input_type === "choice" ? !listed(d)
+            : !Array.isArray(d) || d.length === 0 || !d.every(listed);
+          if (bad)
+            err(
+              `${p}.default`,
+              v.input_type === "us_state" || taxRead
+                ? `${v.name}: ${taxRead ? "a tax lookup reads this" : "a state"} — it is never assumed, the lead must say it`
+                : `${v.name}: default ${JSON.stringify(v.default)} is not a valid ${v.input_type} answer${opts.length ? ` (one of ${opts.join(" | ")})` : ""}`,
+            );
+        }
         break;
       case "constant":
         break;

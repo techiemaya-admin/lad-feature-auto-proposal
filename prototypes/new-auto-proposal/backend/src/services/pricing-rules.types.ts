@@ -89,7 +89,11 @@ export type RuleVariable = VariableBase &
         options_table?: string;
         options_column?: string;
         options?: string[];
+        /** When the lead is silent: required → ask; default set → assume it; neither → leave blank. */
         required: boolean;
+        default?: Cell | string[];
+        /** One line telling the extractor how to read the lead's words for this field. */
+        assume_when?: string;
       }
     | { kind: "constant"; value: Cell }
     | { kind: "lookup"; table: string; where: Where[]; take: string }
@@ -229,6 +233,9 @@ export interface AiVariable {
   options_column: string;
   options: string[];
   required: boolean;
+  default: string;
+  default_values: string[];
+  assume_when: string;
   value: string;
   table: string;
   where: AiWhere[];
@@ -358,12 +365,15 @@ export function fromWire(w: AiPricingRules): PricingRules {
         ...(v.where?.length ? { where: where() } : {}),
       });
       switch (v.kind) {
-        case "input":
+        case "input": {
+          const def = fromWireValue({ value: v.default, values: v.default_values });
           return {
             ...base,
             kind: "input",
             input_type: v.input_type as InputType,
             required: Boolean(v.required),
+            ...(def === "" ? {} : { default: def as Cell | string[] }),
+            ...(isBlank(v.assume_when) ? {} : { assume_when: v.assume_when }),
             ...(isBlank(v.options_table)
               ? {}
               : { options_table: v.options_table }),
@@ -372,6 +382,7 @@ export function fromWire(w: AiPricingRules): PricingRules {
               : { options_column: v.options_column }),
             ...(v.options?.length ? { options: v.options } : {}),
           };
+        }
         case "constant":
           return {
             ...base,
@@ -463,6 +474,9 @@ const EMPTY_VAR: Omit<
   options_column: "",
   options: [],
   required: false,
+  default: "",
+  default_values: [],
+  assume_when: "",
   value: "",
   table: "",
   where: [],
@@ -512,6 +526,9 @@ export function toWire(r: PricingRules): AiPricingRules {
             options_column: v.options_column ?? "",
             options: v.options ?? [],
             required: v.required,
+            default: Array.isArray(v.default) ? "" : cellText(v.default ?? null),
+            default_values: Array.isArray(v.default) ? v.default : [],
+            assume_when: v.assume_when ?? "",
           });
           break;
         case "constant":

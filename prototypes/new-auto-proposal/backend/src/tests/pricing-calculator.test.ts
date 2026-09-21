@@ -196,6 +196,15 @@ test("validate: domain-level errors with paths", () => {
   // an aggregate over all rows needs no key column (the model leaves it "" — seen live on every first attempt)
   assert.deepEqual(errs((r) => { (r.variables.find((v) => v.name === "tax_match_count") as any).key_column = ""; }), []);
   assert.match(messages(errs((r) => { (r.variables.find((v) => v.name === "addon_items") as any).key_column = ""; }, "co3_dev")), /addon_items.*key column/);
+  // a silent lead gets the default straight from code, so it must be a listed option / a number / never a state
+  assert.match(messages(errs((r) => { (r.variables.find((v) => v.name === "selected_tier") as any).default = "Platinum"; }, "co2_msp")), /selected_tier.*"Platinum".*Essential/);
+  assert.deepEqual(errs((r) => { (r.variables.find((v) => v.name === "selected_tier") as any).default = "standard"; }, "co2_msp"), []);
+  assert.match(messages(errs((r) => { (r.variables.find((v) => v.name === "client_state") as any).default = "TX"; })), /client_state.*never assumed/);
+  // an input a tax lookup reads is never assumed either, whatever its type
+  assert.match(messages(errs((r) => {
+    const s = r.variables.find((v) => v.name === "client_state") as any;
+    s.input_type = "choice"; s.options = ["TX", "OH"]; s.default = "TX";
+  })), /client_state: a tax lookup reads this/);
 });
 
 test("formatLike renders a value in the sample's own notation", () => {
