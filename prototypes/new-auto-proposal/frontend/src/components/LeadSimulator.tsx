@@ -261,7 +261,7 @@ export const LeadSimulator: React.FC<LeadSimulatorProps> = ({ company, rules }) 
                     <Download className="size-3.5 mr-1.5" /> Download .docx
                   </a>
                   {result.files.pdf && (
-                    <a href={result.files.pdf} className={`${PRIMARY} inline-flex items-center px-4 py-2 text-sm font-medium`}>
+                    <a href={`${result.files.pdf}&download=1`} className={`${PRIMARY} inline-flex items-center px-4 py-2 text-sm font-medium`}>
                       <Download className="size-3.5 mr-1.5" /> Download .pdf
                     </a>
                   )}

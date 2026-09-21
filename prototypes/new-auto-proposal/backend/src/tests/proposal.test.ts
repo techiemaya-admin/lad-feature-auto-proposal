@@ -190,7 +190,13 @@ test("Proposal routes", async (t) => {
 
     const dl = await request(app).get(res.body.files.docx);
     assert.equal(dl.status, 200);
-    assert.match(dl.headers["content-disposition"], /Proposal - Bloom & Co\.docx/);
+    assert.match(dl.headers["content-disposition"], /attachment.*Proposal - Bloom & Co\.docx/);
+    // The preview URL must render in the iframe, the button's must save to disk.
+    const preview = await request(app).get(res.body.files.pdf);
+    assert.equal(preview.status, 200);
+    assert.match(preview.headers["content-disposition"], /^inline; filename="Proposal - Bloom & Co\.pdf"$/);
+    assert.match(preview.headers["content-type"], /application\/pdf/);
+    assert.match((await request(app).get(`${res.body.files.pdf}&download=1`)).headers["content-disposition"], /attachment.*Proposal - Bloom & Co\.pdf/);
     assert.equal((await request(app).get("/api/companies/co1_seo/proposal/download?format=txt")).status, 400);
   });
 

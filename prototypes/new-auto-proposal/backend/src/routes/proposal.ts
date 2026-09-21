@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import path from "node:path";
 import { Router, Request, Response } from "express";
 import { draftClarification } from "../services/clarification-drafter.service.js";
 import { extractLeadFacts, leadFields, missingFields } from "../services/lead-extractor.service.js";
@@ -121,15 +122,19 @@ router.post("/:id/proposal/generate", async (req: Request, res: Response): Promi
   }
 });
 
-// GET /api/companies/:id/proposal/download?format=docx|pdf[&client=…]
+// GET /api/companies/:id/proposal/download?format=docx|pdf[&client=…][&download=1]
+// The PDF is served inline by default so the Stage 5 <iframe> renders it; the download buttons ask for
+// `download=1` and get the attachment. A .docx has nothing to preview, so it is always an attachment.
 router.get("/:id/proposal/download", (req: Request, res: Response): void => {
   const format = req.query.format === "pdf" ? "pdf" : req.query.format === "docx" ? "docx" : null;
   if (!format) return void fail(res, 400, "format must be docx or pdf");
-  const file = proposalFilePath(req.params.id, format);
+  const file = path.resolve(proposalFilePath(req.params.id, format));
   if (!fs.existsSync(file)) return void fail(res, 404, `No proposal.${format} has been generated for this company yet`);
   // ponytail: nothing is persisted, so the client name rides on the URL the generate call handed out.
   const client = String(req.query.client ?? "").replace(/[^\w &'.,-]/g, "").trim() || req.params.id;
-  res.download(file, `Proposal - ${client}.${format}`);
+  const filename = `Proposal - ${client}.${format}`;
+  if (format === "docx" || req.query.download === "1") return void res.download(file, filename);
+  res.sendFile(file, { headers: { "Content-Disposition": `inline; filename="${filename}"` } });
 });
 
 export default router;

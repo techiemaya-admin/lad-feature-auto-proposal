@@ -52,7 +52,7 @@ Steps inside `proposal-generator.service.ts`:
 6. headless `soffice` → `storage/<id>/proposal.pdf`; on error `pdf: null`, `pdf_error`.
 7. Log `proposal-payload` and `narrative-raw` artifacts.
 
-`GET /api/companies/:id/proposal/download?format=docx|pdf` — `Content-Disposition: attachment; filename="Proposal - <client_name>.<ext>"`; 404 with a message when the file is absent.
+`GET /api/companies/:id/proposal/download?format=docx|pdf[&download=1]` — the PDF is served `inline` (so the Stage 5 `<iframe>` renders it instead of downloading); `download=1`, and any `.docx`, get `Content-Disposition: attachment; filename="Proposal - <client_name>.<ext>"`. 404 with a message when the file is absent.
 
 ### 1.4 Dates (`fillDates`)
 Date customer inputs = `data_type === "date"` **or** (fallback, `ponytail:`) a `string` whose `sample_value` starts with a parseable month-name date. Earliest sample = anchor → `today`; every other date = today + (sample − anchor). Output keeps the sample's format (`September 7, 2026`) and any trailing suffix (` (14 days)`), suffix left verbatim. Pure function, unit-tested.
@@ -77,7 +77,7 @@ New files: `services/lead-extractor.service.ts` (schema builder + call + `missin
 - `components/LeadSimulator.tsx`, rendered by `CompanyProfileCard.tsx` under the pricing deck when `company.stage === "lead_simulation"`.
 - Textarea (Stage 1 fluid pattern, starts with `company.sample_lead_text`) + `[ Generate proposal ➔ ]`. Shimmer bar (`.shimmer-bar`) during extract / clarify / generate; explicit error panel with retry, never a stuck shimmer.
 - Flow: extract → if `missing.length` → facts form with the missing fields highlighted + clarification email card (subject, body, Copy) → user fills → `[ Generate ]`; else auto-continue to generate.
-- Split view (`lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]`): left = facts form (inputs by type: integer, boolean switch, choice dropdown, multi-choice chips, state/text) + amber assumptions strip + numbers ledger (in-document money/percent/integer variables in `evaluation.order`, `font-mono tabular-nums`, last money value emphasised) or the "Declined to auto-quote" panel; right = `<iframe src={files.pdf}>` or "PDF preview unavailable — download the .docx" + `[ Download .docx ]` `[ Download .pdf ]` (`bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-xs btn-tactile`).
+- Split view (`lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]`): left = facts form (inputs by type: integer, boolean switch, choice dropdown, multi-choice chips, state/text) + amber assumptions strip + numbers ledger (in-document money/percent/integer variables in `evaluation.order`, `font-mono tabular-nums`, last money value emphasised) or the "Declined to auto-quote" panel; right = `<iframe src={files.pdf}>` (inline; the download button appends `&download=1`) or "PDF preview unavailable — download the .docx" + `[ Download .docx ]` `[ Download .pdf ]` (`bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-xs btn-tactile`).
 - `services/api.ts`: `extractLead`, `draftClarification`, `generateProposal`; `types/proposal.ts` for the contracts. `DevDock.tsx`: stage label already covers `lead_simulation`; the logs tab picks up the new artifacts automatically.
 
 ## 5. Sub-feature D — doc drift to flag (do NOT apply without user confirmation)
