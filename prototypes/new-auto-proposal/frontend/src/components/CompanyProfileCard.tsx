@@ -245,7 +245,7 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
         />
       )}
 
-      {/* Stage 5: Lead Simulator — a lead message in, a proposal out */}
+      {/* Stage 5: Check & Generate Proposal — a lead message in, a proposal out */}
       {company.working_state?.stage === "lead_simulation" && pricingRules && (
         <LeadSimulator company={company} rules={pricingRules} />
       )}

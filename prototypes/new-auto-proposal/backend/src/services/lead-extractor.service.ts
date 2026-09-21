@@ -101,6 +101,7 @@ ${fields.map(line).join("\n")}
 5. boolean fields: true only when the message says so ("we'd rather pay once a year" → true); null when unmentioned.
 6. Servers, kiosks or shared machines beyond one device per person count as extra devices.
 7. assumptions: one short sentence per judgement call you made (range picked, inferred choice, counted devices). Empty when every value was explicit.
+8. The message may be a thread (parts headed "From: the lead" / "From: ${company.company_name}"). Only the lead's parts carry facts; our parts only ask. When a later part from the lead changes or adds to an earlier one, the later part wins.
 `;
 }
 

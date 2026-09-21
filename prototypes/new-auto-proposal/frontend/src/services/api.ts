@@ -337,7 +337,12 @@ export function draftClarification(companyId: string, leadText: string, inputs: 
   return rulesRequest(`${companyId}/lead/clarify`, "draft the clarification email", json({ lead_text: leadText, inputs, missing }));
 }
 
-/** Facts in, documents out — the email is drafter context only, never re-extracted. */
+/** The simulator playing the lead: `leadText` is the whole thread, ending with our ask. */
+export function draftLeadReply(companyId: string, leadText: string): Promise<ClarificationEmail> {
+  return rulesRequest(`${companyId}/lead/reply`, "draft the lead's reply", json({ lead_text: leadText }));
+}
+
+/** Facts in, documents out — the thread is drafter context only, never re-extracted. */
 export function generateProposal(companyId: string, inputs: Record<string, Value>, leadText: string): Promise<ProposalResult> {
   return rulesRequest(`${companyId}/proposal/generate`, "generate the proposal", json({ inputs, lead_text: leadText }));
 }

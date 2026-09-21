@@ -8,8 +8,9 @@ import type { LeadField } from "./lead-extractor.service.js";
 import type { Value } from "./pricing-rules.types.js";
 
 /**
- * Stage 5, missing-fact branch: a short reply asking the lead for what the message left out.
- * Never sent — shown with a Copy button. Plan: docs/plans/06-lead-simulator.md §1.2.
+ * Stage 5, missing-fact branch: a short reply asking the lead for what the message left out, and — for the
+ * simulator — the lead's answer to it. Neither is sent; the thread of both is what the extractor re-reads
+ * until nothing is missing. Plan: docs/plans/06-lead-simulator.md §1.2.
  */
 
 export interface ClarificationInput {
@@ -60,6 +61,24 @@ ${missing.map((n) => `- ${label(n)}`).join("\n")}
 2. Do not quote or estimate a price. Do not promise a timeline.
 3. Sign off as the ${company.company_name} team. Plain text, short paragraphs, no markdown.
 4. subject: a short reply-style subject line.
+5. The message may already be a thread (parts headed "From: the lead" / "From: ${company.company_name}"). Never re-ask what the lead answered in a later part.
+`;
+}
+
+/** The simulator playing the lead: answers the last ask in the thread, in the lead's own voice. */
+export function buildReplyPrompt(company: CompanyRow, leadText: string): string {
+  return `
+You play the lead who wrote to "${company.company_name}". Below is the thread so far; its last part is ${company.company_name}'s reply asking you for details.
+
+==================== THE THREAD ====================
+"""
+${leadText}
+"""
+
+==================== RULES ====================
+1. Answer every question in that last part, plainly, one short line each. Invent a plausible specific only where the thread has none; never contradict what the lead already said.
+2. Same voice as the lead's earlier parts. One-line greeting at most, no pricing talk, no markdown.
+3. subject: a short "Re:" subject line.
 `;
 }
 
@@ -81,8 +100,14 @@ export function setClarifyModelCall(fn: ModelCall | null): void {
 }
 const callModel: ModelCall = (prompt) => (modelCall ?? ((p) => generateJson<ClarificationEmail>(p, responseSchema, JSON_SHAPE)))(prompt);
 
-export async function draftClarification(input: ClarificationInput): Promise<ClarificationEmail> {
-  const raw = await callModel(buildClarifyPrompt(input));
-  logPipelineArtifact(input.company.company_id, "clarify-raw.json", { ai: getAISettings(), ...raw });
+async function draftEmail(company: CompanyRow, prompt: string, artifact: string): Promise<ClarificationEmail> {
+  const raw = await callModel(prompt);
+  logPipelineArtifact(company.company_id, artifact, { ai: getAISettings(), ...raw });
   return { subject: String(raw.subject ?? ""), body: String(raw.body ?? "") };
 }
+
+export const draftClarification = (input: ClarificationInput): Promise<ClarificationEmail> =>
+  draftEmail(input.company, buildClarifyPrompt(input), "clarify-raw.json");
+
+export const draftLeadReply = (company: CompanyRow, leadText: string): Promise<ClarificationEmail> =>
+  draftEmail(company, buildReplyPrompt(company, leadText), "lead-reply-raw.json");

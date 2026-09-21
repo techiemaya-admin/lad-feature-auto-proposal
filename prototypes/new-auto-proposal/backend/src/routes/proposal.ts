@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Router, Request, Response } from "express";
-import { draftClarification } from "../services/clarification-drafter.service.js";
+import { draftClarification, draftLeadReply } from "../services/clarification-drafter.service.js";
 import { extractLeadFacts, leadFields, missingFields } from "../services/lead-extractor.service.js";
 import { loadCompany, loadStage2Context } from "../services/pricing-compiler.service.js";
 import type { PricingRulesState } from "../services/pricing-rules.types.js";
@@ -76,6 +76,20 @@ router.post("/:id/lead/clarify", async (req: Request, res: Response): Promise<vo
     res.json({ success: true, ...email });
   } catch (error) {
     fail(res, 500, error instanceof Error ? error.message : "Failed to draft the clarification email");
+  }
+});
+
+// POST /api/companies/:id/lead/reply — body { lead_text: the thread, ending with our ask } → { subject, body }
+// The simulator playing the lead; the caller appends it to the thread and re-extracts.
+router.post("/:id/lead/reply", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const s5 = loadStage5(req, res);
+    if (!s5) return;
+    const leadText = leadTextOf(req, res);
+    if (leadText === null) return;
+    res.json({ success: true, ...(await draftLeadReply(s5.company, leadText)) });
+  } catch (error) {
+    fail(res, 500, error instanceof Error ? error.message : "Failed to draft the lead's reply");
   }
 });
 

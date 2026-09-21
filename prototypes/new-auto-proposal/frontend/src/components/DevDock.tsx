@@ -33,7 +33,7 @@ interface DevDockProps {
 
 const stageLabel = (stage: string | undefined, hasTemplate: boolean, locked: boolean) =>
   stage === "lead_simulation"
-    ? "Stage 5: Lead Simulation"
+    ? "Stage 5: Check & Generate Proposal"
     : stage === "pricing_engine"
     ? "Stage 4: Pricing Engine"
     : hasTemplate

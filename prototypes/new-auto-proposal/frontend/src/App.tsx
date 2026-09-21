@@ -338,7 +338,7 @@ export function App() {
     try {
       const updated = await proceedToLeadSimulation(currentCompany.company_id);
       setCurrentCompany(updated);
-      setNotification({ type: "success", message: `Rules confirmed for ${updated.company_name}. Ready for Stage 5: Lead Simulation.` });
+      setNotification({ type: "success", message: `Rules confirmed for ${updated.company_name}. Ready for Stage 5: Check & Generate Proposal.` });
     } catch (err) {
       setNotification({ type: "error", message: err instanceof Error ? err.message : "Failed to proceed" });
     } finally {

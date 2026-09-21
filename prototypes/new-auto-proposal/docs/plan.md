@@ -12,7 +12,7 @@ This prototype (`prototypes/new-auto-proposal`) builds and proves an end-to-end 
 3. **Variable Detection & Taxonomy:** Discover scalar entities, pricing numbers, table loops, and dynamic paragraphs with human-in-the-loop review.
 4. **Non-Destructive Word Mutation:** Use `docxmlater` to replace text anchors and collapse repeating table rows into dynamic loop syntax while preserving headers and summary footers.
 5. **Interactive Pricing Engine:** Compile natural pricing notes into visual rule cards and deterministic JSON execution logic.
-6. **Proposal Generation & Verification:** Ingest an unstructured lead message, extract structured facts (editable; a missing fact drafts a clarification email), compute exact totals deterministically (a review rule declines), draft narrative paragraphs as `{tag}` placeholders that code fills, render the `.docx` with `easy-template-x` and a PDF with headless LibreOffice.
+6. **Proposal Generation & Verification:** Ingest an unstructured lead message, extract structured facts (read-only; a missing fact drafts a clarification email and opens a reply loop — the thread is re-read until nothing is missing), compute exact totals deterministically (a review rule declines), draft narrative paragraphs as `{tag}` placeholders that code fills, render the `.docx` with `easy-template-x` and a PDF with headless LibreOffice.
 
 ---
 
@@ -52,13 +52,13 @@ The system runs a **5-stage sequential pipeline** anchored by an **ambient shell
   Gemini compiles rules from: Prompt Spec + Confirmed Variables + Sample Quote Values
   ├── Interactive visual cards for Tiers, Breakpoints, Add-ons, and Taxes
   ├── Pure JavaScript deterministic math execution engine (100% calculation precision)
-  └── [Proceed to Lead Simulation ➔]
+  └── [Proceed to Check & Generate Proposal ➔]
             │
             ▼
 [STAGE 5: LEAD SIMULATION & VERIFICATION]
   Inbound lead message textarea, prefilled with the company's dev-only sample_lead_text
   ├── POST /lead/extract → structured facts per the rules' inputs (+ client name): null = not said, assumptions[]
-  │     └── required fact missing → editable facts form (field highlighted) + POST /lead/clarify email (Copy, never sent)
+  │     └── required fact missing → read-only facts panel (field highlighted) + POST /lead/clarify ask → reply box (typed, or POST /lead/reply drafts it as the lead) → re-extract the thread
   ├── POST /proposal/generate (facts in, never the email): evaluate → needs_review → "Declined to auto-quote", no file
   │     ├── buildProposalPayload (every pricing tag, has_* flags, loops, tier matrix) + customer facts + fillDates (code)
   │     ├── one model call drafts every ai_generated paragraph as {tag} placeholders → code substitutes from the payload
@@ -132,7 +132,7 @@ Model choice: provider/model are persisted in `app_settings` (default `deepseek-
 - Outputs the finalized proposal document ready for download and browser preview.
 
 ### 4.5 Stage 5 Generation (`proposal-generator.service.ts`)
-- `POST /api/companies/:id/lead/extract` (`{lead_text}` → `{fields, inputs, missing, assumptions}`), `POST /lead/clarify` (`{lead_text, inputs, missing}` → `{subject, body}`), `POST /proposal/generate` (`{inputs, lead_text}` → `{evaluation, payload, narrative, files, pdf_error?}` or `{declined: true, needs_review}`; 400 when a required fact is missing, 409 before `stage === "lead_simulation"`), `GET /proposal/download?format=docx|pdf`.
+- `POST /api/companies/:id/lead/extract` (`{lead_text}` → `{fields, inputs, missing, assumptions}`), `POST /lead/clarify` (`{lead_text, inputs, missing}` → `{subject, body}`), `POST /lead/reply` (`{lead_text: thread}` → `{subject, body}`, the model playing the lead), `POST /proposal/generate` (`{inputs, lead_text}` → `{evaluation, payload, narrative, files, pdf_error?}` or `{declined: true, needs_review}`; 400 when a required fact is missing, 409 before `stage === "lead_simulation"`), `GET /proposal/download?format=docx|pdf`.
 - Facts are built per company from the rules' `input` variables plus the Stage 2 customer inputs the rules do not define; dates (`data_type: "date"` or a month-name sample) and duration-shaped samples ("14 days") are never asked — `fillDates` moves the earliest sample date to today and keeps every other date's offset, format and suffix.
 - The drafter gets the voice-drawer notes, the lead message, the facts, every payload tag with its value and every boolean flag with its label; it returns one string per `ai_generated` paragraph; `{tag}` placeholders are substituted in code, unknown tags stripped and reported in `narrative[name].unknown_tags`.
 - PDF via `soffice --headless --convert-to pdf` (`SOFFICE_PATH`, persistent profile in the temp dir); a failure returns the `.docx` with `pdf: null`. Every raw model response and the final payload land in `logs/<company>/` for the Dev Dock. Full design: [docs/plans/06-lead-simulator.md](plans/06-lead-simulator.md).
@@ -213,5 +213,5 @@ Verified against `logs/*/variables-raw.json` and `company_variables` on 2026-09-
 | **Phase 3** | **Categorized Variable Review Chip-Deck** | Review dynamic variables in 3 buckets | Gemini variable extraction, 3-bucket chip-deck (Customer Inputs, Pricing Placeholders, Paragraphs), AST-verified custom chip modal, dropdown bucket switcher, [Fixed \| AI] paragraph toggle. |
 | **Phase 4** | **docxmlater Mutation & Minimal Checkpoint** | Mutate .docx AST & confirm template | `docxmlater` replacement pipeline, smart table row collapse, compact inline checkpoint card with tag stats and optional `docx-preview` modal. |
 | **Phase 5** | **Pricing Compiler & Rule Cards** | Compile spec to visual & executable rules | Gemini rule compiler using Prompt + Variables + Sample Quote Values, interactive rule cards UI, collapsible JSON editor, deterministic JS math engine. |
-| **Phase 6** | **Lead Simulator & Proposal Verification** | Generate proposal from lead message & verify math | Prefilled lead textarea, structured fact extraction with an editable facts form and clarification email on a missing fact, deterministic numbers ledger, placeholder-only narrative drafting, `easy-template-x` + LibreOffice PDF generation with iframe preview and downloads, declined panel on review rules. |
+| **Phase 6** | **Check & Generate Proposal** | Generate proposal from lead message & verify math | Prefilled lead textarea, structured fact extraction with a read-only facts panel and a clarification-reply loop on a missing fact, deterministic numbers ledger, placeholder-only narrative drafting, `easy-template-x` + LibreOffice PDF generation with iframe preview and downloads, declined panel on review rules. |
 | **Auxiliary** | **Ambient Shell Enhancements** | Independent settings & developer tools | Slide-Over Configuration Drawer (free-text voice notes, reference proposal, clarification-email notes, mock inbox link) and Bottom Developer Dock (AnyDoc MD, Variables JSON, Rule Schema JSON, pipeline logs + run artifacts). |

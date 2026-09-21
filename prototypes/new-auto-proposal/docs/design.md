@@ -62,15 +62,16 @@ The Rush Away Auto-Proposal onboarding workflow is an **agentic configuration wo
 │  - Assumptions strip → one editable card per table → "What we ask the     │
 │    lead" → calculation ledger (readable rule · sample · quotation · ✓/✗)  │
 │  - Tap a ledger row → tray edits kind / operator / operands / conditions  │
-│  - Footer "N of M match" · [Regenerate] · [Proceed to Lead Simulation ➔]  │
+│  - Footer "N of M match" · [Regenerate] · [Proceed to Check & Generate    │
+│    Proposal ➔]                                                            │
 └───────────────────────────────────────────────────────────────────────────┘
                                       │
-               User clicks [Proceed to Lead Simulation ➔]
+          User clicks [Proceed to Check & Generate Proposal ➔]
                                       ▼
 ┌───────────────────────────────────────────────────────────────────────────┐
-│  STAGE 5: LEAD SIMULATION & PROPOSAL VERIFICATION                         │
+│  STAGE 5: CHECK & GENERATE PROPOSAL                                       │
 │  - Lead textarea prefilled with the sample message → [Generate proposal]  │
-│  - Facts read from the message (editable form; missing → clarification)   │
+│  - Facts read from the message (read-only; missing → ask / reply loop)    │
 │  - Deterministic numbers ledger; review rule → "Declined to auto-quote"   │
 │  - Placeholder narrative → easy-template-x .docx → LibreOffice PDF        │
 │  - PDF preview in an iframe + .docx / .pdf downloads                       │
@@ -166,16 +167,16 @@ The user needs three things here: did it work, is anything wrong, what's next. T
    - **Elevation & Layout:** Cards are pure elevated white (`bg-card`) with crisp 1px borders and `hover:-translate-y-0.5 transition-transform duration-100`.
    - **Input Editing:** Numeric cells enforce `tabular-nums`, commit on blur / Enter, and use clean focus rings (`focus-visible:ring-2 focus-visible:ring-blue-500/20`), avoiding layout jitter.
    - **No Technical Jargon:** the deck never shows JSON; the raw `PricingRules` live in the Dev Dock.
-   - **Primary Action:** footer "N of M match the quotation", ghost `[Regenerate]`, theme-blue `[ Proceed to Lead Simulation ➔ ]` (`bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-xs btn-tactile`), disabled while validation errors exist.
+   - **Primary Action:** footer "N of M match the quotation", ghost `[Regenerate]`, theme-blue `[ Proceed to Check & Generate Proposal ➔ ]` (`bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-xs btn-tactile`), disabled while validation errors exist.
 
 ---
 
-### 3.5 Stage 5: Lead Simulator & Proposal Verification (`LeadSimulator.tsx`)
+### 3.5 Stage 5: Check & Generate Proposal (`LeadSimulator.tsx`)
 
-Rendered under the pricing deck once `working_state.stage === "lead_simulation"`. Header: inbox icon (emerald tick once a proposal exists), `Lead simulator`, subtitle `Paste what a lead sent you. The numbers come from the rules above, the words from the drafter.`
+Rendered under the pricing deck once `working_state.stage === "lead_simulation"`. Header: inbox icon (emerald tick once a proposal exists), `Check & Generate Proposal`, subtitle `Paste what a lead sent you. The numbers come from the rules above, the words from the drafter.`
 
 1. **Lead message:** the Stage 1 fluid textarea (auto-resize, `p-1`, `overflow-y-auto max-h-72 resize-none`, no dividers), prefilled with the company's dev-only `sample_lead_text` and re-synced on company switch; one primary `[ Generate proposal ➔ ]` (`bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-xs btn-tactile`) that runs extract → generate back to back. The `.shimmer-bar` runs on the card edge while any call is in flight; every failure is an explicit panel with `Try again`, never a stuck shimmer.
-2. **Facts form (`What the lead told us`):** one control per fact by type — number input, `Yes / No` toggle, choice dropdown, multi-choice chips, state / text. A required fact the message did not answer is labelled `· not in the message` with an amber ring; the run stops here with `[ Generate ➔ ]` disabled until it is filled, and a **clarification card** (`Reply to ask for it (not sent)`: subject, body, `Copy`) drafts the reply. The form stays editable after a run so the rep can change a fact and generate again.
+2. **Facts panel (`What the lead told us`):** one read-only value row per fact (booleans as `Yes / No`, lists comma-joined, integers `tabular-nums`). A required fact the thread did not answer reads `not in the message` in an amber ring; the run stops here and a **conversation card** drafts the ask (`We asked`: subject, body, `Copy` on the latest one) and opens a reply box (`What the lead wrote back…`) with `[ Let the model answer as the lead ]` — which fills the box, still editable — and `[ Send reply & re-read ]`. The reply joins the thread as `The lead replied`; the whole thread is re-read, facts are replaced outright (the lead's latest word wins, there are no hand edits), and the loop either drafts the next ask or generates on its own once nothing is missing.
 3. **Assumptions strip:** amber `Read between the lines:` list of the extractor's judgement calls (range picked, inferred tier, counted devices).
 4. **Numbers ledger (`The numbers`):** the in-document money / percent / integer values in calculation order, `font-mono tabular-nums`, the last money value emphasised. No benchmark banner on Stage 5.
 5. **Declined panel:** `Declined to auto-quote` (destructive tint, shield icon) listing the review-rule reasons; no document is written.

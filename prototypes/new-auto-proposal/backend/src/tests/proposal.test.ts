@@ -152,6 +152,24 @@ test("Proposal routes", async (t) => {
     assert.equal((await request(app).post("/api/companies/co1_seo/lead/clarify").send({ lead_text: lead, inputs: facts, missing: [] })).status, 400);
   });
 
+  await t.test("reply plays the lead against the thread so the extractor can re-read it", async () => {
+    const thread = `From: the lead\n${lead}\n\nFrom: Northstar\nSubject: Re: local SEO\nWhich state are the clinics in?`;
+    let seen = "";
+    setClarifyModelCall(async (prompt) => { seen = prompt; return { subject: "Re: Re: local SEO", body: "Texas, both of them." }; });
+    const res = await request(app).post("/api/companies/co1_seo/lead/reply").send({ lead_text: thread });
+    assert.equal(res.status, 200, res.text);
+    assert.equal(res.body.body, "Texas, both of them.");
+    assert.match(seen, /You play the lead[\s\S]*Which state are the clinics in\?/);
+    assert.equal((await request(app).post("/api/companies/co1_seo/lead/reply").send({ lead_text: "" })).status, 400);
+
+    // The extractor is told the thread shape and that the lead's later word wins.
+    let extractPrompt = "";
+    setLeadModelCall(async (prompt) => { extractPrompt = prompt; return { ...facts, assumptions: [] }; });
+    assert.equal((await request(app).post("/api/companies/co1_seo/lead/extract").send({ lead_text: `${thread}\n\nFrom: the lead\n${res.body.body}` })).status, 200);
+    assert.match(extractPrompt, /the later part wins/);
+    assert.match(extractPrompt, /Texas, both of them\./);
+  });
+
   await t.test("generate refuses missing required facts with 400", async () => {
     const res = await request(app).post("/api/companies/co1_seo/proposal/generate").send({ inputs: { ...facts, client_state: null }, lead_text: lead });
     assert.equal(res.status, 400);

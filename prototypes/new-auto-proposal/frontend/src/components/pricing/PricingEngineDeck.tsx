@@ -345,7 +345,7 @@ export const PricingEngineDeck: React.FC<PricingEngineDeckProps> = ({
                   size="sm"
                   className="h-8 px-4 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-xs btn-tactile"
                 >
-                  <span>{isProceeding ? "Proceeding…" : "Proceed to Lead Simulation"}</span>
+                  <span>{isProceeding ? "Proceeding…" : "Proceed to Check & Generate Proposal"}</span>
                   <ChevronRight className="size-3.5 ml-1" />
                 </Button>
               </div>
