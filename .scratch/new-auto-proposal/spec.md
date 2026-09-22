@@ -1,7 +1,6 @@
 <!-- labels: ready-for-agent -->
 # Specification — Zero-Config Auto-Proposal Prototype
 
-**Detailed Variable & Template Spec:** [variable-and-template-architecture-spec.md](variable-and-template-architecture-spec.md)  
 
 ## Problem Statement
 
@@ -145,5 +144,5 @@ interface PricingRules {
 ## Further Notes
 
 - The prototype runs completely self-contained in `prototypes/new-auto-proposal`.
-- AI capabilities leverage Google Gemini via `GEMINI_API_KEY` defined in `backend/.env`.
+- The extraction/drafting provider and model are chosen in `app_settings` (default `deepseek-flash`); keys live in `backend/.env` (`GEMINI_API_KEY`, `DEEPSEEK_API_KEY`).
 - All mock assets, documents, and verification guides originate from `prototypes/new-auto-proposal/Mock Data/`.

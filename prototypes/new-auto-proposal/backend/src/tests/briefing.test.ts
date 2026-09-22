@@ -23,24 +23,7 @@ test("Briefing & Quotation Ingestion Suite", async (t) => {
   initDatabase(testDbPath);
   const app = createApp();
 
-  const candidateMockDirs = [
-    path.resolve(__dirname, "../../../Mock Data"),
-    path.resolve(process.cwd(), "../Mock Data"),
-    path.resolve(process.cwd(), "Mock Data"),
-    path.resolve(process.cwd(), "prototypes/new-auto-proposal/Mock Data"),
-  ];
-  const mockDataDir = candidateMockDirs.find((d) => fs.existsSync(d));
-  if (!mockDataDir) {
-    throw new Error(`Mock Data directory not found. Looked in: ${candidateMockDirs.join(", ")}`);
-  }
-
-  const findDocx = (name: string) => {
-    const docxSub = path.join(mockDataDir, "docx", name);
-    return fs.existsSync(docxSub) ? docxSub : path.join(mockDataDir, name);
-  };
-  const northstarDocx = findDocx("Co1_Proposal_Northstar_BloomAndCo.docx");
-  const fortressDocx = findDocx("Co2_Proposal_FortressIT_WhitfieldAssociates.docx");
-  const fieldstoneDocx = findDocx("Co3_Proposal_Fieldstone_RosewoodHomeGoods.docx");
+  const northstarDocx = path.resolve(__dirname, "../../../Mock Data/docx/Co1_Proposal_Northstar_BloomAndCo.docx");
 
   t.after(() => {
     closeDatabase();
@@ -113,28 +96,6 @@ test("Briefing & Quotation Ingestion Suite", async (t) => {
     assert.ok(res.body.company.document_metadata);
   });
 
-  await t.test("Submitting Fortress IT (co2_msp) and Fieldstone (co3_dev) parses cleanly", async () => {
-    // Fortress IT
-    const fortressRes = await request(app)
-      .post("/api/companies/co2_msp/briefing/submit")
-      .field("prompt", "Standard $55/seat, Professional $85/seat, Enterprise $130/seat.")
-      .attach("file", fortressDocx);
-
-    assert.equal(fortressRes.status, 200);
-    assert.equal(fortressRes.body.company.briefing_locked, true);
-    assert.ok(fortressRes.body.markdown.includes("Managed IT Services Proposal"));
-    assert.ok(fortressRes.body.markdown.includes("Whitfield & Associates"));
-
-    // Fieldstone Studio
-    const fieldstoneRes = await request(app)
-      .post("/api/companies/co3_dev/briefing/submit")
-      .field("prompt", "Brand Sprint $3,500, Custom Marketing Site $6,500, Full-Stack Web App $14,000.")
-      .attach("file", fieldstoneDocx);
-
-    assert.equal(fieldstoneRes.status, 200);
-    assert.equal(fieldstoneRes.body.company.briefing_locked, true);
-    assert.ok(fieldstoneRes.body.markdown.includes("Project Proposal"));
-    assert.ok(fieldstoneRes.body.markdown.includes("Rosewood Home Goods"));
-    assert.ok(fieldstoneRes.body.markdown.includes("10,445.00"));
-  });
+  // co2 and co3 ingestion is not repeated here: the same .docx files go through AnyDoc in
+  // template-mutator.test.ts, where a parse regression shows up as a lost variable.
 });

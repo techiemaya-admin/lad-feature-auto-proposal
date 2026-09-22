@@ -11,7 +11,7 @@ import { initDatabase, closeDatabase } from "../db/database.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-test("Variables & Gemini Extraction Suite", async (t) => {
+test("Variables: custom-chip verification, edits, and cascade delete", async (t) => {
   const testDir = fs.mkdtempSync(path.join(os.tmpdir(), "auto-proposal-vars-test-"));
   const testDbPath = path.join(testDir, "test.sqlite");
   const testStorageDir = path.join(testDir, "storage");
@@ -23,24 +23,7 @@ test("Variables & Gemini Extraction Suite", async (t) => {
   initDatabase(testDbPath);
   const app = createApp();
 
-  const candidateMockDirs = [
-    path.resolve(__dirname, "../../../Mock Data"),
-    path.resolve(process.cwd(), "../Mock Data"),
-    path.resolve(process.cwd(), "Mock Data"),
-    path.resolve(process.cwd(), "prototypes/new-auto-proposal/Mock Data"),
-  ];
-  const mockDataDir = candidateMockDirs.find((d) => fs.existsSync(d));
-  if (!mockDataDir) {
-    throw new Error(`Mock Data directory not found. Looked in: ${candidateMockDirs.join(", ")}`);
-  }
-
-  const findDocx = (name: string) => {
-    const docxSub = path.join(mockDataDir, "docx", name);
-    return fs.existsSync(docxSub) ? docxSub : path.join(mockDataDir, name);
-  };
-  const northstarDocx = findDocx("Co1_Proposal_Northstar_BloomAndCo.docx");
-  const fortressDocx = findDocx("Co2_Proposal_FortressIT_WhitfieldAssociates.docx");
-  const fieldstoneDocx = findDocx("Co3_Proposal_Fieldstone_RosewoodHomeGoods.docx");
+  const northstarDocx = path.resolve(__dirname, "../../../Mock Data/docx/Co1_Proposal_Northstar_BloomAndCo.docx");
 
   t.after(() => {
     closeDatabase();

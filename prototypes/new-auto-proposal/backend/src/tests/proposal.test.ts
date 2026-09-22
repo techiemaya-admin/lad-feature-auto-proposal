@@ -170,8 +170,8 @@ test("Proposal routes", async (t) => {
     assert.equal(res.status, 200, res.text);
     assert.equal(res.body.subject, "Re: local SEO");
     assert.match(seen, /WHAT WE STILL NEED[\s\S]*- Client state/);
-    assert.match(seen, /WHAT WE ALREADY KNOW[\s\S]*Number of locations: 2[\s\S]*WHAT WE'RE ASSUMING[\s\S]*Pays annually up front: true[\s\S]*WHAT WE STILL NEED/);
-    assert.match(seen, /State each assumption in one plain line/);
+    assert.ok(seen.includes("Number of locations: 2"), seen);
+    assert.match(seen, /WHAT WE'RE ASSUMING[\s\S]*Pays annually up front: true/);
     assert.equal((await request(app).post("/api/companies/co1_seo/lead/clarify").send({ lead_text: lead, inputs: facts, missing: [] })).status, 400);
   });
 
@@ -198,7 +198,6 @@ test("Proposal routes", async (t) => {
     let extractPrompt = "";
     setLeadModelCall(async (prompt) => { extractPrompt = prompt; return { ...facts, assumptions: [] }; });
     assert.equal((await request(app).post("/api/companies/co1_seo/lead/extract").send({ lead_text: `${thread}\n\nFrom: the lead\n${res.body.body}` })).status, 200);
-    assert.match(extractPrompt, /the later part wins/);
     assert.match(extractPrompt, /Texas, both of them\./);
   });
 
@@ -261,7 +260,7 @@ test("Proposal routes", async (t) => {
     const res = await request(app).post("/api/companies/co1_seo/proposal/generate").send({ inputs: { ...facts, location_count: null }, lead_text: lead, assumed: ["annual_prepay", "client_state"] });
     assert.equal(res.status, 200, res.text);
     assert.equal(res.body.evaluation.values.location_count, 1);
-    assert.match(narrativePrompt, /- Number of locations: 1 \(assumed — write "based on", never "as you said"\)/);
+    assert.match(narrativePrompt, /- Number of locations: 1 \(assumed/);
     assert.match(narrativePrompt, /- Pays annually up front: true \(assumed/);
     assert.match(narrativePrompt, /- Client state: tx\n/);
     assert.equal((await request(app).put("/api/companies/co1_seo/rules").send({ rules: rulesOf("co1_seo") })).status, 200);

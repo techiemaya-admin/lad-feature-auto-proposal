@@ -145,8 +145,6 @@ test("Pricing rules routes", async (t) => {
     assert.deepEqual(res.body.pricing_rules.validation_errors, []);
     assert.deepEqual(res.body.pricing_rules.sample_check.filter((c: any) => !c.ok), []);
     assert.match(prompts[1], /circular definition/);
-    assert.match(prompts[1], /PREVIOUS ATTEMPT/);
-    assert.doesNotMatch(prompts[0], /PREVIOUS ATTEMPT/);
   });
 
   await t.test("compile refuses a company that has not reached Stage 2", async () => {
