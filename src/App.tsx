@@ -247,6 +247,7 @@ export function App() {
       const updated = await api.unlockBriefing(activeCompanyId);
       setCurrentCompany(updated);
       setIsBriefingLocked(false);
+      setFocusTarget(null);
       setVariables([]);
       setCompoundTables([]);
       setTemplateStats(null);
@@ -267,6 +268,7 @@ export function App() {
       );
     } catch (err) {
       setIsBriefingLocked(false);
+      setFocusTarget(null);
       setCurrentStage(1);
     }
   };
@@ -276,6 +278,10 @@ export function App() {
   // -------------------------------------------------------------
   const handleExtractVariables = async (companyId: string) => {
     setIsExtractingVariables(true);
+    setTemplateStats(null);
+    setTemplateFilesize(null);
+    setPricingRulesState(null);
+    setFocusTarget(null);
     try {
       const result = await api.extractVariables(companyId);
       setVariables(result.variables || []);
@@ -303,6 +309,11 @@ export function App() {
   ) => {
     setVariables(updatedVars);
     if (updatedTables) setCompoundTables(updatedTables);
+    if (templateStats) {
+      setTemplateStats(null);
+      setTemplateFilesize(null);
+      setPricingRulesState(null);
+    }
 
     // Persist to backend
     api
@@ -322,6 +333,11 @@ export function App() {
     try {
       const res = await api.addCustomVariable(activeCompanyId, payload);
       setVariables((prev) => [...prev, res.variable]);
+      if (templateStats) {
+        setTemplateStats(null);
+        setTemplateFilesize(null);
+        setPricingRulesState(null);
+      }
       showNotification("success", `Custom variable "${payload.natural_name}" added to template AST.`);
     } catch (err) {
       showNotification(

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useLayoutEffect, useMemo } from "react";
+import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import {
   Sparkles,
   Table2,
@@ -9,7 +9,6 @@ import {
   ChevronRight,
   Plus,
   Loader2,
-  AlertTriangle,
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { CustomDropdown } from "../ui/custom-dropdown";
@@ -131,30 +130,26 @@ export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
     }
   }, [focusTarget, variables, selectedKey]);
 
-  // Compute issue variables detected while analyzing document
-  const issueVariables = useMemo(() => {
-    return variables.filter((v: CompanyVariable) => {
-      if (v.is_deleted) return false;
-      // Definite issue if reported by template generator (unplaced tag in OpenXML AST)
-      const targetMatch =
-        attentionTargets.includes(v.variable_name) ||
-        attentionTargets.includes(v.natural_name);
-      if (targetMatch) return true;
-
-      // Only check pricing variables if their numerical amount is completely absent from quotation
-      if (quotationMarkdown && v.category === "pricing" && v.descriptor?.sample_value) {
-        const rawSample = String(v.descriptor.sample_value).trim();
-        const cleanSample = rawSample.replace(/[\$,%]/g, "").trim();
-        if (cleanSample && cleanSample.length >= 2 && !isNaN(Number(cleanSample))) {
-          const normMarkdown = quotationMarkdown.replace(/[\$,%]/g, " ");
-          if (!normMarkdown.includes(cleanSample)) {
-            return true;
-          }
-        }
-      }
-      return false;
+  const handleGuidance = (id: string, guidance: string) => {
+    const updated = variables.map((v) => {
+      if (v.id !== id && v.variable_name !== id) return v;
+      return {
+        ...v,
+        descriptor: {
+          ...v.descriptor,
+          paragraph_config: {
+            mode: v.descriptor?.paragraph_config?.mode || "ai_generated",
+            purpose: v.descriptor?.paragraph_config?.purpose || "Executive overview and scope",
+            tone: v.descriptor?.paragraph_config?.tone || "Professional and consultative",
+            length_guideline: v.descriptor?.paragraph_config?.length_guideline || "2-3 sentences",
+            guidance,
+          },
+        },
+      };
     });
-  }, [variables, attentionTargets, quotationMarkdown]);
+    onVariablesChange(updated, compoundTables);
+    flash("Focus saved");
+  };
 
   // Trace step progress when extracting
   useEffect(() => {
@@ -399,40 +394,6 @@ export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
         </div>
       ) : (
         <div ref={ledgerRef} className="space-y-4">
-          {/* Document Analysis Issues / Unplaced Fields Alert */}
-          {issueVariables.length > 0 && (
-            <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3.5 space-y-2 shadow-2xs animate-in fade-in">
-              <div className="flex items-center gap-2 text-xs font-bold text-amber-700 dark:text-amber-400">
-                <AlertTriangle className="size-3.5 shrink-0 text-amber-500" />
-                <span>
-                  {issueVariables.length} {issueVariables.length === 1 ? "field was not placed / verified" : "fields were not placed / verified"}. Click a variable to review its snippet context:
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {issueVariables.map((v: CompanyVariable) => {
-                  const key = v.id || v.variable_name;
-                  const isSel = selectedKey === key;
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => setSelectedKey(key)}
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all cursor-pointer ${
-                        isSel
-                          ? "bg-amber-600 text-white shadow-xs"
-                          : "bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 hover:bg-amber-500/20"
-                      }`}
-                    >
-                      <span className={`size-1.5 rounded-full ${isSel ? "bg-white" : "bg-amber-500 animate-pulse"}`} />
-                      <span>{v.natural_name || v.variable_name}</span>
-                      <span className={`text-[10px] ${isSel ? "text-white/80" : "text-amber-600/70"}`}>→ Fix</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
           {/* Categorized Chips Container */}
           <div className="space-y-4">
             {GROUPS.map((g) => {
@@ -458,9 +419,9 @@ export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
                       groupVars.map((v: CompanyVariable) => {
                         const key = v.id || v.variable_name;
                         const isSelected = selectedKey === key;
-                        const isIssue = issueVariables.some(
-                          (iv: CompanyVariable) => (iv.id && iv.id === v.id) || iv.variable_name === v.variable_name
-                        );
+                        const needsAttention =
+                          attentionTargets.includes(v.variable_name) ||
+                          attentionTargets.includes(v.natural_name);
 
                         return (
                           <button
@@ -470,21 +431,17 @@ export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
                             onClick={() => setSelectedKey(key)}
                             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
                               isSelected
-                                ? isIssue
-                                  ? "bg-amber-600 text-white border-transparent shadow-xs ring-2 ring-amber-500/40 scale-102"
-                                  : "bg-[#0B1957] dark:bg-[#2B7CFF] text-white border-transparent shadow-xs ring-2 ring-[#2B7CFF]/40 scale-102"
-                                : isIssue
-                                ? "bg-amber-500/10 border-amber-500/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500/20"
+                                ? "bg-[#0B1957] dark:bg-[#2B7CFF] text-white border-transparent shadow-xs ring-2 ring-[#2B7CFF]/40 scale-102"
                                 : g.idleChipClass
                             }`}
                           >
                             <span>{v.natural_name || v.variable_name}</span>
-                            {isIssue && (
+                            {needsAttention && (
                               <span
                                 className={`size-1.5 rounded-full ${
                                   isSelected ? "bg-white" : "bg-amber-500 animate-pulse"
                                 }`}
-                                title="Snippet not verified / unplaced tag"
+                                title="Didn't land in the last template"
                               />
                             )}
                             {v.data_type && (
@@ -591,23 +548,6 @@ export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
                 />
               )}
 
-              {/* Snippet Verification Warning Banner if Issue Variable */}
-              {issueVariables.some(
-                (iv: CompanyVariable) =>
-                  (iv.id && iv.id === selectedVariable.id) ||
-                  iv.variable_name === selectedVariable.variable_name
-              ) && (
-                <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-xs text-amber-700 dark:text-amber-300 space-y-1">
-                  <div className="font-bold flex items-center gap-1.5">
-                    <AlertTriangle className="size-3.5 text-amber-500 shrink-0" />
-                    <span>Quotation Snippet Verification Issue</span>
-                  </div>
-                  <p className="text-[11px] text-foreground/80 leading-relaxed font-sans">
-                    The sample snippet &ldquo;{selectedVariable.descriptor?.sample_value || selectedVariable.natural_name}&rdquo; was not verified in the quotation document or failed OpenXML AST placement. Verify wording or adjust the category below.
-                  </p>
-                </div>
-              )}
-
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2 flex-1">
                   <span className="text-xs font-bold text-foreground">Natural Name:</span>
@@ -698,23 +638,55 @@ export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
                     </div>
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-semibold text-foreground">
-                      Paragraph Sample / Reference Text:
-                    </label>
-                    <textarea
-                      value={String(selectedVariable.descriptor?.sample_value || "")}
-                      onChange={(e) =>
-                        handleSampleValue(
-                          selectedVariable.id || selectedVariable.variable_name,
-                          e.target.value
-                        )
-                      }
-                      rows={3}
-                      className="w-full text-xs p-2.5 rounded-lg border border-border/80 bg-background text-foreground focus:ring-2 focus:ring-[#2B7CFF]/30 outline-hidden leading-relaxed font-sans"
-                      placeholder="Enter the quotation paragraph text..."
-                    />
-                  </div>
+                  {selectedVariable.descriptor?.paragraph_config?.mode === "fixed" ? (
+                    <div className="space-y-1">
+                      <label className="text-[11px] font-semibold text-foreground">
+                        Text used in every proposal:
+                      </label>
+                      <textarea
+                        value={String(selectedVariable.descriptor?.sample_value || "")}
+                        onChange={(e) =>
+                          handleSampleValue(
+                            selectedVariable.id || selectedVariable.variable_name,
+                            e.target.value
+                          )
+                        }
+                        rows={3}
+                        className="w-full text-xs p-2.5 rounded-lg border border-border/80 bg-background text-foreground focus:ring-2 focus:ring-[#2B7CFF]/30 outline-hidden leading-relaxed font-sans"
+                        placeholder="This exact wording goes into every proposal..."
+                      />
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {selectedVariable.descriptor?.sample_value && (
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-semibold text-muted-foreground">
+                            In the quotation:
+                          </label>
+                          <div className="text-xs text-foreground/90 font-sans leading-relaxed bg-muted/20 border border-border/50 p-2.5 rounded-lg whitespace-pre-line line-clamp-4">
+                            &ldquo;{selectedVariable.descriptor.sample_value}&rdquo;
+                          </div>
+                        </div>
+                      )}
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-semibold text-foreground">
+                          What should the draft focus on?
+                        </label>
+                        <textarea
+                          value={selectedVariable.descriptor?.paragraph_config?.guidance || selectedVariable.descriptor?.paragraph_config?.purpose || ""}
+                          onChange={(e) =>
+                            handleGuidance(
+                              selectedVariable.id || selectedVariable.variable_name,
+                              e.target.value
+                            )
+                          }
+                          rows={2}
+                          className="w-full text-xs p-2.5 rounded-lg border border-border/80 bg-background text-foreground focus:ring-2 focus:ring-[#2B7CFF]/30 outline-hidden leading-relaxed font-sans"
+                          placeholder="e.g. List what is included and not included in the selected package tier for this client."
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
