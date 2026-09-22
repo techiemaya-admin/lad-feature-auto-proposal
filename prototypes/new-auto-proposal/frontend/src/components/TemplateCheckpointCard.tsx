@@ -15,6 +15,7 @@ import { fetchTemplateBlob, getTemplateDownloadUrl } from "../services/api";
 
 interface TemplateCheckpointCardProps {
   companyId: string;
+  templateId: string;
   companyName: string;
   stats: TemplateStats;
   filesize?: number | null;
@@ -38,6 +39,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 export const TemplateCheckpointCard: React.FC<TemplateCheckpointCardProps> = ({
   companyId,
+  templateId,
   companyName,
   stats,
   filesize,
@@ -58,7 +60,7 @@ export const TemplateCheckpointCard: React.FC<TemplateCheckpointCardProps> = ({
   // One fetch feeds both the thumbnail and the full preview; `stats` is a new object per generate
   useEffect(() => {
     let ignore = false;
-    fetchTemplateBlob(companyId)
+    fetchTemplateBlob(companyId, templateId)
       .then((b) => {
         if (ignore) return;
         setThumbReady(false);
@@ -100,7 +102,7 @@ export const TemplateCheckpointCard: React.FC<TemplateCheckpointCardProps> = ({
     return () => window.removeEventListener("keydown", onKey);
   }, [isPreviewOpen]);
 
-  const downloadUrl = getTemplateDownloadUrl(companyId);
+  const downloadUrl = getTemplateDownloadUrl(companyId, templateId);
   // The engine never drops a variable silently: a miss arrives here as applied:false. A context_text skip
   // ("2 other occurrences skipped") is the disambiguation working as intended, not a miss.
   const warnings = (stats.details ?? []).filter((d) => !d.applied);

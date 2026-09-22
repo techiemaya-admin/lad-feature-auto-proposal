@@ -26,15 +26,15 @@ test("Companies: reset re-seeds the mock default", async (t) => {
     }
   });
 
-  await t.test("POST /api/companies/co1_seo/reset re-seeds to pristine default and clears variables", async () => {
+  await t.test("POST /api/companies/co1_seo/reset re-seeds to pristine default and preserves template variables", async () => {
     // Insert a dummy variable to verify reset wipes company_variables
     const db = getDatabase();
     db.prepare(`
-      INSERT INTO company_variables (id, company_id, variable_name, natural_name, category, data_type, is_custom, is_deleted, sort_order, descriptor_json, created_at, updated_at)
-      VALUES ('var_test_1', 'co1_seo', 'test_var', 'Test Var', 'pricing', 'currency', 0, 0, 1, '{}', datetime('now'), datetime('now'))
+      INSERT INTO company_variables (id, company_id, template_id, variable_name, natural_name, category, data_type, is_custom, is_deleted, sort_order, descriptor_json, created_at, updated_at)
+      VALUES ('var_test_1', 'co1_seo', 'default-co1_seo', 'test_var', 'Test Var', 'pricing', 'currency', 0, 0, 1, '{}', datetime('now'), datetime('now'))
     `).run();
 
-    const preResetVars = await request(app).get("/api/companies/co1_seo/variables");
+    const preResetVars = await request(app).get("/api/companies/co1_seo/templates/default-co1_seo/variables");
     assert.equal(preResetVars.body.variables.length, 1);
 
     const resetRes = await request(app).post("/api/companies/co1_seo/reset");
@@ -47,10 +47,10 @@ test("Companies: reset re-seeds the mock default", async (t) => {
     assert.equal(getRes.status, 200);
     assert.ok(getRes.body.company.pricing_spec.includes("Local is $1000/mo"));
 
-    // Verify company_variables was cleared
-    const postResetVars = await request(app).get("/api/companies/co1_seo/variables");
+    // Shared profile reset must preserve template variables
+    const postResetVars = await request(app).get("/api/companies/co1_seo/templates/default-co1_seo/variables");
     assert.equal(postResetVars.status, 200);
-    assert.equal(postResetVars.body.variables.length, 0);
+    assert.equal(postResetVars.body.variables.length, 1);
   });
 
 });

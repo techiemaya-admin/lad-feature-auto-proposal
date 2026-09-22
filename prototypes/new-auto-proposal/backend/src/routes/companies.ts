@@ -7,6 +7,8 @@ import { resetCompanyById } from "../db/seed.js";
 const router = Router();
 
 export interface CompanyRow {
+  template_id?: string;
+  name?: string;
   company_id: string;
   company_name: string;
   industry: string | null;
@@ -54,6 +56,8 @@ export function formatCompanyResponse(row: CompanyRow) {
   }
 
   return {
+    template_id: row.template_id,
+    template_name: row.name,
     company_id: row.company_id,
     company_name: row.company_name,
     industry: row.industry,

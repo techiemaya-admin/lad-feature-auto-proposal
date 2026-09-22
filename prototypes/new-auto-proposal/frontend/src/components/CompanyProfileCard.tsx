@@ -14,7 +14,6 @@ interface CompanyProfileCardProps {
   company: Company;
   isLoading: boolean;
   isSubmittingBriefing?: boolean;
-  onSaveSpec: (newSpec: string) => Promise<void>;
   onImportSettings: () => Promise<void>;
   onOpenSettings: () => void;
   /** null while unknown — the CTA stays neutral until the status has loaded */
@@ -83,6 +82,7 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
     .map((d) => d.target);
 
   const handleImport = async () => {
+    if (!window.confirm("Replace this template?s pricing with mock defaults and clear its progress? Other templates are unaffected.")) return;
     setIsImporting(true);
     try {
       await onImportSettings();
@@ -94,7 +94,7 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
   const handleReset = async () => {
     if (
       window.confirm(
-        `Reset "${company.company_name}" to default mock settings?`
+        `Reset pricing and progress for "${company.template_name}"? Other templates are unaffected.`
       )
     ) {
       setIsResetting(true);
@@ -166,7 +166,7 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
             onClick={handleImport}
             disabled={isImporting || isLoading}
             className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/60 btn-tactile font-normal"
-            title="Import mock settings and spec"
+            title="Reset this template to mock pricing"
           >
             <DownloadCloud className={`size-3 mr-1 ${isImporting ? "animate-bounce" : ""}`} />
             {isImporting ? "Importing..." : "Import"}
@@ -200,6 +200,7 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
         <VariableReviewDeck
           key={`vars_${company.company_id}_${company.updated_at || ""}`}
           companyId={company.company_id}
+          templateId={company.template_id!}
           companyName={basics.company_name}
           quotationMarkdown={company.document_metadata?.extracted_markdown}
           isGenerating={isGeneratingTemplate}
@@ -217,6 +218,7 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
         <TemplateCheckpointCard
           key={`checkpoint_${company.company_id}_${company.updated_at || ""}`}
           companyId={company.company_id}
+          templateId={company.template_id!}
           companyName={basics.company_name}
           stats={templateStats}
           filesize={templateFilesize}
@@ -232,6 +234,7 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
       {company.briefing_locked && templateStats && (pricingRules || rulesStatus.status !== "idle") && (
         <PricingEngineDeck
           companyId={company.company_id}
+          templateId={company.template_id!}
           companyName={basics.company_name}
           state={pricingRules}
           status={rulesStatus}

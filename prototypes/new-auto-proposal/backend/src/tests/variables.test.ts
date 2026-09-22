@@ -7,6 +7,7 @@ import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { createApp } from "../app.js";
 import { initDatabase, closeDatabase } from "../db/database.js";
+import { setExtractionModelCall } from "../services/ai-extraction.service.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -43,6 +44,7 @@ test("Variables & Gemini Extraction Suite", async (t) => {
   const fieldstoneDocx = findDocx("Co3_Proposal_Fieldstone_RosewoodHomeGoods.docx");
 
   t.after(() => {
+    setExtractionModelCall(null);
     closeDatabase();
     try {
       fs.rmSync(testDir, { recursive: true, force: true });
@@ -54,7 +56,7 @@ test("Variables & Gemini Extraction Suite", async (t) => {
   await t.test("Submitting briefing and creating custom variable verified against quotation markdown", async () => {
     // 1. Submit briefing first to populate quotation_markdown
     const submitRes = await request(app)
-      .post("/api/companies/co1_seo/briefing/submit")
+      .post("/api/companies/co1_seo/templates/default-co1_seo/briefing/submit")
       .field("prompt", "Local $1000/mo, Growth $3000/mo, Authority $8000/mo. Texas tax 8.25%.")
       .attach("file", northstarDocx);
 
@@ -63,7 +65,7 @@ test("Variables & Gemini Extraction Suite", async (t) => {
 
     // 2. Reject custom variable if snippet is NOT in quotation
     const invalidRes = await request(app)
-      .post("/api/companies/co1_seo/variables/custom")
+      .post("/api/companies/co1_seo/templates/default-co1_seo/variables/custom")
       .send({
         natural_name: "Alien Planet Coordinate",
         category: "customer_input",
@@ -76,13 +78,13 @@ test("Variables & Gemini Extraction Suite", async (t) => {
 
     // 3. Reject unknown categories / data types
     const badCategory = await request(app)
-      .post("/api/companies/co1_seo/variables/custom")
+      .post("/api/companies/co1_seo/templates/default-co1_seo/variables/custom")
       .send({ natural_name: "X", category: "comparison_matrix", exact_quotation_snippet: "Bloom & Co Dental Group" });
     assert.equal(badCategory.status, 400);
 
     // 4. Accept custom variable when exact snippet exists
     const validRes = await request(app)
-      .post("/api/companies/co1_seo/variables/custom")
+      .post("/api/companies/co1_seo/templates/default-co1_seo/variables/custom")
       .send({
         natural_name: "Client Target Business",
         category: "customer_input",
@@ -96,18 +98,18 @@ test("Variables & Gemini Extraction Suite", async (t) => {
     assert.equal(validRes.body.variable.descriptor.sample_value, "Bloom & Co Dental Group");
 
     // 5. Verify custom variable is returned by GET /variables
-    const listRes = await request(app).get("/api/companies/co1_seo/variables");
+    const listRes = await request(app).get("/api/companies/co1_seo/templates/default-co1_seo/variables");
     assert.equal(listRes.status, 200);
     assert.equal(listRes.body.variables.length, 1);
     assert.equal(listRes.body.variables[0].natural_name, "Client Target Business");
   });
 
-  await t.test("PUT /api/companies/co1_seo/variables updates natural names, categories, and soft deletes", async () => {
-    const listRes = await request(app).get("/api/companies/co1_seo/variables");
+  await t.test("PUT /api/companies/co1_seo/templates/default-co1_seo/variables updates natural names, categories, and soft deletes", async () => {
+    const listRes = await request(app).get("/api/companies/co1_seo/templates/default-co1_seo/variables");
     const customVar = listRes.body.variables[0];
 
     const putRes = await request(app)
-      .put("/api/companies/co1_seo/variables")
+      .put("/api/companies/co1_seo/templates/default-co1_seo/variables")
       .send({
         variables: [
           {
@@ -123,20 +125,58 @@ test("Variables & Gemini Extraction Suite", async (t) => {
     assert.equal(putRes.body.success, true);
     assert.equal(putRes.body.updated_count, 1);
 
-    const recheck = await request(app).get("/api/companies/co1_seo/variables");
+    const recheck = await request(app).get("/api/companies/co1_seo/templates/default-co1_seo/variables");
     const updated = recheck.body.variables.find((v: any) => v.id === customVar.id);
     assert.equal(updated.natural_name, "Renamed Client Organization");
     assert.equal(updated.category, "pricing");
     assert.equal(updated.is_deleted, true);
   });
 
+  await t.test("Re-scan immediately returns preserved custom variables and matches reload", async () => {
+    const base = "/api/companies/co1_seo/templates/default-co1_seo";
+    const added = await request(app).post(`${base}/variables/custom`).send({
+      natural_name: "Keep this custom field",
+      exact_quotation_snippet: "Bloom & Co Dental Group",
+    });
+    assert.equal(added.status, 201);
+    const before = (await request(app).get(`${base}/variables`)).body.variables;
+    let run = 0;
+    setExtractionModelCall(async () => ({
+      document_summary: "Offline extraction",
+      variables: [{
+        variable_name: `extracted_${++run}`, natural_name: "Extracted customer",
+        category: "customer_input", data_type: "string", sample_text: "Bloom & Co Dental Group",
+        description: "Customer name", condition_flag: "", context_text: "", enum_options: [],
+      }],
+      loop_tables: [],
+    }));
+    try {
+      for (let i = 0; i < 2; i++) {
+        const scan = await request(app).post(`${base}/variables/extract`);
+        assert.equal(scan.status, 200, scan.text);
+        assert.equal(scan.body.extracted_count, 1);
+        for (const custom of before) {
+          assert.deepEqual(scan.body.variables.find((v: any) => v.id === custom.id), custom);
+        }
+        assert.equal(scan.body.variables.filter((v: any) => !v.is_custom).length, 1);
+        assert.ok(scan.body.variables.some((v: any) => v.variable_name === `extracted_${i + 1}`));
+        const reloaded = await request(app).get(`${base}/variables`);
+        assert.deepEqual(scan.body.variables, reloaded.body.variables);
+        assert.deepEqual(scan.body.compound_tables, reloaded.body.compound_tables);
+        const workflow = (await request(app).get(base)).body.company.working_state;
+        assert.deepEqual(workflow.extracted_variables.variables, scan.body.variables);
+        assert.equal(workflow.extracted_variables.variables_count, scan.body.variables.length);
+      }
+    } finally { setExtractionModelCall(null); }
+  });
+
   await t.test("POST /briefing/unlock executes cascading deletion on company_variables", async () => {
     // Unlocking must delete variables for co1_seo
-    const unlockRes = await request(app).post("/api/companies/co1_seo/briefing/unlock");
+    const unlockRes = await request(app).post("/api/companies/co1_seo/templates/default-co1_seo/briefing/unlock");
     assert.equal(unlockRes.status, 200);
     assert.equal(unlockRes.body.company.briefing_locked, false);
 
-    const listRes = await request(app).get("/api/companies/co1_seo/variables");
+    const listRes = await request(app).get("/api/companies/co1_seo/templates/default-co1_seo/variables");
     assert.equal(listRes.status, 200);
     assert.equal(listRes.body.variables.length, 0);
   });

@@ -134,7 +134,7 @@ export function resetCompanyById(db: DatabaseSync, companyId: string): CompanyRe
   upsertCompany(db, found);
 
   try {
-    const deleteVarsStmt = db.prepare("DELETE FROM company_variables WHERE company_id = ?");
+    const deleteVarsStmt = db.prepare("DELETE FROM company_variables WHERE company_id = ? AND template_id IS NULL");
     deleteVarsStmt.run(companyId);
   } catch {
     // Table may not exist yet in certain test setups

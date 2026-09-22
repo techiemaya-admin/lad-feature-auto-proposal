@@ -77,7 +77,7 @@ export const DevDock: React.FC<DevDockProps> = ({
     }
     setRulesApplying(true);
     try {
-      const next = await updatePricingRules(company.company_id, parsed);
+      const next = await updatePricingRules(company.company_id, parsed, company.template_id!);
       setRulesErrors([]);
       onRulesChange?.(next);
     } catch (err) {
@@ -95,7 +95,7 @@ export const DevDock: React.FC<DevDockProps> = ({
   useEffect(() => {
     if (!isOpen || activeTab !== "logs" || !companyId) return;
     let ignore = false;
-    fetchLogArtifacts(companyId)
+    fetchLogArtifacts(companyId, company!.template_id!)
       .then((list) => { if (!ignore) setArtifacts(list); })
       .catch(() => { if (!ignore) setArtifacts([]); });
     return () => { ignore = true; };
@@ -106,7 +106,7 @@ export const DevDock: React.FC<DevDockProps> = ({
     if (openArtifact?.file === file) { setOpenArtifact(null); return; }
     if (!companyId) return;
     try {
-      setOpenArtifact({ file, text: await fetchLogArtifact(companyId, file) });
+      setOpenArtifact({ file, text: await fetchLogArtifact(companyId, file, company!.template_id!) });
     } catch (err) {
       setOpenArtifact({ file, text: err instanceof Error ? err.message : String(err) });
     }

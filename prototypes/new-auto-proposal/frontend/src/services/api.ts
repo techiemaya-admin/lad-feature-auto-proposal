@@ -77,8 +77,7 @@ export async function resetCompany(id: string): Promise<Company> {
 export async function submitBriefing(
   companyId: string,
   prompt: string,
-  file?: File | null
-): Promise<{
+  file: File | null | undefined, templateId: string): Promise<{
   company: Company;
   markdown: string;
   metadata: {
@@ -94,7 +93,7 @@ export async function submitBriefing(
     formData.append("file", file);
   }
 
-  const res = await fetch(`${API_BASE}/companies/${companyId}/briefing/submit`, {
+  const res = await fetch(`${API_BASE}/companies/${companyId}/templates/${templateId}/briefing/submit`, {
     method: "POST",
     body: formData,
   });
@@ -112,8 +111,8 @@ export async function submitBriefing(
   };
 }
 
-export async function unlockBriefing(companyId: string): Promise<Company> {
-  const res = await fetch(`${API_BASE}/companies/${companyId}/briefing/unlock`, {
+export async function unlockBriefing(companyId: string, templateId: string): Promise<Company> {
+  const res = await fetch(`${API_BASE}/companies/${companyId}/templates/${templateId}/briefing/unlock`, {
     method: "POST",
   });
 
@@ -127,15 +126,14 @@ export async function unlockBriefing(companyId: string): Promise<Company> {
 }
 
 export async function fetchQuotationMarkdown(
-  companyId: string
-): Promise<{
+  companyId: string, templateId: string): Promise<{
   filename: string | null;
   filesize: number | null;
   markdown: string | null;
   parsed_at: string | null;
   briefing_locked: boolean;
 }> {
-  const res = await fetch(`${API_BASE}/companies/${companyId}/briefing/markdown`);
+  const res = await fetch(`${API_BASE}/companies/${companyId}/templates/${templateId}/briefing/markdown`);
   if (!res.ok) {
     throw new Error(`Failed to fetch quotation markdown: ${res.statusText}`);
   }
@@ -143,9 +141,8 @@ export async function fetchQuotationMarkdown(
 }
 
 export async function fetchVariables(
-  companyId: string
-): Promise<import("../types/variable").VariablesResponse> {
-  const res = await fetch(`${API_BASE}/companies/${companyId}/variables`);
+  companyId: string, templateId: string): Promise<import("../types/variable").VariablesResponse> {
+  const res = await fetch(`${API_BASE}/companies/${companyId}/templates/${templateId}/variables`);
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(errorData.error || `Failed to fetch variables: ${res.statusText}`);
@@ -154,9 +151,8 @@ export async function fetchVariables(
 }
 
 export async function extractVariables(
-  companyId: string
-): Promise<import("../types/variable").VariablesResponse> {
-  const res = await fetch(`${API_BASE}/companies/${companyId}/variables/extract`, {
+  companyId: string, templateId: string): Promise<import("../types/variable").VariablesResponse> {
+  const res = await fetch(`${API_BASE}/companies/${companyId}/templates/${templateId}/variables/extract`, {
     method: "POST",
   });
   if (!res.ok) {
@@ -171,9 +167,8 @@ export async function updateVariables(
   payload: {
     variables?: any[];
     compound_tables?: any[];
-  }
-): Promise<{ success: boolean; updated_count: number }> {
-  const res = await fetch(`${API_BASE}/companies/${companyId}/variables`, {
+  }, templateId: string): Promise<{ success: boolean; updated_count: number }> {
+  const res = await fetch(`${API_BASE}/companies/${companyId}/templates/${templateId}/variables`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
@@ -196,9 +191,8 @@ export async function addCustomVariable(
     context_anchor?: string;
     data_type?: string;
     description?: string;
-  }
-): Promise<{ success: boolean; variable: import("../types/variable").CompanyVariable }> {
-  const res = await fetch(`${API_BASE}/companies/${companyId}/variables/custom`, {
+  }, templateId: string): Promise<{ success: boolean; variable: import("../types/variable").CompanyVariable }> {
+  const res = await fetch(`${API_BASE}/companies/${companyId}/templates/${templateId}/variables/custom`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -213,9 +207,8 @@ export async function addCustomVariable(
 }
 
 export async function generateTemplate(
-  companyId: string
-): Promise<import("../types/template").TemplateGenerationResponse> {
-  const res = await fetch(`${API_BASE}/companies/${companyId}/template/generate`, {
+  companyId: string, templateId: string): Promise<import("../types/template").TemplateGenerationResponse> {
+  const res = await fetch(`${API_BASE}/companies/${companyId}/templates/${templateId}/template/generate`, {
     method: "POST",
   });
   if (!res.ok) {
@@ -226,9 +219,8 @@ export async function generateTemplate(
 }
 
 export async function fetchTemplateStatus(
-  companyId: string
-): Promise<import("../types/template").TemplateStatusResponse> {
-  const res = await fetch(`${API_BASE}/companies/${companyId}/template/status`);
+  companyId: string, templateId: string): Promise<import("../types/template").TemplateStatusResponse> {
+  const res = await fetch(`${API_BASE}/companies/${companyId}/templates/${templateId}/template/status`);
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(errorData.error || `Failed to fetch template status: ${res.statusText}`);
@@ -236,8 +228,8 @@ export async function fetchTemplateStatus(
   return res.json();
 }
 
-export async function fetchTemplateBlob(companyId: string): Promise<Blob> {
-  const res = await fetch(`${API_BASE}/companies/${companyId}/template/download`);
+export async function fetchTemplateBlob(companyId: string, templateId: string): Promise<Blob> {
+  const res = await fetch(`${API_BASE}/companies/${companyId}/templates/${templateId}/template/download`);
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(errorData.error || `Failed to fetch template: ${res.statusText}`);
@@ -245,8 +237,8 @@ export async function fetchTemplateBlob(companyId: string): Promise<Blob> {
   return res.blob();
 }
 
-export function getTemplateDownloadUrl(companyId: string): string {
-  return `${API_BASE}/companies/${companyId}/template/download`;
+export function getTemplateDownloadUrl(companyId: string, templateId: string): string {
+  return `${API_BASE}/companies/${companyId}/templates/${templateId}/template/download`;
 }
 
 export interface AISettings {
@@ -285,8 +277,10 @@ export async function updateAISettings(payload: Partial<AISettings>): Promise<AI
 
 /** A PUT the server refused: `errors` are the structural problems, nothing was persisted. */
 export class RulesValidationError extends Error {
-  constructor(message: string, public errors: ValidationError[]) {
+  errors: ValidationError[];
+  constructor(message: string, errors: ValidationError[]) {
     super(message);
+    this.errors = errors;
   }
 }
 
@@ -301,25 +295,25 @@ async function rulesRequest<T>(path: string, what: string, init?: RequestInit): 
 }
 const json = (body: unknown): RequestInit => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
-export async function compilePricingRules(companyId: string): Promise<PricingRulesState> {
-  return (await rulesRequest<{ pricing_rules: PricingRulesState }>(`${companyId}/rules/compile`, "compile pricing rules", { method: "POST" })).pricing_rules;
+export async function compilePricingRules(companyId: string, templateId: string): Promise<PricingRulesState> {
+  return (await rulesRequest<{ pricing_rules: PricingRulesState }>(`${companyId}/templates/${templateId}/rules/compile`, "compile pricing rules", { method: "POST" })).pricing_rules;
 }
 
-export async function fetchPricingRules(companyId: string): Promise<PricingRulesState> {
-  return (await rulesRequest<{ pricing_rules: PricingRulesState }>(`${companyId}/rules`, "fetch pricing rules")).pricing_rules;
+export async function fetchPricingRules(companyId: string, templateId: string): Promise<PricingRulesState> {
+  return (await rulesRequest<{ pricing_rules: PricingRulesState }>(`${companyId}/templates/${templateId}/rules`, "fetch pricing rules")).pricing_rules;
 }
 
 /** Throws RulesValidationError on a 400. */
-export async function updatePricingRules(companyId: string, rules: PricingRules): Promise<PricingRulesState> {
-  return (await rulesRequest<{ pricing_rules: PricingRulesState }>(`${companyId}/rules`, "update pricing rules", { ...json({ rules }), method: "PUT" })).pricing_rules;
+export async function updatePricingRules(companyId: string, rules: PricingRules, templateId: string): Promise<PricingRulesState> {
+  return (await rulesRequest<{ pricing_rules: PricingRulesState }>(`${companyId}/templates/${templateId}/rules`, "update pricing rules", { ...json({ rules }), method: "PUT" })).pricing_rules;
 }
 
-export function calculatePricing(companyId: string, inputs: Record<string, Value>): Promise<{ evaluation: Evaluation; payload: Record<string, unknown> }> {
-  return rulesRequest(`${companyId}/rules/calculate`, "calculate pricing", json({ inputs }));
+export function calculatePricing(companyId: string, inputs: Record<string, Value>, templateId: string): Promise<{ evaluation: Evaluation; payload: Record<string, unknown> }> {
+  return rulesRequest(`${companyId}/templates/${templateId}/rules/calculate`, "calculate pricing", json({ inputs }));
 }
 
-export async function proceedToLeadSimulation(companyId: string): Promise<Company> {
-  return (await rulesRequest<{ company: Company }>(`${companyId}/rules/proceed`, "proceed", { method: "POST" })).company;
+export async function proceedToLeadSimulation(companyId: string, templateId: string): Promise<Company> {
+  return (await rulesRequest<{ company: Company }>(`${companyId}/templates/${templateId}/rules/proceed`, "proceed", { method: "POST" })).company;
 }
 
 // ---------------------------------------------------------------------------
@@ -378,8 +372,8 @@ export interface LogArtifact {
   size: number;
 }
 
-export async function fetchLogArtifacts(companyId: string): Promise<LogArtifact[]> {
-  const res = await fetch(`${API_BASE}/companies/${companyId}/logs`);
+export async function fetchLogArtifacts(companyId: string, templateId: string): Promise<LogArtifact[]> {
+  const res = await fetch(`${API_BASE}/companies/${companyId}/templates/${templateId}/logs`);
   if (!res.ok) {
     throw new Error(`Failed to fetch pipeline logs: ${res.statusText}`);
   }
@@ -387,10 +381,36 @@ export async function fetchLogArtifacts(companyId: string): Promise<LogArtifact[
   return data.artifacts;
 }
 
-export async function fetchLogArtifact(companyId: string, file: string): Promise<string> {
-  const res = await fetch(`${API_BASE}/companies/${companyId}/logs/${encodeURIComponent(file)}`);
+export async function fetchLogArtifact(companyId: string, file: string, templateId: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/companies/${companyId}/templates/${templateId}/logs/${encodeURIComponent(file)}`);
   if (!res.ok) {
     throw new Error(`Failed to fetch artifact: ${res.statusText}`);
   }
   return res.text();
+}
+
+export interface ProposalTemplateSummary { template_id: string; name: string; updated_at: string }
+async function templateRequest(companyId: string, suffix = "", init?: RequestInit) {
+  const res = await fetch(`${API_BASE}/companies/${encodeURIComponent(companyId)}/templates${suffix}`, init);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Template request failed");
+  return data;
+}
+export async function listTemplates(companyId: string): Promise<ProposalTemplateSummary[]> {
+  return (await templateRequest(companyId)).templates;
+}
+export async function fetchProposalTemplate(companyId: string, templateId: string): Promise<Company> {
+  return (await templateRequest(companyId, `/${encodeURIComponent(templateId)}`)).company;
+}
+export async function createProposalTemplate(companyId: string, name: string): Promise<Company> {
+  return (await templateRequest(companyId, "", json({ name }))).company;
+}
+export async function renameProposalTemplate(companyId: string, templateId: string, name: string): Promise<Company> {
+  return (await templateRequest(companyId, `/${encodeURIComponent(templateId)}`, { ...json({ name }), method: "PATCH" })).company;
+}
+export async function deleteProposalTemplate(companyId: string, templateId: string): Promise<void> {
+  await templateRequest(companyId, `/${encodeURIComponent(templateId)}`, { method: "DELETE" });
+}
+export async function resetProposalTemplate(companyId: string, templateId: string): Promise<Company> {
+  return (await templateRequest(companyId, `/${encodeURIComponent(templateId)}/reset`, { method: "POST" })).company;
 }
