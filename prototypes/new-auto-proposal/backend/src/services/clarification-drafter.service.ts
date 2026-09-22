@@ -4,7 +4,7 @@ import { generateJson } from "./ai-extraction.service.js";
 import { getAISettings } from "./ai-settings.service.js";
 import { getCompanyConfiguration } from "./company-config.service.js";
 import { logPipelineArtifact } from "./pipeline-log.js";
-import type { LeadField } from "./lead-extractor.service.js";
+import { optionsHint, type LeadField } from "./lead-extractor.service.js";
 import type { Value } from "./pricing-rules.types.js";
 
 /**
@@ -36,7 +36,12 @@ export function buildClarifyPrompt(input: ClarificationInput): string {
   const config = getCompanyConfiguration(company.company_id);
   let data: any = {};
   try { data = JSON.parse(company.data_json); } catch { data = {}; }
-  const label = (n: string) => fields.find((f) => f.name === n)?.label ?? n;
+  // Seen live: with only the label, the drafter invented "a focused fix or an ongoing package" for a tier field whose
+  // real options were Local / Growth / Authority — the lead answered in those made-up terms and the extractor had to guess.
+  const needed = (n: string) => {
+    const f = fields.find((x) => x.name === n);
+    return `- ${f?.label ?? n}${f ? optionsHint(f) : ""}${f?.input_type === "multi_choice" ? " (any number of them)" : ""}`;
+  };
   const line = (f: LeadField) => `- ${f.label}: ${Array.isArray(inputs[f.name]) ? (inputs[f.name] as string[]).join(", ") : String(inputs[f.name])}`;
   const answered = fields.filter((f) => !missing.includes(f.name) && inputs[f.name] !== null && inputs[f.name] !== undefined && inputs[f.name] !== "");
   const known = answered.filter((f) => !assumed.includes(f.name)).map(line);
@@ -61,10 +66,11 @@ ${known.join("\n") || "(nothing usable yet)"}
 ${assuming.join("\n") || "(nothing)"}
 
 ==================== WHAT WE STILL NEED ====================
-${missing.map((n) => `- ${label(n)}`).join("\n")}
+${missing.map(needed).join("\n")}
 
 ==================== RULES ====================
 1. Ask for every missing item, plainly, in the lead's own terms (not our field names). Explain in half a sentence why it matters for the price when that helps.
+   When an item lists options, offer exactly those options by name (you may add a few words on what each one is) so the lead can answer with one of them. Never invent alternatives that are not listed.
 2. Do not quote or estimate a price. Do not promise a timeline.
 3. Sign off as the ${company.company_name} team. Plain text, short paragraphs, no markdown.
 4. subject: a short reply-style subject line.

@@ -220,6 +220,10 @@ test("formatLike renders a value in the sample's own notation", () => {
   assert.equal(formatLike("25–49 seat band", "50+ seat band"), "50+ seat band");
   assert.equal(formatLike("Yes", true), "Yes");
   assert.equal(formatLike("$3,000/mo", null), "");
+  assert.equal(formatLike("two", 2), "two"); // the quotation spelled the count as a word
+  assert.equal(formatLike("Two", 3), "Three");
+  assert.equal(formatLike("two", 15), "15");
+  assert.equal(parseSampleNumber("two"), 2);
   assert.equal(parseSampleNumber("$36,000.00"), 36000);
   assert.equal(parseSampleNumber("8.25%"), 0.0825);
   assert.equal(parseSampleNumber("42"), 42);

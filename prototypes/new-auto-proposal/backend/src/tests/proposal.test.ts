@@ -13,7 +13,7 @@ import { toWire, type PricingRules, type Stage2Context } from "../services/prici
 import { fillDates, setPdfConverter } from "../services/proposal-generator.service.js";
 import { substitutePlaceholders, setNarrativeModelCall } from "../services/narrative-drafter.service.js";
 import { leadFields, setLeadModelCall } from "../services/lead-extractor.service.js";
-import { setClarifyModelCall } from "../services/clarification-drafter.service.js";
+import { buildClarifyPrompt, setClarifyModelCall } from "../services/clarification-drafter.service.js";
 
 /**
  * Stage 5 offline: the pure pieces (dates, placeholder substitution, per-company fact schema) and the
@@ -173,6 +173,15 @@ test("Proposal routes", async (t) => {
     assert.match(seen, /WHAT WE ALREADY KNOW[\s\S]*Number of locations: 2[\s\S]*WHAT WE'RE ASSUMING[\s\S]*Pays annually up front: true[\s\S]*WHAT WE STILL NEED/);
     assert.match(seen, /State each assumption in one plain line/);
     assert.equal((await request(app).post("/api/companies/co1_seo/lead/clarify").send({ lead_text: lead, inputs: facts, missing: [] })).status, 400);
+  });
+
+  await t.test("clarify tells the drafter the real options of a missing choice field", async () => {
+    // Seen live: without them the drafter invented its own, the lead answered in those terms, and the extractor guessed a tier.
+    const fields = leadFields(rulesOf("co3_dev"), stage2Of("co3_dev"));
+    const company = { company_id: "co1_seo", company_name: "Northstar", data_json: "{}" } as any;
+    const prompt = buildClarifyPrompt({ company, fields, inputs: { product_count: 60 }, missing: ["project_template_name"], leadText: "60 products" });
+    const stillNeed = prompt.slice(prompt.indexOf("WHAT WE STILL NEED"), prompt.indexOf("RULES"));
+    for (const o of ["Landing Page", "Business Website", "E-Commerce Build", "Custom Web App"]) assert.ok(stillNeed.includes(o), `${o} is offered`);
   });
 
   await t.test("reply plays the lead against the thread so the extractor can re-read it", async () => {

@@ -376,6 +376,14 @@ export function evaluate(
 
 const SAMPLE_NUMBER = /^(.*?)(\d[\d,]*(?:\.(\d+))?)(.*)$/s;
 
+// Seen live: the quotation says "two clinic locations", so the sample is a word and the check
+// failed forever on "computed 2, quotation says two". Read and write small counts the same way.
+const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
+const numberWord = (sample: string): number | null => {
+  const i = NUMBER_WORDS.indexOf((sample ?? "").trim().toLowerCase());
+  return i < 0 ? null : i;
+};
+
 const fixed = (v: number, d: number, grouping: boolean) =>
   v.toLocaleString("en-US", {
     minimumFractionDigits: d,
@@ -392,6 +400,10 @@ export function formatLike(
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "string") return value;
   if (Array.isArray(value)) return "";
+  if (numberWord(sample) !== null && Number.isInteger(value) && value >= 0 && value < NUMBER_WORDS.length) {
+    const w = NUMBER_WORDS[value];
+    return /^[A-Z]/.test(sample.trim()) ? w[0].toUpperCase() + w.slice(1) : w;
+  }
   const m = SAMPLE_NUMBER.exec(sample ?? "");
   if (!m) return String(value);
   const [, pre, numStr, frac = "", post] = m;
@@ -404,10 +416,10 @@ export function formatLike(
   return `${pre}${fixed(v, decimals, numStr.includes(","))}${post}`;
 }
 
-/** Inverse of formatLike for the sample check: "$36,000.00" → 36000, "8.25%" → 0.0825, "Growth" → null. */
+/** Inverse of formatLike for the sample check: "$36,000.00" → 36000, "8.25%" → 0.0825, "two" → 2, "Growth" → null. */
 export function parseSampleNumber(sample: string): number | null {
   const m = SAMPLE_NUMBER.exec(sample ?? "");
-  if (!m) return null;
+  if (!m) return numberWord(sample);
   const n = Number(m[2].replace(/,/g, ""));
   if (Number.isNaN(n)) return null;
   return m[4].trimStart().startsWith("%") ? n / 100 : n;

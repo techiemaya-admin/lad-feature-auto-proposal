@@ -100,9 +100,12 @@ Respond with ONLY a single JSON object — no markdown fences, no commentary —
 { ${fields.map((f) => `"${f.name}": ${shapeOf(f)}`).join(", ")}, "assumptions": string[] }
 `;
 
+/** The choices of a choice / multi_choice field, spelled the one way every Stage 5 prompt uses ("" for other fields). */
+export const optionsHint = (f: LeadField) => (f.options.length ? ` — one of ${f.options.map((o) => `"${o}"`).join(", ")}` : "");
+
 export function buildExtractPrompt(company: CompanyRow, fields: LeadField[], leadText: string): string {
   const line = (f: LeadField) =>
-    `- ${f.name} (${f.label}): ${f.input_type}${f.options.length ? ` — one of ${f.options.map((o) => `"${o}"`).join(", ")}` : ""}${f.required ? "" : " (optional)"}${f.assume_when ? ` (read it as: ${f.assume_when})` : ""}`;
+    `- ${f.name} (${f.label}): ${f.input_type}${optionsHint(f)}${f.required ? "" : " (optional)"}${f.assume_when ? ` (read it as: ${f.assume_when})` : ""}`;
   return `
 You read an inbound lead message for "${company.company_name}" and fill in the facts the pricing calculator needs.
 
