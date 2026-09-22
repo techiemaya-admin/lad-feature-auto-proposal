@@ -176,8 +176,8 @@ test("mutateDocumentTemplate reads descriptors from SQLite and writes template.d
     const db = getDatabase();
     const now = new Date().toISOString();
     const insert = db.prepare(
-      `INSERT INTO company_variables (id, company_id, variable_name, natural_name, category, data_type, is_custom, is_deleted, sort_order, descriptor_json, created_at, updated_at)
-       VALUES (?, 'co3_dev', ?, ?, ?, ?, 0, ?, 0, ?, ?, ?)`
+      `INSERT INTO company_variables (id, company_id, template_id, variable_name, natural_name, category, data_type, is_custom, is_deleted, sort_order, descriptor_json, created_at, updated_at)
+       VALUES (?, 'co3_dev', 'default-co3_dev', ?, ?, ?, ?, 0, ?, 0, ?, ?, ?)`
     );
     insert.run("v1", "client_name", "Client", "customer_input", "string", 0, JSON.stringify({ sample_value: "Rosewood Home Goods" }), now, now);
     insert.run("v2", "bundle_discount_amount", "Discount", "pricing", "currency", 0, JSON.stringify({ sample_value: "$105.00", visibility_rule: { condition_flag: "has_bundle_discount" } }), now, now);
@@ -189,7 +189,7 @@ test("mutateDocumentTemplate reads descriptors from SQLite and writes template.d
     assert.equal(result.tags_placed_count, 1);
     assert.equal(result.conditional_rows_wrapped_count, 1);
     assert.equal(result.loops_collapsed_count, 1);
-    const xml = await Document.loadFromBuffer(fs.readFileSync(path.join(process.env.STORAGE_DIR, "co3_dev", "template.docx")));
+    const xml = await Document.loadFromBuffer(fs.readFileSync(path.join(process.env.STORAGE_DIR, "co3_dev", "default-co3_dev", "template.docx")));
     const text = xml.getAllParagraphs().map((p) => p.getText()).join("\n");
     assert.match(text, /\{client_name\}/);
     assert.match(text, /\{#has_bundle_discount\}/);

@@ -22,10 +22,11 @@ function localStamp(d = new Date()): string {
 export function logPipelineArtifact(
   companyId: string,
   name: string,
-  content: string | object
+  content: string | object,
+  templateId?: string
 ): void {
   try {
-    const dir = path.join(LOG_ROOT, companyId);
+    const dir = path.join(LOG_ROOT, companyId, ...(templateId ? [templateId] : []));
     fs.mkdirSync(dir, { recursive: true });
     const ts = localStamp();
     const body = typeof content === "string" ? content : JSON.stringify(content, null, 2);

@@ -1,10 +1,8 @@
 import { useState, useEffect } from "react";
 import {
   fetchCompanies,
-  fetchCompany,
-  updateCompanyProfile,
-  importCompanySettings,
-  resetCompany,
+  fetchProposalTemplate,
+  resetProposalTemplate,
   submitBriefing,
   unlockBriefing,
   generateTemplate,
@@ -37,10 +35,10 @@ import {
   RefreshCw,
 } from "lucide-react";
 
-export function App() {
+export function TemplateWorkspace({ activeCompanyId, templateId, onCompanyChange, templateControls }: { activeCompanyId: string; templateId: string; onCompanyChange: (id: string) => void; templateControls: React.ReactNode }) {
   const { theme, setTheme } = useTheme();
   const [companies, setCompanies] = useState<CompanySummary[]>([]);
-  const [activeCompanyId, setActiveCompanyId] = useState<string>("co1_seo");
+  const setActiveCompanyId = onCompanyChange;
   const [currentCompany, setCurrentCompany] = useState<Company | null>(null);
   const [activeVariables, setActiveVariables] = useState<CompanyVariable[]>([]);
   const [activeCompoundTables, setActiveCompoundTables] = useState<CompoundTable[]>([]);
@@ -143,7 +141,7 @@ export function App() {
     setPricingRules(null);
     setRulesStatus({ status: "idle" });
 
-    fetchCompany(activeCompanyId)
+    fetchProposalTemplate(activeCompanyId, templateId)
       .then((data) => {
         if (!ignore) {
           setCurrentCompany(data);
@@ -164,7 +162,7 @@ export function App() {
       .catch(() => { if (!ignore) setConfiguration(null); });
 
     // Check template status
-    fetchTemplateStatus(activeCompanyId)
+    fetchTemplateStatus(activeCompanyId, templateId)
       .then((res) => {
         if (!ignore) {
           if (res.exists && res.stats) {
@@ -188,31 +186,11 @@ export function App() {
     };
   }, [activeCompanyId]);
 
-  const handleSaveSpec = async (newSpec: string) => {
-    if (!currentCompany) return;
-    try {
-      const updated = await updateCompanyProfile(currentCompany.company_id, {
-        pricing_spec: newSpec,
-      });
-      setCurrentCompany(updated);
-      setNotification({
-        type: "success",
-        message: `Pricing spec saved for ${updated.company_name}.`,
-      });
-    } catch (err) {
-      setNotification({
-        type: "error",
-        message: err instanceof Error ? err.message : "Failed to save pricing spec",
-      });
-      throw err;
-    }
-  };
-
   const handleBriefingSubmit = async (prompt: string, file: File | null) => {
     if (!currentCompany) return;
     setIsSubmittingBriefing(true);
     try {
-      const result = await submitBriefing(currentCompany.company_id, prompt, file);
+      const result = await submitBriefing(currentCompany.company_id, prompt, file, templateId);
       setCurrentCompany(result.company);
       setNotification({
         type: "success",
@@ -244,7 +222,7 @@ export function App() {
   const handleBriefingUnlock = async () => {
     if (!currentCompany) return;
     try {
-      const updated = await unlockBriefing(currentCompany.company_id);
+      const updated = await unlockBriefing(currentCompany.company_id, templateId);
       setCurrentCompany(updated);
       setActiveVariables([]);
       setActiveCompoundTables([]);
@@ -288,12 +266,12 @@ export function App() {
     if (!currentCompany) return;
     setIsGeneratingTemplate(true);
     try {
-      const result = await generateTemplate(currentCompany.company_id);
+      const result = await generateTemplate(currentCompany.company_id, templateId);
       setTemplateStats(result);
       setPricingRules(null); // a new template resets Stage 4
       setRulesStatus({ status: "idle" });
 
-      const status = await fetchTemplateStatus(currentCompany.company_id).catch(() => null);
+      const status = await fetchTemplateStatus(currentCompany.company_id, templateId).catch(() => null);
       if (status) {
         setTemplateFilesize(status.filesize);
       }
@@ -317,7 +295,7 @@ export function App() {
     if (!currentCompany) return;
     setRulesStatus({ status: "compiling" });
     try {
-      const state = await compilePricingRules(currentCompany.company_id);
+      const state = await compilePricingRules(currentCompany.company_id, templateId);
       setPricingRules(state);
       setRulesStatus({ status: "idle" });
       const toCheck = state.sample_check.filter((c) => !c.ok).length + state.validation_errors.length;
@@ -336,7 +314,7 @@ export function App() {
     if (!currentCompany) return;
     setIsProceeding(true);
     try {
-      const updated = await proceedToLeadSimulation(currentCompany.company_id);
+      const updated = await proceedToLeadSimulation(currentCompany.company_id, templateId);
       setCurrentCompany(updated);
       setNotification({ type: "success", message: `Rules confirmed for ${updated.company_name}. Ready for Stage 5: Lead Simulation.` });
     } catch (err) {
@@ -349,7 +327,7 @@ export function App() {
   const handleImportSettings = async () => {
     if (!currentCompany) return;
     try {
-      const reseeded = await importCompanySettings(currentCompany.company_id);
+      const reseeded = await resetProposalTemplate(currentCompany.company_id, templateId);
       setCurrentCompany(reseeded);
       setActiveVariables([]);
       setActiveCompoundTables([]);
@@ -383,7 +361,7 @@ export function App() {
   const handleResetDefault = async () => {
     if (!currentCompany) return;
     try {
-      const reset = await resetCompany(currentCompany.company_id);
+      const reset = await resetProposalTemplate(currentCompany.company_id, templateId);
       setCurrentCompany(reset);
       setActiveVariables([]);
       setActiveCompoundTables([]);
@@ -495,6 +473,7 @@ export function App() {
 
       {/* Main Workspace */}
       <main className="mx-auto max-w-4xl px-4 pt-3 pb-8 sm:px-6 sm:pt-4 space-y-5">
+        {templateControls}
         {/* Floating Notification */}
         {notification && (
           <div
@@ -542,7 +521,6 @@ export function App() {
             company={currentCompany}
             isLoading={isLoading}
             isSubmittingBriefing={isSubmittingBriefing}
-            onSaveSpec={handleSaveSpec}
             onImportSettings={handleImportSettings}
             onOpenSettings={() => setIsConfigOpen(true)}
             emailConnected={configuration?.email_connected ?? null}
@@ -592,4 +570,4 @@ export function App() {
   );
 }
 
-export default App;
+export default TemplateWorkspace;

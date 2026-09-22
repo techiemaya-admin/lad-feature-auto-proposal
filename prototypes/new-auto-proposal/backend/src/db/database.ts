@@ -2,6 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { migrateTemplates } from "./templates-migration.js";
 import { seedAllCompanies } from "./seed.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -74,9 +75,28 @@ export function initDatabase(dbPath?: string): DatabaseSync {
       updated_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS proposal_templates (
+      template_id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      pricing_spec TEXT NOT NULL DEFAULT '',
+      quotation_filename TEXT,
+      quotation_filesize INTEGER,
+      quotation_markdown TEXT,
+      quotation_parsed_at TEXT,
+      briefing_locked INTEGER NOT NULL DEFAULT 0,
+      working_state_json TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (company_id)
+        REFERENCES company_sessions(company_id)
+        ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS company_variables (
       id TEXT PRIMARY KEY,
       company_id TEXT NOT NULL,
+      template_id TEXT,
       variable_name TEXT NOT NULL,
       natural_name TEXT NOT NULL,
       category TEXT NOT NULL CHECK (category IN ('customer_input', 'pricing', 'paragraph', 'table_loop', 'comparison_matrix', 'compound_table')),
@@ -87,7 +107,8 @@ export function initDatabase(dbPath?: string): DatabaseSync {
       descriptor_json TEXT NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
-      FOREIGN KEY (company_id) REFERENCES company_sessions(company_id) ON DELETE CASCADE
+      FOREIGN KEY (company_id) REFERENCES company_sessions(company_id) ON DELETE CASCADE,
+      FOREIGN KEY (template_id) REFERENCES proposal_templates(template_id) ON DELETE CASCADE
     );
 
     CREATE INDEX IF NOT EXISTS idx_company_variables_lookup 
@@ -112,6 +133,9 @@ export function initDatabase(dbPath?: string): DatabaseSync {
       updated_at TEXT NOT NULL,
       FOREIGN KEY (company_id) REFERENCES company_sessions(company_id) ON DELETE CASCADE
     );
+
+    CREATE INDEX IF NOT EXISTS idx_templates_company
+      ON proposal_templates(company_id);
   `);
 
   // Non-destructive column migrations for existing databases
@@ -141,6 +165,11 @@ export function initDatabase(dbPath?: string): DatabaseSync {
     seedAllCompanies(db);
   }
 
+  migrateTemplates(db, getStorageDir());
+  db.exec(`CREATE VIEW IF NOT EXISTS template_workflows AS
+    SELECT c.company_name, c.industry, c.location, c.email, c.website, c.phone, c.data_json, t.*
+    FROM proposal_templates t JOIN company_sessions c ON c.company_id = t.company_id`);
+  instance = db;
   return db;
 }
 

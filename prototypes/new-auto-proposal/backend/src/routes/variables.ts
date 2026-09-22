@@ -1,3 +1,4 @@
+import { invalidateTemplate } from "../services/template-storage.js";
 import { Router, Request, Response } from "express";
 import crypto from "node:crypto";
 import { getDatabase } from "../db/database.js";
@@ -7,7 +8,7 @@ import type { ExtractionResponse } from "../services/gemini.service.js";
 import { logPipelineArtifact } from "../services/pipeline-log.js";
 import type { CompanyRow } from "./companies.js";
 
-const router = Router();
+const router = Router({ mergeParams: true });
 
 export interface VariableRow {
   id: string;
@@ -55,35 +56,42 @@ function formatVariableRow(row: VariableRow) {
   };
 }
 
-// GET /api/companies/:id/variables - Retrieve all persisted variables and loop tables
-router.get("/:id/variables", (req: Request, res: Response): void => {
-  try {
-    const { id } = req.params;
-    const db = getDatabase();
 
-    const stmt = db.prepare(`
-      SELECT * FROM company_variables
-      WHERE company_id = ?
-      ORDER BY sort_order ASC, created_at ASC
-    `);
+function loadVariableCollections(company_id: string, template_id: string) {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    SELECT * FROM company_variables
+    WHERE company_id = ? AND template_id = ?
+    ORDER BY sort_order ASC, created_at ASC
+  `);
 
-    const rows = stmt.all(id) as unknown as VariableRow[];
+  const rows = stmt.all(company_id, template_id) as unknown as VariableRow[];
 
-    const variables: ReturnType<typeof formatVariableRow>[] = [];
-    const compound_tables: Array<Record<string, unknown>> = [];
+  const variables: ReturnType<typeof formatVariableRow>[] = [];
+  const compound_tables: Array<Record<string, unknown>> = [];
 
-    for (const row of rows) {
-      const formatted = formatVariableRow(row);
-      if (formatted.category === "table_loop") {
-        compound_tables.push({ id: formatted.id, ...formatted.descriptor, is_deleted: formatted.is_deleted });
-      } else {
-        variables.push(formatted);
-      }
+  for (const row of rows) {
+    const formatted = formatVariableRow(row);
+    if (formatted.category === "table_loop") {
+      compound_tables.push({ id: formatted.id, ...formatted.descriptor, is_deleted: formatted.is_deleted });
+    } else {
+      variables.push(formatted);
     }
+  }
+
+  return { variables, compound_tables };
+}
+
+// GET /api/companies/:companyId/templates/:templateId/variables - Retrieve all persisted variables and loop tables
+router.get("/variables", (req: Request, res: Response): void => {
+  try {
+    const { companyId: company_id, templateId: template_id } = req.params;
+    const { variables, compound_tables } = loadVariableCollections(company_id, template_id);
 
     res.json({
       success: true,
-      company_id: id,
+      company_id: company_id,
+      template_id: template_id,
       variables,
       compound_tables,
     });
@@ -95,18 +103,18 @@ router.get("/:id/variables", (req: Request, res: Response): void => {
   }
 });
 
-// POST /api/companies/:id/variables/extract - Prompts Gemini and persists discovered variables
-router.post("/:id/variables/extract", async (req: Request, res: Response): Promise<void> => {
+// POST /api/companies/:companyId/templates/:templateId/variables/extract - Prompts Gemini and persists discovered variables
+router.post("/variables/extract", async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
+    const { companyId: company_id, templateId: template_id } = req.params;
     const db = getDatabase();
 
     const company = db
-      .prepare("SELECT * FROM company_sessions WHERE company_id = ?")
-      .get(id) as unknown as CompanyRow | undefined;
+      .prepare("SELECT * FROM template_workflows WHERE company_id = ? AND template_id = ?")
+      .get(company_id, template_id) as unknown as CompanyRow | undefined;
 
     if (!company) {
-      res.status(404).json({ success: false, error: `Company "${id}" not found` });
+      res.status(404).json({ success: false, error: `Company "${company_id}" not found` });
       return;
     }
 
@@ -138,21 +146,21 @@ router.post("/:id/variables/extract", async (req: Request, res: Response): Promi
       industry: company.industry,
     });
     // The model is the first thing to check when an extraction comes back thin — record it with the output.
-    logPipelineArtifact(id, "variables-raw.json", { ai: getAISettings(), ...extraction });
+    logPipelineArtifact(company_id, "variables-raw.json", { ai: getAISettings(), ...extraction }, template_id);
 
     const now = new Date().toISOString();
 
+    invalidateTemplate(company_id, template_id);
     // Idempotent re-scan: delete previous non-custom variables, preserving user-added custom variables
-    db.prepare("DELETE FROM company_variables WHERE company_id = ? AND is_custom = 0").run(id);
+    db.prepare("DELETE FROM company_variables WHERE company_id = ? AND template_id = ? AND is_custom = 0").run(company_id, template_id);
 
     const insertStmt = db.prepare(`
       INSERT INTO company_variables (
-        id, company_id, variable_name, natural_name, category, data_type,
+        id, company_id, template_id, variable_name, natural_name, category, data_type,
         is_custom, is_deleted, sort_order, descriptor_json, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?)
     `);
 
-    const insertedVariables: ReturnType<typeof formatVariableRow>[] = [];
     extraction.variables.forEach((v, sortIndex) => {
       const varId = crypto.randomUUID();
       // Descriptor keys are what the review deck reads (sample_value, visibility_rule, paragraph_config)
@@ -165,24 +173,10 @@ router.post("/:id/variables/extract", async (req: Request, res: Response): Promi
         paragraph_config: v.paragraph_config,
       };
       const descriptorJson = JSON.stringify(descriptor);
-      insertStmt.run(varId, id, v.variable_name, v.natural_name, v.category, v.data_type, sortIndex, descriptorJson, now, now);
-      insertedVariables.push({
-        id: varId,
-        company_id: id,
-        variable_name: v.variable_name,
-        natural_name: v.natural_name,
-        category: v.category,
-        data_type: v.data_type,
-        is_custom: false,
-        is_deleted: false,
-        sort_order: sortIndex,
-        descriptor: JSON.parse(descriptorJson),
-        created_at: now,
-        updated_at: now,
-      });
+      insertStmt.run(varId, company_id, template_id, v.variable_name, v.natural_name, v.category, v.data_type, sortIndex, descriptorJson, now, now);
+
     });
 
-    const insertedCompoundTables: Array<Record<string, unknown>> = [];
     extraction.loop_tables.forEach((t, i) => {
       const tableRowId = crypto.randomUUID();
       const descriptor = {
@@ -194,9 +188,11 @@ router.post("/:id/variables/extract", async (req: Request, res: Response): Promi
         row_labels: t.row_labels,
         columns: t.column_tags,
       };
-      insertStmt.run(tableRowId, id, t.loop_tag, t.natural_name, "table_loop", "table", 100 + i, JSON.stringify(descriptor), now, now);
-      insertedCompoundTables.push({ id: tableRowId, ...descriptor, is_deleted: false });
+      insertStmt.run(tableRowId, company_id, template_id, t.loop_tag, t.natural_name, "table_loop", "table", 100 + i, JSON.stringify(descriptor), now, now);
     });
+
+    // Return the same saved collection as GET, including preserved custom/left-out rows.
+    const { variables, compound_tables } = loadVariableCollections(company_id, template_id);
 
     let workingState: any = {};
     try {
@@ -207,28 +203,31 @@ router.post("/:id/variables/extract", async (req: Request, res: Response): Promi
     workingState = {
       ...workingState,
       stage: "variable_review",
+      template_stats: null,
+      template_generated: false,
+      pricing_rules: null,
       extracted_variables: {
         document_summary: extraction.document_summary,
         extracted_at: now,
-        variables_count: extraction.variables.length,
-        compound_tables_count: extraction.loop_tables.length,
-        variables: insertedVariables,
-        compound_tables: insertedCompoundTables,
+        variables_count: variables.length,
+        compound_tables_count: compound_tables.length,
+        variables,
+        compound_tables,
       },
     };
-    db.prepare("UPDATE company_sessions SET working_state_json = ?, updated_at = ? WHERE company_id = ?").run(
+    db.prepare("UPDATE proposal_templates SET working_state_json = ?, updated_at = ? WHERE company_id = ? AND template_id = ?").run(
       JSON.stringify(workingState),
       now,
-      id
+      company_id, template_id
     );
 
     res.json({
       success: true,
-      company_id: id,
+      company_id: company_id,
       document_summary: extraction.document_summary,
       extracted_count: extraction.variables.length,
-      variables: insertedVariables,
-      compound_tables: insertedCompoundTables,
+      variables,
+      compound_tables,
     });
   } catch (error) {
     res.status(500).json({
@@ -238,10 +237,10 @@ router.post("/:id/variables/extract", async (req: Request, res: Response): Promi
   }
 });
 
-// PUT /api/companies/:id/variables - Persist inline edits, category moves, paragraph modes, and soft deletions
-router.put("/:id/variables", (req: Request, res: Response): void => {
+// PUT /api/companies/:companyId/templates/:templateId/variables - Persist inline edits, category moves, paragraph modes, and soft deletions
+router.put("/variables", (req: Request, res: Response): void => {
   try {
-    const { id } = req.params;
+    const { companyId: company_id, templateId: template_id } = req.params;
     const db = getDatabase();
 
     const { variables, compound_tables } = req.body;
@@ -258,7 +257,7 @@ router.put("/:id/variables", (req: Request, res: Response): void => {
           sort_order = COALESCE(?, sort_order),
           descriptor_json = COALESCE(?, descriptor_json),
           updated_at = ?
-        WHERE id = ? AND company_id = ?
+        WHERE id = ? AND company_id = ? AND template_id = ?
       `);
 
       for (const item of variables) {
@@ -291,7 +290,8 @@ router.put("/:id/variables", (req: Request, res: Response): void => {
           descriptorJson,
           now,
           item.id,
-          id
+          company_id,
+          template_id
         );
         updatedCount++;
       }
@@ -304,7 +304,7 @@ router.put("/:id/variables", (req: Request, res: Response): void => {
           descriptor_json = COALESCE(?, descriptor_json),
           is_deleted = COALESCE(?, is_deleted),
           updated_at = ?
-        WHERE id = ? AND company_id = ?
+        WHERE id = ? AND company_id = ? AND template_id = ?
       `);
 
       for (const item of compound_tables) {
@@ -330,22 +330,24 @@ router.put("/:id/variables", (req: Request, res: Response): void => {
           isDeleted,
           now,
           item.id,
-          id
+          company_id,
+          template_id
         );
         updatedCount++;
       }
     }
 
+    invalidateTemplate(company_id, template_id);
     // Refresh working_state_json with current active variables
     const selectAllStmt = db.prepare(`
       SELECT * FROM company_variables
-      WHERE company_id = ? AND is_deleted = 0
+      WHERE company_id = ? AND template_id = ? AND is_deleted = 0
       ORDER BY sort_order ASC
     `);
-    const activeRows = selectAllStmt.all(id) as unknown as VariableRow[];
+    const activeRows = selectAllStmt.all(company_id, template_id) as unknown as VariableRow[];
 
-    const selectCompanyStmt = db.prepare("SELECT working_state_json FROM company_sessions WHERE company_id = ?");
-    const comp = selectCompanyStmt.get(id) as { working_state_json: string } | undefined;
+    const selectCompanyStmt = db.prepare("SELECT working_state_json FROM template_workflows WHERE company_id = ? AND template_id = ?");
+    const comp = selectCompanyStmt.get(company_id, template_id) as { working_state_json: string } | undefined;
     if (comp) {
       let ws: any = {};
       try {
@@ -360,8 +362,8 @@ router.put("/:id/variables", (req: Request, res: Response): void => {
         variables: activeRows.map(formatVariableRow),
       };
 
-      const updateWsStmt = db.prepare("UPDATE company_sessions SET working_state_json = ?, updated_at = ? WHERE company_id = ?");
-      updateWsStmt.run(JSON.stringify(ws), now, id);
+      const updateWsStmt = db.prepare("UPDATE proposal_templates SET working_state_json = ?, updated_at = ? WHERE company_id = ? AND template_id = ?");
+      updateWsStmt.run(JSON.stringify(ws), now, company_id, template_id);
     }
 
     res.json({
@@ -376,14 +378,14 @@ router.put("/:id/variables", (req: Request, res: Response): void => {
   }
 });
 
-// POST /api/companies/:id/variables/custom - AST verification and custom variable creation
-router.post("/:id/variables/custom", (req: Request, res: Response): void => {
+// POST /api/companies/:companyId/templates/:templateId/variables/custom - AST verification and custom variable creation
+router.post("/variables/custom", (req: Request, res: Response): void => {
   try {
-    const { id } = req.params;
+    const { companyId: company_id, templateId: template_id } = req.params;
     const db = getDatabase();
 
-    const selectStmt = db.prepare("SELECT quotation_markdown FROM company_sessions WHERE company_id = ?");
-    const row = selectStmt.get(id) as { quotation_markdown?: string } | undefined;
+    const selectStmt = db.prepare("SELECT quotation_markdown FROM template_workflows WHERE company_id = ? AND template_id = ?");
+    const row = selectStmt.get(company_id, template_id) as { quotation_markdown?: string } | undefined;
 
     if (!row || !row.quotation_markdown) {
       res.status(400).json({
@@ -455,14 +457,14 @@ router.post("/:id/variables/custom", (req: Request, res: Response): void => {
 
     const insertStmt = db.prepare(`
       INSERT INTO company_variables (
-        id, company_id, variable_name, natural_name, category, data_type,
+        id, company_id, template_id, variable_name, natural_name, category, data_type,
         is_custom, is_deleted, sort_order, descriptor_json, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, 1, 0, 0, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, 0, ?, ?, ?)
     `);
 
     insertStmt.run(
       varId,
-      id,
+      company_id, template_id,
       cleanVarName,
       natural_name.trim(),
       category,
@@ -474,7 +476,7 @@ router.post("/:id/variables/custom", (req: Request, res: Response): void => {
 
     const createdRecord = {
       id: varId,
-      company_id: id,
+      company_id: company_id,
       variable_name: cleanVarName,
       natural_name: natural_name.trim(),
       category,
@@ -487,6 +489,7 @@ router.post("/:id/variables/custom", (req: Request, res: Response): void => {
       updated_at: now,
     };
 
+    invalidateTemplate(company_id, template_id);
     res.status(201).json({
       success: true,
       variable: createdRecord,

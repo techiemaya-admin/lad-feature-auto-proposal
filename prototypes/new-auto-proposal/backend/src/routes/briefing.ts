@@ -1,18 +1,19 @@
+import { templateDirectory, invalidateTemplate } from "../services/template-storage.js";
 import { Router, Request, Response } from "express";
 import multer from "multer";
 import path from "node:path";
 import fs from "node:fs";
 import { toMarkdown } from "@firecrawl/anydoc";
-import { getDatabase, getStorageDir } from "../db/database.js";
+import { getDatabase } from "../db/database.js";
 import { formatCompanyResponse, CompanyRow } from "./companies.js";
 
-const router = Router();
+const router = Router({ mergeParams: true });
 
 // Configure Multer storage to route uploaded .docx files to storage/<company_id>/original_quotation.docx
 const storage = multer.diskStorage({
   destination: (req, _file, cb) => {
-    const companyId = req.params.id;
-    const targetDir = path.join(getStorageDir(), companyId);
+    const companyId = req.params.companyId;
+    const targetDir = templateDirectory(companyId, req.params.templateId);
     if (!fs.existsSync(targetDir)) {
       fs.mkdirSync(targetDir, { recursive: true });
     }
@@ -60,14 +61,14 @@ function handleUpload(req: Request, res: Response, next: () => void) {
 
 // POST /api/companies/:id/briefing/submit
 // Accepts prompt text + .docx upload, converts to Markdown via @firecrawl/anydoc, and updates SQLite
-router.post("/:id/briefing/submit", handleUpload, async (req: Request, res: Response): Promise<void> => {
+router.post("/briefing/submit", handleUpload, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
+    const { companyId: id, templateId } = req.params;
     const db = getDatabase();
 
     // Verify company exists
-    const selectStmt = db.prepare("SELECT * FROM company_sessions WHERE company_id = ?");
-    const existing = selectStmt.get(id) as unknown as CompanyRow | undefined;
+    const selectStmt = db.prepare("SELECT * FROM template_workflows WHERE company_id = ? AND template_id = ?");
+    const existing = selectStmt.get(id, templateId) as unknown as CompanyRow | undefined;
 
     if (!existing) {
       res.status(404).json({
@@ -86,7 +87,7 @@ router.post("/:id/briefing/submit", handleUpload, async (req: Request, res: Resp
       return;
     }
 
-    const companyDir = path.join(getStorageDir(), id);
+    const companyDir = templateDirectory(id, templateId);
     const targetFilePath = path.join(companyDir, "original_quotation.docx");
 
     let originalFilename = "";
@@ -122,22 +123,11 @@ router.post("/:id/briefing/submit", handleUpload, async (req: Request, res: Resp
       return;
     }
 
+    invalidateTemplate(id, templateId);
     const now = new Date().toISOString();
 
-    // Update data_json pricing_engine_spec as well
-    let parsedData: any = {};
-    try {
-      parsedData = JSON.parse(existing.data_json);
-    } catch {
-      parsedData = {};
-    }
-    parsedData.pricing_engine_spec = {
-      ...(parsedData.pricing_engine_spec || {}),
-      pricing_context: promptText,
-    };
-    const updatedDataJson = JSON.stringify(parsedData, null, 2);
-
     // Downstream state initialization / clear previous downstream results on re-submit
+    db.prepare("DELETE FROM company_variables WHERE company_id = ? AND template_id = ?").run(id, templateId);
     const workingState = {
       stage: "variable_review",
       briefing_completed_at: now,
@@ -147,9 +137,8 @@ router.post("/:id/briefing/submit", handleUpload, async (req: Request, res: Resp
     };
 
     const updateStmt = db.prepare(`
-      UPDATE company_sessions SET
+      UPDATE proposal_templates SET
         pricing_spec = ?,
-        data_json = ?,
         quotation_filename = ?,
         quotation_filesize = ?,
         quotation_markdown = ?,
@@ -157,22 +146,21 @@ router.post("/:id/briefing/submit", handleUpload, async (req: Request, res: Resp
         briefing_locked = 1,
         working_state_json = ?,
         updated_at = ?
-      WHERE company_id = ?
+      WHERE company_id = ? AND template_id = ?
     `);
 
     updateStmt.run(
       promptText,
-      updatedDataJson,
       originalFilename,
       fileSize,
       markdown,
       now,
       JSON.stringify(workingState),
       now,
-      id
+      id, templateId
     );
 
-    const updatedRow = selectStmt.get(id) as unknown as CompanyRow;
+    const updatedRow = selectStmt.get(id, templateId) as unknown as CompanyRow;
     const formatted = formatCompanyResponse(updatedRow);
 
     res.json({
@@ -192,13 +180,13 @@ router.post("/:id/briefing/submit", handleUpload, async (req: Request, res: Resp
 
 // POST /api/companies/:id/briefing/unlock
 // Hard Reset / Unlock: safely resets downstream state while preserving user prompt text and document
-router.post("/:id/briefing/unlock", (req: Request, res: Response): void => {
+router.post("/briefing/unlock", (req: Request, res: Response): void => {
   try {
-    const { id } = req.params;
+    const { companyId: id, templateId } = req.params;
     const db = getDatabase();
 
-    const selectStmt = db.prepare("SELECT * FROM company_sessions WHERE company_id = ?");
-    const existing = selectStmt.get(id) as unknown as CompanyRow | undefined;
+    const selectStmt = db.prepare("SELECT * FROM template_workflows WHERE company_id = ? AND template_id = ?");
+    const existing = selectStmt.get(id, templateId) as unknown as CompanyRow | undefined;
 
     if (!existing) {
       res.status(404).json({
@@ -213,14 +201,14 @@ router.post("/:id/briefing/unlock", (req: Request, res: Response): void => {
     // Cascading Hard Reset on Briefing Unlock:
     // Delete all variables in company_variables table for this company
     try {
-      const deleteVarsStmt = db.prepare("DELETE FROM company_variables WHERE company_id = ?");
-      deleteVarsStmt.run(id);
+      const deleteVarsStmt = db.prepare("DELETE FROM company_variables WHERE company_id = ? AND template_id = ?");
+      deleteVarsStmt.run(id, templateId);
     } catch {
       // Table may not exist yet in certain unit test runs
     }
 
     // Clean up downstream generated template.docx if present
-    const templatePath = path.join(getStorageDir(), id, "template.docx");
+    const templatePath = path.join(templateDirectory(id, templateId), "template.docx");
     if (fs.existsSync(templatePath)) {
       try {
         fs.unlinkSync(templatePath);
@@ -239,16 +227,16 @@ router.post("/:id/briefing/unlock", (req: Request, res: Response): void => {
     };
 
     const updateStmt = db.prepare(`
-      UPDATE company_sessions SET
+      UPDATE proposal_templates SET
         briefing_locked = 0,
         working_state_json = ?,
         updated_at = ?
-      WHERE company_id = ?
+      WHERE company_id = ? AND template_id = ?
     `);
 
-    updateStmt.run(JSON.stringify(resetWorkingState), now, id);
+    updateStmt.run(JSON.stringify(resetWorkingState), now, id, templateId);
 
-    const updatedRow = selectStmt.get(id) as unknown as CompanyRow;
+    const updatedRow = selectStmt.get(id, templateId) as unknown as CompanyRow;
 
     res.json({
       success: true,
@@ -265,17 +253,17 @@ router.post("/:id/briefing/unlock", (req: Request, res: Response): void => {
 
 // GET /api/companies/:id/briefing/markdown
 // Fetch extracted quotation Markdown and metadata
-router.get("/:id/briefing/markdown", (req: Request, res: Response): void => {
+router.get("/briefing/markdown", (req: Request, res: Response): void => {
   try {
-    const { id } = req.params;
+    const { companyId: id, templateId } = req.params;
     const db = getDatabase();
 
     const selectStmt = db.prepare(`
       SELECT quotation_filename, quotation_filesize, quotation_markdown, quotation_parsed_at, briefing_locked
-      FROM company_sessions
-      WHERE company_id = ?
+      FROM template_workflows
+      WHERE company_id = ? AND template_id = ?
     `);
-    const row = selectStmt.get(id) as {
+    const row = selectStmt.get(id, templateId) as {
       quotation_filename?: string;
       quotation_filesize?: number;
       quotation_markdown?: string;

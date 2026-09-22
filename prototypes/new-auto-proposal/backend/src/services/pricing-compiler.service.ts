@@ -1,3 +1,4 @@
+import { loadWorkflow } from "../repositories/templates.repository.js";
 import { SchemaType, type ResponseSchema } from "@google/generative-ai";
 import { getDatabase } from "../db/database.js";
 import type { CompanyRow } from "../routes/companies.js";
@@ -24,15 +25,15 @@ export interface CompileInput {
   covered: string[];
 }
 
-export function loadCompany(companyId: string): CompanyRow | undefined {
-  return getDatabase().prepare("SELECT * FROM company_sessions WHERE company_id = ?").get(companyId) as unknown as CompanyRow | undefined;
+export function loadCompany(companyId: string, templateId = `default-${companyId}`): CompanyRow | undefined {
+  return loadWorkflow(companyId, templateId);
 }
 
 /** Same rows the template mutator reads; loop columns live under descriptor.columns. */
-export function loadStage2Context(companyId: string): Stage2Context {
+export function loadStage2Context(companyId: string, templateId = `default-${companyId}`): Stage2Context {
   const rows = getDatabase()
-    .prepare(`SELECT * FROM company_variables WHERE company_id = ? AND is_deleted = 0 ORDER BY sort_order ASC, created_at ASC`)
-    .all(companyId) as unknown as VariableRow[];
+    .prepare(`SELECT * FROM company_variables WHERE company_id = ? AND template_id = ? AND is_deleted = 0 ORDER BY sort_order ASC, created_at ASC`)
+    .all(companyId, templateId) as unknown as VariableRow[];
   const ctx: Stage2Context = { variables: [], loop_tables: [] };
   for (const row of rows) {
     let d: any = {};
@@ -226,12 +227,12 @@ export async function compilePricingRules(companyId: string, company: CompanyRow
   };
 
   const first = await attempt();
-  logPipelineArtifact(companyId, "rules-raw.json", { ai: getAISettings(), errors: errorLines(first.state), ...first.wire });
+  logPipelineArtifact(companyId, "rules-raw.json", { ai: getAISettings(), errors: errorLines(first.state), ...first.wire }, company.template_id);
   if (issuesOf(first.state).every((n) => n === 0)) return first.state;
 
   // Re-serialise through toWire so the model sees the typed reading of its own output (what fromWire kept).
   const second = await attempt({ wire: toWire(first.state.rules), errors: errorLines(first.state) });
-  logPipelineArtifact(companyId, "rules-repair.json", { ai: getAISettings(), errors: errorLines(second.state), ...second.wire });
+  logPipelineArtifact(companyId, "rules-repair.json", { ai: getAISettings(), errors: errorLines(second.state), ...second.wire }, company.template_id);
   const [a, b] = [issuesOf(first.state), issuesOf(second.state)];
   return b[0] < a[0] || (b[0] === a[0] && b[1] <= a[1]) ? second.state : first.state;
 }

@@ -1,24 +1,25 @@
+import { templateDirectory } from "../services/template-storage.js";
 import { Router, Request, Response } from "express";
 import fs from "node:fs";
 import path from "node:path";
-import { getDatabase, getStorageDir } from "../db/database.js";
+import { getDatabase } from "../db/database.js";
 import { mutateDocumentTemplate } from "../services/template-mutator.service.js";
 import { logPipelineArtifact } from "../services/pipeline-log.js";
 import { toMarkdown } from "@firecrawl/anydoc";
 import type { CompanyRow } from "./companies.js";
 
-const router = Router();
+const router = Router({ mergeParams: true });
 
 // POST /api/companies/:id/template/generate
 // Mutates original_quotation.docx using docxmlater and confirmed variables
-router.post("/:id/template/generate", async (req: Request, res: Response): Promise<void> => {
+router.post("/template/generate", async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
+    const { companyId: id, templateId } = req.params;
     const db = getDatabase();
 
     // Verify company session exists
-    const selectStmt = db.prepare("SELECT * FROM company_sessions WHERE company_id = ?");
-    const company = selectStmt.get(id) as unknown as CompanyRow | undefined;
+    const selectStmt = db.prepare("SELECT * FROM template_workflows WHERE company_id = ? AND template_id = ?");
+    const company = selectStmt.get(id, templateId) as unknown as CompanyRow | undefined;
 
     if (!company) {
       res.status(404).json({
@@ -29,11 +30,11 @@ router.post("/:id/template/generate", async (req: Request, res: Response): Promi
     }
 
     // Execute in-memory AST mutations
-    const result = await mutateDocumentTemplate(id);
+    const result = await mutateDocumentTemplate(id, templateId);
 
     // Log anydoc markdown of the templated docx (best-effort, never blocks the response)
-    toMarkdown(path.join(getStorageDir(), id, "template.docx"))
-      .then((md) => logPipelineArtifact(id, "template.md", md))
+    toMarkdown(path.join(templateDirectory(id, templateId), "template.docx"))
+      .then((md) => logPipelineArtifact(id, "template.md", md, templateId))
       .catch((err) => console.warn("[pipeline-log] anydoc conversion failed:", err));
 
     // Update company working_state_json in SQLite
@@ -65,11 +66,11 @@ router.post("/:id/template/generate", async (req: Request, res: Response): Promi
     };
 
     const updateStmt = db.prepare(`
-      UPDATE company_sessions
+      UPDATE proposal_templates
       SET working_state_json = ?, updated_at = ?
-      WHERE company_id = ?
+      WHERE company_id = ? AND template_id = ?
     `);
-    updateStmt.run(JSON.stringify(workingState), now, id);
+    updateStmt.run(JSON.stringify(workingState), now, id, templateId);
 
     res.json({
       success: true,
@@ -90,13 +91,13 @@ router.post("/:id/template/generate", async (req: Request, res: Response): Promi
 
 // GET /api/companies/:id/template/status
 // Returns whether template.docx exists and returns persisted generation stats
-router.get("/:id/template/status", (req: Request, res: Response): void => {
+router.get("/template/status", (req: Request, res: Response): void => {
   try {
-    const { id } = req.params;
+    const { companyId: id, templateId } = req.params;
     const db = getDatabase();
 
-    const selectStmt = db.prepare("SELECT working_state_json FROM company_sessions WHERE company_id = ?");
-    const row = selectStmt.get(id) as { working_state_json?: string } | undefined;
+    const selectStmt = db.prepare("SELECT working_state_json FROM template_workflows WHERE company_id = ? AND template_id = ?");
+    const row = selectStmt.get(id, templateId) as { working_state_json?: string } | undefined;
 
     if (!row) {
       res.status(404).json({
@@ -106,7 +107,7 @@ router.get("/:id/template/status", (req: Request, res: Response): void => {
       return;
     }
 
-    const templatePath = path.join(getStorageDir(), id, "template.docx");
+    const templatePath = path.join(templateDirectory(id, templateId), "template.docx");
     const exists = fs.existsSync(templatePath);
     let stats: any = null;
     let filesize: number | null = null;
@@ -142,10 +143,10 @@ router.get("/:id/template/status", (req: Request, res: Response): void => {
 
 // GET /api/companies/:id/template/download
 // Streams binary .docx file with OpenXML content-type
-router.get("/:id/template/download", (req: Request, res: Response): void => {
+router.get("/template/download", (req: Request, res: Response): void => {
   try {
-    const { id } = req.params;
-    const templatePath = path.join(getStorageDir(), id, "template.docx");
+    const { companyId: id, templateId } = req.params;
+    const templatePath = path.join(templateDirectory(id, templateId), "template.docx");
 
     if (!fs.existsSync(templatePath)) {
       res.status(404).json({

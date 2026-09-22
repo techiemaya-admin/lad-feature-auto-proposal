@@ -81,6 +81,8 @@ export interface CompanyWorkingState {
 }
 
 export interface Company {
+  template_id?: string;
+  template_name?: string;
   company_id: string;
   company_name: string;
   industry: string | null;
