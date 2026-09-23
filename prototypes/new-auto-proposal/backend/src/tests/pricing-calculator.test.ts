@@ -192,6 +192,11 @@ test("validate: domain-level errors with paths", () => {
   // its own answers come from, so no row ever matched. ("Ohio" as the sample region is caught by sampleCheck
   // instead of validate now — see "a region the seller's table does not list" below.)
   assert.match(messages(errs((r) => { (r.variables.find((v) => v.name === "tax_rate") as any).where[0].column = "state_name"; })), /client_state.*answered from taxes\.state.*compared against taxes\.state_name/);
+  // seen live on co3: a rush add-on priced at 20% of base sat in the add-ons table beside fixed fees, so the
+  // loop's amount was add(col:amount, col:percent_of_base) and the proposal printed "$0.20" for a $1,900 line.
+  assert.match(messages(errs((r) => { (r.variables.find((v) => v.name === "tax_amount") as any).op = "add"; })), /tax_amount.*"add" mixes money and percent/);
+  // scaling ops mix units by design — money × percent is exactly how every tax and discount line is built
+  assert.deepEqual(errs((r) => { (r.variables.find((v) => v.name === "tax_amount") as any).op = "mul"; }), []);
   // seen live on co2: names and dates defined as "text" inputs — Stage 5 owns those, the sheet must not ask for them
   assert.match(messages(errs((r) => { r.variables.push({ name: "proposal_date", label: "Date", in_document: true, unit: "text", condition_flag: "", kind: "input", input_type: "text" as any, required: true }); })), /proposal_date.*input_type "text"/);
   // an aggregate over all rows needs no key column (the model leaves it "" — seen live on every first attempt)

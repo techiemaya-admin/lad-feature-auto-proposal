@@ -701,22 +701,40 @@ export function validate(
       );
     else if (n < 1)
       err(`${p}.args`, `${v.name}: "${f.op}" needs at least one argument`);
+    const units = new Map<string, string>();
     (f.args ?? []).forEach((a, j) => {
-      if (typeof a === "number") return;
+      if (typeof a === "number") return; // a bare number carries no unit, so it fits anywhere
       if (a.startsWith("col:")) {
         if (!allowCol)
           err(
             `${p}.args[${j}]`,
             `${v.name}: "col:" references are only allowed inside a rows map`,
           );
-        else column(`${p}.args[${j}]`, v, allowCol, a.slice(4), "map");
+        else {
+          column(`${p}.args[${j}]`, v, allowCol, a.slice(4), "map");
+          const cu = columnUnit(tables.get(allowCol), a.slice(4));
+          if (cu) units.set(`the row's ${a.slice(4)}`, cu);
+        }
         return;
       }
       ref(`${p}.args[${j}]`, v, a);
       const u = vars.get(a)?.unit;
       if (u === "text" || u === "rows")
         err(`${p}.args[${j}]`, `${v.name}: "${a}" is ${u}, not a number`);
+      else if (u) units.set(a, u);
     });
+    // Adding money to a percentage is not a number, it is a category error, and it computes a plausible
+    // figure that nothing else catches. Seen live on co3: a rush add-on priced at 20% of base sat in the
+    // add-ons table beside fixed fees, and the loop's amount was add(col:amount, col:percent_of_base) —
+    // so the proposal printed "$0.20" for a $1,900 line. Scaling ops (mul/div) mix units by design.
+    if (f.op === "add" || f.op === "sub" || f.op === "min" || f.op === "max") {
+      const kinds = [...new Set(units.values())];
+      if (kinds.length > 1)
+        err(
+          `${p}.args`,
+          `${v.name}: "${f.op}" mixes ${kinds.join(" and ")} — ${[...units].map(([n, u]) => `${n} is ${u}`).join(", ")}. Convert first (a percentage becomes money by multiplying what it is a percentage of), then add.`,
+        );
+    }
   };
 
   (rules.variables ?? []).forEach((v, i) => {
