@@ -15,7 +15,7 @@ A zero-configuration, AI-assisted auto-proposal prototype that enables an agency
 2. **Categorized Variable Review Chip-Deck:** Review extracted dynamic variables organized into three clear buckets (`Customer Inputs`, `Pricing Placeholders`, and `Narrative Paragraphs`) as modular interactive chips rather than a dense administrative table.
 3. **Minimal Template Checkpoint:** Confirm XML-safe dynamic template tags and repeating line-item loops with an inline status card and optional quick preview before moving to pricing.
 4. **Interactive Pricing Engine:** Review and fine-tune compiled visual rule cards powered by a 100% deterministic JavaScript math engine.
-5. **Lead Simulator & Verification:** Paste an inbound lead message, see the facts read from it (a missing one drafts a clarification email and opens a reply loop until the thread answers it), and get a mathematically verified `.docx` + PDF proposal previewed in the browser — or a "Declined to auto-quote" panel when a review rule matches.
+5. **Lead Simulator & Verification:** Paste an inbound lead message, see the facts read from it (a missing one drafts a clarification email and opens a reply loop until the thread answers it), and get a mathematically verified `.docx` + PDF proposal previewed in the browser — always for a human to check and send; when a review reason fires, it is flagged above the proposal and the values it touches are left blank (ticket 09; today a "Declined to auto-quote" panel and no document).
 6. **Ambient Controls:** Persistent slide-over drawer for proposal voice notes and a mock inbox link, and a bottom developer dock for raw Markdown, JSON schemas, and pipeline logs.
 
 ## User Stories
@@ -83,7 +83,7 @@ interface PricingRules {
     | { kind: "condition"; all: Cond[] }
     | { kind: "aggregate"; fn: "sum" | "count"; table; rows: "selected" | "all"; selected_var?; key_column; column?; where? }
     | { kind: "rows"; table; rows: "selected" | "all"; selected_var?; key_column; where?; map: Record<loopColumnTag, columnKey | Formula> } )>;
-  review_rules: Array<{ when: Cond[]; reason: string }>;      // explicit "decline to auto-quote"
+  review_rules: Array<{ when: Cond[]; reason: string }>;      // flag for the human who sends the proposal
   assumptions: Array<{ text: string; resolved_as: string }>;  // what the owner's notes left open
   sample_inputs: Record<string, unknown>;                      // the lead facts behind the sample quotation
 }

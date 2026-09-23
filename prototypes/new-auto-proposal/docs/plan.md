@@ -60,7 +60,7 @@ The system runs a **5-stage sequential pipeline** anchored by an **ambient shell
   Inbound lead message textarea, prefilled with the company's dev-only sample_lead_text
   ├── POST /lead/extract → structured facts per the rules' inputs (+ client name): null = not said, assumptions[]; code fills Assume defaults → assumed[]
   │     └── required fact missing → read-only facts panel (field highlighted) + POST /lead/clarify ask → reply box (typed, or POST /lead/reply drafts it as the lead) → re-extract the thread
-  ├── POST /proposal/generate (facts in, never the email): evaluate → needs_review → "Declined to auto-quote", no file
+  ├── POST /proposal/generate (facts in, never the email): evaluate → needs_review → reasons flagged for the human, document still built with the affected values blank (ticket 09; today: declined, no file)
   │     ├── buildProposalPayload (every pricing tag, has_* flags, loops, tier matrix) + customer facts + fillDates (code)
   │     ├── one model call drafts every ai_generated paragraph as {tag} placeholders → code substitutes from the payload
   │     ├── easy-template-x → storage/<id>/proposal.docx; headless LibreOffice → proposal.pdf (failure → pdf: null)
@@ -150,7 +150,7 @@ Model choice: provider/model are persisted in `app_settings` (default `deepseek-
        ├── tables[]: generic grids with a kind hint (packages | bands | addons | taxes | splits | other)
        ├── variables[]: one flat definition per cell — input | constant | lookup | formula | condition | aggregate | rows
        │     in_document:true = a Stage 2 pricing variable; in_document:false = pricing-only helper
-       ├── review_rules[] ("decline to auto-quote"), assumptions[], sample_inputs (the sample lead)
+       ├── review_rules[] ("flag for human review"), assumptions[], sample_inputs (the sample lead)
        └── persisted in working_state_json.pricing_rules; both compile attempts logged to logs/<id>/*-rules-raw.json / *-rules-repair.json
        │
        ├─────────────────────────────────┐

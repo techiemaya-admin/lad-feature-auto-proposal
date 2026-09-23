@@ -11,7 +11,7 @@ Most of the machinery already exists: `POST /rules/calculate` returns `{evaluati
 **Decided with the user (2026-09-16/18):**
 - Two endpoints, run back-to-back by the UI: `POST /lead/extract` (message → facts) and `POST /proposal/generate` (**structured facts** → document). `generate` never re-reads the email; production separates these steps too (a human or a clarification email sits between them).
 - Missing required fact → stop at the facts form (field highlighted) **and** draft a clarification email (`POST /lead/clarify`, separate call so a rep who just types the fact never pays for it). Not sent — shown with a Copy button; the form stays editable so the demo can continue by hand.
-- `evaluation.needs_review` non-empty → **no document**; a "Declined to auto-quote" panel lists the reasons. No clarification email for this case.
+- ~~`evaluation.needs_review` non-empty → **no document**; a "Declined to auto-quote" panel lists the reasons.~~ Superseded 2026-09-23 (ticket 09): a human sends every proposal, so review flags rather than blocks — the document is still built, the reasons are shown to the human, and only the values a reason touches are left blank. No clarification email for this case.
 - Dev-only seeds (`pricing_spec`, `sample_lead_text`) move to a **separate file** `Mock Data/test_seeds.json`; `companies_dataset.json` keeps only what the main backend imports (`pricing_engine_spec` is removed from it). `sample_lead_text` is not stored — the company response attaches it from the file and the Stage 5 textarea starts with it (as `PromptDocCapsule` starts with `pricing_spec`). "Reset to mock default" stays and re-seeds from both files.
 - No `proposals` table, no persistence of runs. Files overwrite `storage/<id>/proposal.docx` / `proposal.pdf`; a refresh loses the on-screen result, the files stay downloadable.
 - Dates are code, not model: Stage 2 gains `data_type: "date"`; Stage 5 fills every date customer input deterministically (earliest sample date → today, the others keep their offset, sample format and suffix kept). Fallback for old extractions: a `string` whose sample parses as a month-name date (`ponytail:`). Seller-owned values (validity days, payment terms) are compiled as constants, never asked (seen live on co1 and co2).
@@ -41,7 +41,7 @@ Extractor response schema: one **required** property per field (`null` when the 
 { success: true, evaluation, payload, narrative: { [name]: { text, tags_placed: string[] } },
   files: { docx: "/api/companies/:id/proposal/download?format=docx", pdf: <same with pdf> | null }, pdf_error?: string }
 ```
-or `{ success: false, declined: true, needs_review: [...] , evaluation }` (200, no document) when `evaluation.needs_review` is non-empty, or 400 when required inputs are missing.
+or `{ success: false, declined: true, needs_review: [...] , evaluation }` (200, no document) when `evaluation.needs_review` is non-empty (ticket 09 replaces this with the success shape plus `needs_review`), or 400 when required inputs are missing.
 
 Steps inside `proposal-generator.service.ts`:
 1. `evaluate(rules, inputs)`; decline on `needs_review`.

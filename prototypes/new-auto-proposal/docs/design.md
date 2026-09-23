@@ -72,7 +72,7 @@ The Rush Away Auto-Proposal onboarding workflow is an **agentic configuration wo
 │  STAGE 5: CHECK & GENERATE PROPOSAL                                       │
 │  - Lead textarea prefilled with the sample message → [Generate proposal]  │
 │  - Facts read from the message (read-only; missing → ask / reply loop)    │
-│  - Deterministic numbers ledger; review rule → "Declined to auto-quote"   │
+│  - Deterministic numbers ledger; review rule → flagged for the human      │
 │  - Placeholder narrative → easy-template-x .docx → LibreOffice PDF        │
 │  - PDF preview in an iframe + .docx / .pdf downloads                       │
 └───────────────────────────────────────────────────────────────────────────┘
@@ -179,7 +179,7 @@ Rendered under the pricing deck once `working_state.stage === "lead_simulation"`
 2. **Facts panel (`What the lead told us`):** one read-only value row per fact (booleans as `Yes / No`, lists comma-joined, integers `tabular-nums`). A required fact the thread did not answer reads `not in the message` in an amber ring; the run stops here and a **conversation card** drafts the ask (`We asked`: subject, body, `Copy` on the latest one) and opens a reply box (`What the lead wrote back…`) with `[ Let the model answer as the lead ]` — which fills the box, still editable — and `[ Send reply & re-read ]`. The reply joins the thread as `The lead replied`; the whole thread is re-read, facts are replaced outright (the lead's latest word wins, there are no hand edits), and the loop either drafts the next ask or generates on its own once nothing is missing.
 3. **Assumptions strip:** amber `Read between the lines:` list of the extractor's judgement calls (range picked, inferred tier, counted devices).
 4. **Numbers ledger (`The numbers`):** the in-document money / percent / integer values in calculation order, `font-mono tabular-nums`, the last money value emphasised. No benchmark banner on Stage 5.
-5. **Declined panel:** `Declined to auto-quote` (destructive tint, shield icon) listing the review-rule reasons; no document is written.
+5. **Review panel** *(ticket 09; today the `Declined to auto-quote` panel, no document)*: the review reasons, shown above the proposal for the human who sends it. The document is still written; values a reason touches are left blank to fill by hand.
 6. **Split view** (`lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]`): facts, assumptions and ledger left; right a PDF `<iframe>` (or `PDF preview unavailable — download the .docx` with the reason) and `[ Download .docx ]` `[ Download .pdf ]` in the primary style. `docx-preview` is not used here.
 
 ---

@@ -71,7 +71,7 @@ interface PricingRulesState { rules; compiled_at; validation_errors: ValidationE
 - `null` cell in a `gte/gt` comparison = always true (unbounded cap); in `lte/lt` = always false.
 - Money rounded to cents (`Math.round((x + Number.EPSILON) * 100) / 100`) **immediately after each money variable**; integers `Math.round`; percent stays a fraction. Loop money cells rounded at row construction. For `kind: "splits"` tables, a `rows.map` formula `mul ["col:share", <total_var>]` gets the rounding remainder added to the last row so milestones always sum to the total.
 - Amounts are **unsigned** (templates hard-code the `−` glyph).
-- Missing required input, lookup with no matching row, division by zero, and any matching `review_rules[]` entry → `needs_review[]` (explicit "decline to auto-quote"; never a silent 0).
+- Missing required input, lookup with no matching row, division by zero, and any matching `review_rules[]` entry → `needs_review[]` (a flag for the human who reviews and sends the proposal; never a silent 0).
 
 **Evaluation:** deps = `condition_flag` ∪ referenced names (`args`, `where[].value_var`, `all[].var/value_var`, `selected_var`, `rows.map` formula names; `col:` refs excluded). Kahn topological sort, ties by declaration index (stable ledger order); leftovers = cycle. Then one pass in order applying the kind semantics above; finally `review_rules`.
 

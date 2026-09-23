@@ -38,6 +38,7 @@ Self-contained proof of concept for zero-configuration proposal generation: a re
 ### 4. Stage 5 never lets the model touch a number
 - The lead extractor only reads: `null` = not said, `assumptions[]` for its readings of the lead's own words. `evaluate` + `buildProposalPayload` produce every value.
 - Dates are computed (`fillDates`), seller-owned values (validity days, payment terms) are compiled as constants, and a silent lead input follows its Stage 4 setting — Ask / Assume / Blank.
+- Nothing reaches a lead on its own: a human reviews every proposal and sends it. `needs_review` flags what that human must check; the document is still built, with only the values a problem touches left blank to fill by hand. The code still declines instead — ticket 09.
 - The narrative drafter writes `{tag}` placeholders; code substitutes them from the payload.
 - Contracts, the Ask/Assume/Blank rules and the clarification reply loop: [docs/plans/06-lead-simulator.md](docs/plans/06-lead-simulator.md).
 
