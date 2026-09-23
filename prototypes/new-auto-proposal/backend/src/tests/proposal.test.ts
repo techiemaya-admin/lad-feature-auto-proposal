@@ -266,6 +266,21 @@ test("Proposal routes", async (t) => {
     assert.equal((await request(app).put("/api/companies/co1_seo/rules").send({ rules: rulesOf("co1_seo") })).status, 200);
   });
 
+  await t.test("a flag the document never declares stays out of the drafter's facts", async () => {
+    // Seen live on co3: the compiler invented has_tax on a seller who charges none, it came out true, and
+    // the drafter — told to write to these flags and never against them — put "sales tax applies" in the
+    // proposal beside a zero. Only flags the document declares are facts about this proposal.
+    const rules = rulesOf("co1_seo");
+    rules.variables.push({ name: "has_invented", label: "Invented", in_document: false, unit: "boolean", condition_flag: "", kind: "condition", all: [{ var: "location_count", op: "gte", value: 0 }] });
+    assert.equal((await request(app).put("/api/companies/co1_seo/rules").send({ rules })).status, 200);
+    let narrativePrompt = "";
+    setNarrativeModelCall(async (prompt, names) => { narrativePrompt = prompt; return Object.fromEntries(names.map((n) => [n, n])); });
+    assert.equal((await request(app).post("/api/companies/co1_seo/proposal/generate").send({ inputs: facts, lead_text: lead })).status, 200);
+    assert.match(narrativePrompt, /- has_tax\b/); // declared by the document, still stated as fact
+    assert.doesNotMatch(narrativePrompt, /has_invented/); // the sheet's own bookkeeping, never a claim
+    assert.equal((await request(app).put("/api/companies/co1_seo/rules").send({ rules: rulesOf("co1_seo") })).status, 200);
+  });
+
   await t.test("a PDF failure keeps the docx and reports pdf: null", async () => {
     setPdfConverter(async () => { throw new Error("soffice exploded"); });
     const res = await request(app).post("/api/companies/co1_seo/proposal/generate").send({ inputs: facts, lead_text: lead });

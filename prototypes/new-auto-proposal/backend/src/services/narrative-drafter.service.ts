@@ -101,8 +101,18 @@ export function buildNarrativePrompt(input: NarrativeInput): string {
     .filter(([, v]) => (typeof v === "string" && v !== "") || typeof v === "number")
     .map(([k, v]) => `- {${k}} = ${JSON.stringify(v)}`);
   // Seen live: with has_tax unmentioned the drafter wrote "sales tax applies" for a lead with no state.
+  // Seen live again, the other way: the compiler invented a has_tax flag on a seller who charges none
+  // (no such tag in the document) and it came out true, so the drafter — told below to write to these and
+  // never against them — asserted "sales tax applies" beside a zero. Only flags the DOCUMENT declares are
+  // facts about this proposal; the sheet's internal bookkeeping flags are not, and stay out of the prompt.
+  const docFlags = new Set(
+    [
+      ...stage2.variables.map((v) => v.condition_flag),
+      ...rules.variables.filter((v) => v.in_document).map((v) => v.condition_flag),
+    ].filter(Boolean),
+  );
   const flags = Object.entries(payload)
-    .filter(([, v]) => typeof v === "boolean")
+    .filter(([k, v]) => typeof v === "boolean" && docFlags.has(k))
     .map(([k, v]) => `- ${k}${labelOf.has(k) ? ` (${labelOf.get(k)})` : ""}: ${v ? "yes" : "no"}`);
   const paragraphs = draftedParagraphs(stage2).map((v) => {
     const t = tips[v.variable_name] ?? {};
