@@ -684,6 +684,16 @@ export function validate(
         err(`${cp}.values`, `${v.name}: "in" needs a values list`);
       else if (c.op !== "in" && c.value === undefined)
         err(`${cp}.value`, `${v.name}: comparison needs a value or value_var`);
+      else if ("var" in c) {
+        // Seen live on co3: the $22,000 scoping review compared selected_tier to "Custom Web App" by name, so
+        // renaming that row on the deck would switch the safety rule off with no error. A literal compared to a
+        // choice must be one of its options — the deck save then fails loudly instead.
+        const src = vars.get(c.var);
+        const opts = src?.kind === "input" && (src.input_type === "choice" || src.input_type === "region") ? inputOptions(src, rules) : [];
+        const bad = (c.op === "in" ? c.values ?? [] : [c.value]).filter((x) => opts.length && !opts.some((o) => norm(o) === norm(String(x))));
+        if (bad.length)
+          err(`${cp}.value`, `${v.name}: ${c.var} is compared to ${bad.map((x) => JSON.stringify(x)).join(", ")}, which is not one of its options (${opts.join(", ")}) — this test can never be true`);
+      }
     });
   const formula = (
     p: string,

@@ -195,6 +195,10 @@ test("validate: domain-level errors with paths", () => {
   // seen live on co3: a rush add-on priced at 20% of base sat in the add-ons table beside fixed fees, so the
   // loop's amount was add(col:amount, col:percent_of_base) and the proposal printed "$0.20" for a $1,900 line.
   assert.match(messages(errs((r) => { (r.variables.find((v) => v.name === "tax_amount") as any).op = "add"; })), /tax_amount.*"add" mixes money and percent/);
+  // seen live on co3: a review rule naming a package by its label goes silently dead when the deck renames that row
+  const byName = (r: PricingRules) => r.review_rules.push({ when: [{ var: "project_template_name", op: "eq", value: "Custom Web App" }], reason: "scoping" });
+  assert.deepEqual(errs(byName, "co3_dev"), []);
+  assert.match(messages(errs((r) => { byName(r); r.tables.find((t) => t.id === "templates")!.rows[3].name = "Custom App"; }, "co3_dev")), /project_template_name is compared to "Custom Web App", which is not one of its options/);
   // scaling ops mix units by design — money × percent is exactly how every tax and discount line is built
   assert.deepEqual(errs((r) => { (r.variables.find((v) => v.name === "tax_amount") as any).op = "mul"; }), []);
   // seen live on co2: names and dates defined as "text" inputs — Stage 5 owns those, the sheet must not ask for them
