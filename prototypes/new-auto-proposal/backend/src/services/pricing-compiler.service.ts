@@ -16,7 +16,7 @@ import type { MutationLogEntry } from "./template-mutator.service.js";
 
 export interface CompileInput {
   companyName: string;
-  homeState: string;
+  homeLocation: string;
   pricingSpec: string;
   quotationMarkdown: string;
   stage2: Stage2Context;
@@ -50,16 +50,13 @@ export function loadStage2Context(companyId: string): Stage2Context {
   return ctx;
 }
 
-/** "Austin, TX" → "TX"; "Remote (US-based, EST hours)" → "". */
-export const homeStateOf = (location: string | null | undefined) => /\b([A-Z]{2})\b\s*$/.exec(location ?? "")?.[1] ?? "";
-
 export function buildCompileInput(company: CompanyRow, stage2: Stage2Context): CompileInput {
   let ws: any = {};
   try { ws = JSON.parse(company.working_state_json || "{}"); } catch { ws = {}; }
   const details: MutationLogEntry[] = ws.template_stats?.details ?? [];
   return {
     companyName: company.company_name,
-    homeState: homeStateOf(company.location),
+    homeLocation: company.location ?? "",
     pricingSpec: company.pricing_spec,
     quotationMarkdown: company.quotation_markdown ?? "",
     stage2,
@@ -102,7 +99,7 @@ ${input.pricingSpec}
 ${input.quotationMarkdown}
 
 ==================== THE AGENCY ====================
-Name: "${input.companyName}"  Home state: "${input.homeState || "unknown"}"
+Name: "${input.companyName}"  Based in: "${input.homeLocation || "unknown"}"
 
 ==================== CELLS YOU MUST DEFINE (in_document: true, exactly these names) ====================
 ${pricing.map(line).join("\n") || "(none)"}
@@ -124,6 +121,7 @@ ${input.covered.join(", ") || "(none)"}
 2. Units: money | percent | integer | text | boolean | rows. Percent values are FRACTIONS (8.25% → "0.0825"). Money has no symbol. An empty cell in an integer column means "unbounded" (no cap).
 3. formula: op add | mul | min | max take 1+ args; sub | div take exactly 2. args are variable names or numeric literals (as strings). Never put text variables in a formula.
 4. lookup: first row of the table, in table order, where ALL where-conditions hold; take = the column to read. Put cheapest / smallest tier first so caps resolve upward. where uses column op value_var|value; ops eq neq gte lte gt lt in.
+   No row matched is a real outcome, and you choose what it means: leave "fallback" as "" and the quote STOPS for a human to handle (the safe default — use it whenever a missing row means the sheet genuinely cannot price this lead), or set "fallback" to the value that applies to everyone the table does not list. Set a fallback only when the notes say what that value is; never invent one. When one lookup on a table gets a fallback its siblings on the same table usually need one too, or the document prints a rate beside a blank name.
 5. Who picks a tier? Decide from the notes, per tier table:
    * The notes size the tiers by ONE count the lead states ("for one location", "up to 3 locations", "up to 50 seats"): the RULES pick. The tier is a lookup on the tier table where the cap column gte the lead's count input (cheapest row first, empty cap = unlimited). The lead states the count and is never asked to name the tier — a count past every cap leaves the lookup with no row, which already stops the quote, so no review rule for it.
    * The tiers are different offerings that no single count decides (a support level chosen for its SLA, a project type such as landing page vs e-commerce): the LEAD picks → kind input, input_type choice, options_table + options_column.
@@ -131,12 +129,15 @@ ${input.covered.join(", ") || "(none)"}
 6. Bands (volume discounts by seat count): table kind "bands" with min/max integer columns (max empty = open-ended), lookup where min lte X AND max gte X. Floors / minimum commitments → formula max. Whole quantity gets the band rate; bands never stack.
 7. Add-ons the lead picks: table kind "addons" + a multi_choice input + aggregate (sum/count, rows: "selected", selected_var, key_column) + a rows variable for the document's loop.
 8. Payment splits: table kind "splits" with a percent column "share" and a rows variable whose amount map entry is { op: "mul", args: ["col:share", "<total variable>"] }.
-9. Taxes: table kind "taxes" (state code, jurisdiction name, rate). Tax applies only when the lead's state matches a row; a us_state input + an aggregate count + a condition. Never assume the agency's home state for the lead.
-10. Flags are condition variables named EXACTLY as the flag (has_tax, has_annual_discount, ...). condition_flag on a variable is an OPTIONAL skip guard: set it only on variables that cannot be computed unless the flag holds (a tax lookup for a state with no tax row). Leave amounts that feed a flag unguarded — never create a cycle.
+9. Taxes. First decide from the notes whether tax depends on WHERE THE BUYER IS.
+   * It does not (one rate for every buyer — a national VAT/GST, or a flat surcharge): kind constant for the rate, and the has_tax condition is simply always true. NO taxes table, NO region input, NO count. Asking a lead for their region to apply a rate that never varies is a bug.
+   * It does (rates differ by state / province / country, or only some places are taxed): table kind "taxes" (a region code column, the jurisdiction name, the rate), a region input whose options_table + options_column point at that same code column, an aggregate count over the table where the code equals the input, and a condition on that count. Never assume the agency's own location for the lead.
+   Either way, say in assumptions[] what happens to a buyer the notes do not cover. If a region with no row means "we charge them nothing" (a seller taxed only where they have a presence), that is the count + condition shape and needs nothing more. If instead every buyer owes something, the uncovered buyer must not silently lose the tax line: give the rate and jurisdiction lookups a fallback (rule 4), or add a review_rules[] entry so a human prices them.
+10. Flags are condition variables named EXACTLY as the flag (has_tax, has_annual_discount, ...). condition_flag on a variable is an OPTIONAL skip guard: set it only on variables that cannot be computed unless the flag holds (a tax lookup for a region with no tax row). Leave amounts that feed a flag unguarded — never create a cycle.
 11. Variable, table and column names: snake_case identifiers. Every table row lists every column. Every variable object carries every field; use "" / [] / false for the ones its kind does not use.
 12. When the notes leave something open (tax basis, rush pricing, monthly vs annual), decide, record it in assumptions[] (text = what was unclear, resolved_as = what you did), and if a lead must NOT be auto-quoted add a review_rules[] entry (when: conditions, reason). A cap the notes state for an option the LEAD picks ("up to 100 products", "up to 8 pages") that a lead's number can exceed is exactly that: the sheet cannot price past it, so a review rule must fire (compare the lead input against the cap column). A tier the rules pick from that number (rule 5) needs no such rule.
 13. sample_inputs = the lead facts behind the SAMPLE QUOTATION (one entry per input variable, defaults do not count: value for scalars, values for multi_choice). Running your sheet on sample_inputs must reproduce every sample value above exactly.
-14. For every input decide what happens when the lead does not say it: required true (we ask them), or a default (we assume it: default for scalars, default_values for multi_choice) plus assume_when (one line telling the reader how to read the lead's words for this field, e.g. "a yearly plan means 12"), or neither (left blank). Never a default for a us_state input or for any input a tax lookup reads. Put the reasoning behind each default in assumptions[].
+14. For every input decide what happens when the lead does not say it: required true (we ask them), or a default (we assume it: default for scalars, default_values for multi_choice) plus assume_when (one line telling the reader how to read the lead's words for this field, e.g. "a yearly plan means 12"), or neither (left blank). Never a default for any input the tax calculation reads — a wrong tax figure is a legal error in a document the client signs, so the lead must state it. To cover a buyer your tax table does not list, use a lookup fallback (rule 4) instead: that is the agency's own policy, not a guess about this lead. Put the reasoning behind each default in assumptions[].
 15. Return only the JSON object.
 ${retry}`;
 }
@@ -163,7 +164,7 @@ export const pricingRulesResponseSchema: ResponseSchema = obj({
     input_type: STR, options_table: STR, options_column: STR, options: STRS, required: BOOL,
     default: STR, default_values: STRS, assume_when: STR,
     value: STR,
-    table: STR, where: arr(condSchema), take: STR,
+    table: STR, where: arr(condSchema), take: STR, fallback: STR,
     op: STR, args: STRS,
     all: arr(condSchema),
     fn: STR, rows: STR, selected_var: STR, key_column: STR, column: STR,
@@ -186,10 +187,10 @@ Respond with ONLY a single JSON object — no markdown fences, no commentary —
   "variables": [ {
       "name": string, "label": string, "in_document": boolean, "unit": "money" | "percent" | "integer" | "text" | "boolean" | "rows", "condition_flag": string,
       "kind": "input" | "constant" | "lookup" | "formula" | "condition" | "aggregate" | "rows",
-      "input_type": "integer" | "choice" | "multi_choice" | "boolean" | "us_state" | "", "options_table": string, "options_column": string, "options": string[], "required": boolean,
+      "input_type": "integer" | "choice" | "multi_choice" | "boolean" | "region" | "", "options_table": string, "options_column": string, "options": string[], "required": boolean,
       "default": string, "default_values": string[], "assume_when": string,
       "value": string,
-      "table": string, "where": [ { "column": string, "var": "", "op": string, "value_var": string, "value": string, "values": string[] } ], "take": string,
+      "table": string, "where": [ { "column": string, "var": "", "op": string, "value_var": string, "value": string, "values": string[] } ], "take": string, "fallback": string,
       "op": "add" | "sub" | "mul" | "div" | "min" | "max" | "", "args": string[],
       "all": [ { "var": string, "column": "", "op": string, "value_var": string, "value": string, "values": string[] } ],
       "fn": "sum" | "count" | "", "rows": "selected" | "all" | "", "selected_var": string, "key_column": string, "column": string,

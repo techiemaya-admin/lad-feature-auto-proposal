@@ -188,9 +188,10 @@ test("validate: domain-level errors with paths", () => {
   assert.match(messages(errs((r) => { (r.variables.find((v) => v.name === "tax_amount") as any).condition_flag = "tax_rate"; })), /condition_flag.*tax_rate.*not a condition/);
   assert.match(messages(errs((r) => { r.variables.push({ ...r.variables[0], name: "location_count" }); })), /duplicate.*location_count/i);
   assert.match(messages(errs((r) => { r.variables.push({ ...r.variables[0], name: "Bad Name" }); })), /identifier/);
-  // seen live on co2: the state compared against the jurisdiction-name column, and "Ohio" as the sample state
-  assert.match(messages(errs((r) => { (r.variables.find((v) => v.name === "tax_rate") as any).where[0].column = "state_name"; })), /client_state.*state_name.*names/);
-  assert.match(messages(errs((r) => { r.sample_inputs.client_state = "Texas"; })), /client_state.*"Texas".*2-letter/);
+  // seen live on co2: the region compared against the jurisdiction-name column rather than the code column
+  // its own answers come from, so no row ever matched. ("Ohio" as the sample region is caught by sampleCheck
+  // instead of validate now — see "a region the seller's table does not list" below.)
+  assert.match(messages(errs((r) => { (r.variables.find((v) => v.name === "tax_rate") as any).where[0].column = "state_name"; })), /client_state.*answered from taxes\.state.*compared against taxes\.state_name/);
   // seen live on co2: names and dates defined as "text" inputs — Stage 5 owns those, the sheet must not ask for them
   assert.match(messages(errs((r) => { r.variables.push({ name: "proposal_date", label: "Date", in_document: true, unit: "text", condition_flag: "", kind: "input", input_type: "text" as any, required: true }); })), /proposal_date.*input_type "text"/);
   // an aggregate over all rows needs no key column (the model leaves it "" — seen live on every first attempt)
@@ -204,7 +205,40 @@ test("validate: domain-level errors with paths", () => {
   assert.match(messages(errs((r) => {
     const s = r.variables.find((v) => v.name === "client_state") as any;
     s.input_type = "choice"; s.options = ["TX", "OH"]; s.default = "TX";
-  })), /client_state: a tax lookup reads this/);
+  })), /client_state: tax is worked out from this/);
+});
+
+test("a lookup miss: review by default, the seller's fallback when set", () => {
+  const rules = rulesOf("co1_seo");
+  const rate = rules.variables.find((v) => v.name === "tax_rate") as any;
+  rate.condition_flag = ""; // unguarded, so a miss actually reaches the lookup
+  const ca = { location_count: 2, client_state: "CA", annual_prepay: true };
+
+  const stopped = evaluate(rules, ca);
+  assert.equal(stopped.present.tax_rate, false);
+  assert.match(stopped.needs_review.map((r) => r.reason).join("\n"), /Tax rate: no row/);
+
+  rate.fallback = 0.2; // the seller's own policy: everyone the table does not list pays 20%
+  const covered = evaluate(rules, ca);
+  assert.equal(covered.values.tax_rate, 0.2);
+  assert.deepEqual(covered.needs_review, []);
+  assert.deepEqual(validate(rules, stage2Of("co1_seo")), []);
+  assert.equal((fromWire(toWire(rules)).variables.find((v) => v.name === "tax_rate") as any).fallback, 0.2);
+
+  rate.fallback = "twenty percent"; // a percent column takes a number
+  assert.match(validate(rules, stage2Of("co1_seo")).map((e) => e.message).join("\n"), /tax_rate.*fallback/);
+});
+
+test("a region the seller's table does not list still matches no row — and a mis-spelt sample is caught", () => {
+  const rules = rulesOf("co1_seo");
+  // open by design: a California lead for a TX-only seller is untaxed, not a clarification email
+  assert.equal(evaluate(rules, { location_count: 2, client_state: "California" }).values.has_tax, false);
+  // the seller's own vocabulary wins when the lead uses a different case
+  assert.equal(evaluate(rules, { location_count: 2, client_state: "tx" }).values.client_state, "TX");
+  // "Texas" where the table says "TX" no longer errors in validate; the sample check reports it
+  rules.sample_inputs.client_state = "Texas";
+  const bad = sampleCheck(rules, evaluate(rules, rules.sample_inputs), stage2Of("co1_seo"));
+  assert.equal(bad.find((c) => c.name === "tax_amount")?.ok, false);
 });
 
 test("formatLike renders a value in the sample's own notation", () => {

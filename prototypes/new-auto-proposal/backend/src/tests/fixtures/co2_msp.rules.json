@@ -48,7 +48,7 @@
     { "name": "seat_count", "label": "Seats", "in_document": true, "unit": "integer", "condition_flag": "", "kind": "input", "input_type": "integer", "required": true },
     { "name": "selected_tier", "label": "Support tier", "in_document": true, "unit": "text", "condition_flag": "", "kind": "input", "input_type": "choice", "options_table": "tiers", "options_column": "name", "required": true },
     { "name": "extra_device_count", "label": "Extra managed devices", "in_document": true, "unit": "integer", "condition_flag": "", "kind": "input", "input_type": "integer", "required": false },
-    { "name": "client_state", "label": "Client state", "in_document": false, "unit": "text", "condition_flag": "", "kind": "input", "input_type": "us_state", "required": true },
+    { "name": "client_state", "label": "Client state", "in_document": false, "unit": "text", "condition_flag": "", "kind": "input", "input_type": "region", "options_table": "taxes", "options_column": "state", "required": true },
 
     { "name": "minimum_seat_commitment", "label": "Minimum seat commitment", "in_document": false, "unit": "integer", "condition_flag": "", "kind": "constant", "value": 10 },
     { "name": "billed_seat_count", "label": "Billed seats", "in_document": false, "unit": "integer", "condition_flag": "", "kind": "formula", "op": "max", "args": ["seat_count", "minimum_seat_commitment"] },

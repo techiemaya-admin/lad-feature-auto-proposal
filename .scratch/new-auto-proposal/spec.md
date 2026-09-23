@@ -76,9 +76,9 @@ interface PricingRules {
                   columns: Array<{ key; label; unit: "money" | "percent" | "integer" | "text" | "boolean" }>;
                   rows: Array<Record<string, string | number | boolean | null>> }>;   // null integer = unbounded
   variables: Array<{ name; label; in_document: boolean; unit; condition_flag: string } & (
-    | { kind: "input"; input_type: "integer" | "choice" | "multi_choice" | "boolean" | "us_state"; options_table?; options_column?; options?; required; default?; assume_when? }  // silent lead: required → ask, default → assume (never on us_state or a tax-lookup input), neither → blank
+    | { kind: "input"; input_type: "integer" | "choice" | "multi_choice" | "boolean" | "region"; options_table?; options_column?; options?; required; default?; assume_when? }  // silent lead: required → ask, default → assume (never on an input the tax calculation reads), neither → blank. region = geography; declares options_table/_column like a choice but may match no row
     | { kind: "constant"; value }                                                    // percent stored as fraction
-    | { kind: "lookup"; table; where: Where[]; take }                                // first row in table order
+    | { kind: "lookup"; table; where: Where[]; take; fallback? }                     // first row in table order; no row → fallback if set, else stop for review
     | { kind: "formula"; op: "add" | "sub" | "mul" | "div" | "min" | "max"; args: Array<string | number> }  // one flat op; nest via helpers
     | { kind: "condition"; all: Cond[] }
     | { kind: "aggregate"; fn: "sum" | "count"; table; rows: "selected" | "all"; selected_var?; key_column; column?; where? }

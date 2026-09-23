@@ -53,6 +53,10 @@ export function readableFormula(rules: PricingRules, f: Formula): string {
 export const readableDefault = (v: Extract<RuleVariable, { kind: "input" }>) =>
   Array.isArray(v.default) ? v.default.join(", ") || "none" : formatValue(v.unit, v.default);
 
+/** What a lookup does when no row matches — shown in the ledger so the policy is never hidden behind a click. */
+export const readableMiss = (v: Extract<RuleVariable, { kind: "lookup" }>) =>
+  v.fallback === undefined ? "no match → needs review" : `no match → defaults to ${formatValue(v.unit, v.fallback)}`;
+
 export function readable(rules: PricingRules, v: RuleVariable): string {
   switch (v.kind) {
     case "input":
@@ -62,7 +66,7 @@ export function readable(rules: PricingRules, v: RuleVariable): string {
       return formatValue(v.unit, v.value);
     case "lookup": {
       const t = tableOf(rules, v.table);
-      return `${t?.label ?? v.table} · first row where ${readableWhere(rules, v.table, v.where) || "any"} → ${columnLabel(rules, v.table, v.take)}`;
+      return `${t?.label ?? v.table} · first row where ${readableWhere(rules, v.table, v.where) || "any"} → ${columnLabel(rules, v.table, v.take)}; ${readableMiss(v)}`;
     }
     case "formula":
       return readableFormula(rules, v);

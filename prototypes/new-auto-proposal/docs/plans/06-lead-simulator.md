@@ -25,7 +25,7 @@ Most of the machinery already exists: `POST /rules/calculate` returns `{evaluati
 
 ### 1.1 Lead facts (`LeadFacts`)
 Built per company, nothing hardcoded:
-- every `kind: "input"` variable of the rules (`name`, `input_type` integer | number | boolean | choice | multi_choice | us_state | text, `options`, `required`, `default?`, `assume_when?`);
+- every `kind: "input"` variable of the rules (`name`, `input_type` integer | number | boolean | choice | multi_choice | region | text, `options`, `required`, `default?`, `assume_when?`);
 - plus every Stage 2 `customer_input` variable that no rule variable defines (constants count) and is not a date (e.g. `client_name`) — required, `text`.
 
 Extractor response schema: one **required** property per field (`null` when the message does not say it), plus `assumptions: string[]` (required, may be empty). Rules in the prompt: number words → digits; a range → the higher end, noted in `assumptions`; never infer a state/jurisdiction that is not stated; choice values must be one of `options` (case-insensitive, the option's spelling is returned).

@@ -71,7 +71,9 @@ export type InputType =
   | "choice"
   | "multi_choice"
   | "boolean"
-  | "us_state";
+  /** A geography answer (state, county, country, zone). Open, never a closed list: a lead outside the
+   * seller's table must be allowed to match no row — that is the correct "not taxed here" outcome. */
+  | "region";
 
 interface VariableBase {
   name: string;
@@ -96,7 +98,14 @@ export type RuleVariable = VariableBase &
         assume_when?: string;
       }
     | { kind: "constant"; value: Cell }
-    | { kind: "lookup"; table: string; where: Where[]; take: string }
+    | {
+        kind: "lookup";
+        table: string;
+        where: Where[];
+        take: string;
+        /** No matching row: undefined → stop and flag for review; set → use this value instead. */
+        fallback?: Cell;
+      }
     | ({ kind: "formula" } & Formula)
     | { kind: "condition"; all: Cond[] }
     | {
@@ -240,6 +249,7 @@ export interface AiVariable {
   table: string;
   where: AiWhere[];
   take: string;
+  fallback: string;
   op: string;
   args: string[];
   all: AiCond[];
@@ -396,6 +406,9 @@ export function fromWire(w: AiPricingRules): PricingRules {
             table: v.table ?? "",
             where: where(),
             take: v.take ?? "",
+            ...(isBlank(v.fallback)
+              ? {}
+              : { fallback: parseCell(v.fallback, base.unit) }),
           };
         case "formula":
           return {
@@ -481,6 +494,7 @@ const EMPTY_VAR: Omit<
   table: "",
   where: [],
   take: "",
+  fallback: "",
   op: "",
   args: [],
   all: [],
@@ -539,6 +553,7 @@ export function toWire(r: PricingRules): AiPricingRules {
             table: v.table,
             where: v.where.map(toWireCond),
             take: v.take,
+            fallback: v.fallback === undefined ? "" : cellText(v.fallback),
           });
           break;
         case "formula":

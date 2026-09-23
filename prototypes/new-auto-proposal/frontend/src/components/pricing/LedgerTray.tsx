@@ -1,7 +1,7 @@
 import React from "react";
 import { X, Plus, Trash2 } from "lucide-react";
 import { CustomDropdown } from "../ui/custom-dropdown";
-import type { Cond, Formula, PricingRules, RuleKind, RuleVariable, Unit, Where } from "../../types/pricing";
+import type { Cell, Cond, Formula, PricingRules, RuleKind, RuleVariable, Unit, Where } from "../../types/pricing";
 import { OP_SYMBOL, UNIT_LABEL, cellInputText, parseCellInput, parseLiteral, readableFormula } from "./readable";
 import { Commit as CommitBox } from "./RuleTableCard";
 
@@ -22,7 +22,7 @@ const FORMULA_OPS: { value: Formula["op"]; label: string }[] = [
   { value: "add", label: "add (+)" }, { value: "sub", label: "subtract (−)" }, { value: "mul", label: "multiply (×)" },
   { value: "div", label: "divide (÷)" }, { value: "min", label: "smaller of" }, { value: "max", label: "larger of" },
 ];
-const INPUT_TYPES = ["integer", "choice", "multi_choice", "boolean", "us_state"].map((v) => ({ value: v, label: v.replace("_", " ") }));
+const INPUT_TYPES = ["integer", "choice", "multi_choice", "boolean", "region"].map((v) => ({ value: v, label: v.replace("_", " ") }));
 
 /** Fresh operands for a kind, keeping the shared header fields. */
 function defaultsFor(kind: RuleKind, base: RuleVariable, rules: PricingRules): RuleVariable {
@@ -134,6 +134,10 @@ const inputOptions = (v: InputVar, rules: PricingRules): string[] =>
 /** Ask / Assume / Blank is not stored: it is read off `required` + `default`. */
 const silentPolicy = (v: InputVar) => (v.required ? "ask" : v.default !== undefined ? "assume" : "blank");
 const without = (v: InputVar, key: "default" | "assume_when"): InputVar => { const c = { ...v }; delete c[key]; return c; };
+type LookupVar = Extract<RuleVariable, { kind: "lookup" }>;
+const withoutFallback = (v: LookupVar): LookupVar => { const c = { ...v }; delete c.fallback; return c; };
+/** Seed for a fallback just switched on: a typeable zero, never null — the backend rejects null on a number. */
+const blankFallback = (unit: Unit): Cell => (unit === "text" ? "" : unit === "boolean" ? false : 0);
 
 const tableColsOf = (rules: PricingRules, id: string) => (rules.tables.find((t) => t.id === id)?.columns ?? []).map((c) => ({ value: c.key, label: c.label }));
 
@@ -146,8 +150,10 @@ const InputFields: React.FC<{ rules: PricingRules; v: InputVar; onChange: (v: Ru
     const rest = without(v, "default");
     onChange(p === "ask" ? { ...rest, required: true } : p === "assume" ? { ...rest, required: false, default: firstDefault() } : { ...rest, required: false });
   };
-  // A state is never assumed (the backend rejects it), so the option is not offered.
-  const policies = [{ value: "ask", label: "ask them" }, ...(v.input_type === "us_state" ? [] : [{ value: "assume", label: "assume a value" }]), { value: "blank", label: "leave it blank" }];
+  // Tax is never assumed (the backend rejects it) — keyed on what the input feeds, so a region used for a
+  // service area or shipping zone keeps the option. Cover an unlisted buyer with a lookup fallback instead.
+  const feedsTax = rules.variables.some((x) => "table" in x && rules.tables.find((t) => t.id === x.table)?.kind === "taxes" && (x.where ?? []).some((w) => w.value_var === v.name));
+  const policies = [{ value: "ask", label: "ask them" }, ...(feedsTax ? [] : [{ value: "assume", label: "assume a value" }]), { value: "blank", label: "leave it blank" }];
   const chosen = Array.isArray(v.default) ? v.default : [];
   // ponytail: direct lookup refs only (where.value_var === this input), not the transitive graph.
   const affects = rules.variables.filter((x) => x.kind === "lookup" && x.where.some((w) => w.value_var === v.name)).map((x) => x.label || x.name);
@@ -157,7 +163,7 @@ const InputFields: React.FC<{ rules: PricingRules; v: InputVar; onChange: (v: Ru
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <Field label="Answer type"><CustomDropdown size="xs" className="w-full" value={v.input_type} options={INPUT_TYPES} onChange={(input_type) => onChange({ ...without(v, "default"), input_type: input_type as InputVar["input_type"] })} /></Field>
         <Field label="If the lead doesn't say it"><CustomDropdown size="xs" className="w-full" value={silentPolicy(v)} options={policies} onChange={setPolicy} /></Field>
-        {(v.input_type === "choice" || v.input_type === "multi_choice") && (
+        {(v.input_type === "choice" || v.input_type === "multi_choice" || v.input_type === "region") && (
           <>
             <Field label="Options from"><CustomDropdown size="xs" className="w-full" value={v.options_table ?? ""} options={rules.tables.map((t) => ({ value: t.id, label: t.label }))} onChange={(options_table) => onChange({ ...v, options_table, options_column: tableCols(options_table)[0]?.value })} /></Field>
             <Field label="Column"><CustomDropdown size="xs" className="w-full" value={v.options_column ?? ""} options={tableCols(v.options_table ?? "")} onChange={(options_column) => onChange({ ...v, options_column })} /></Field>
@@ -288,6 +294,22 @@ export const LedgerTray: React.FC<LedgerTrayProps> = ({ rules, variable: v, samp
           <Field label="First row where">
             <CondRows<Where> rules={rules} items={v.where} left="column" tableId={v.table} onChange={(where) => onChange({ ...v, where })} />
           </Field>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="If no row matches">
+              <CustomDropdown
+                size="xs"
+                className="w-full"
+                value={v.fallback === undefined ? "review" : "fallback"}
+                options={[{ value: "review", label: "stop and ask a human" }, { value: "fallback", label: "defaults to" }]}
+                onChange={(p) => onChange(p === "review" ? withoutFallback(v) : { ...v, fallback: v.fallback ?? blankFallback(v.unit) })}
+              />
+            </Field>
+            {v.fallback !== undefined && (
+              <Field label={`Defaults to (${UNIT_LABEL[v.unit]})`}>
+                <Commit value={cellInputText(v.unit, v.fallback)} onCommit={(s) => onChange({ ...v, fallback: parseCellInput(v.unit, s) })} placeholder="value used for everyone the table does not list" />
+              </Field>
+            )}
+          </div>
         </div>
       )}
 

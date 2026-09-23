@@ -192,10 +192,11 @@ function coerceInput(
       return typeof raw === "string"
         ? /^(true|yes|1)$/i.test(raw)
         : Boolean(raw);
-    case "us_state":
-      return String(raw).trim().toUpperCase();
+    case "region":
     case "choice":
-      return canon(String(raw)) ?? String(raw);
+      // A region is open: no match means the lead is somewhere the seller's table does not list,
+      // which is a real answer (often "not taxed here"), so their own words are kept.
+      return canon(String(raw).trim()) ?? String(raw).trim();
     case "multi_choice":
       return (Array.isArray(raw) ? raw : [raw]).map(
         (x) => canon(String(x)) ?? String(x),
@@ -295,13 +296,15 @@ export function evaluate(
       case "lookup": {
         const t = tableOf(rules, v.table);
         const row = t?.rows.find((r) => rowMatches(r, v.where));
-        if (!row) {
+        if (row) value = row[v.take];
+        else if (v.fallback !== undefined) value = v.fallback;
+        else {
           review(
             `${v.label || name}: no row in ${t?.label ?? v.table} matches`,
             name,
           );
           isPresent = false;
-        } else value = row[v.take];
+        }
         break;
       }
       case "formula":
@@ -575,9 +578,9 @@ const UNITS = new Set([
   "boolean",
   "rows",
 ]);
+const NUMERIC_UNITS = new Set(["money", "percent", "integer"]);
 const OPS = new Set(["eq", "neq", "gte", "lte", "gt", "lt", "in"]);
-const INPUT_TYPES = new Set(["integer", "choice", "multi_choice", "boolean", "us_state"]);
-const STATE_CODE = /^[A-Za-z]{2}$/;
+const INPUT_TYPES = new Set(["integer", "choice", "multi_choice", "boolean", "region"]);
 const FORMULA_OPS = new Set(["add", "sub", "mul", "div", "min", "max"]);
 
 /**
@@ -671,15 +674,12 @@ export function validate(
         column(`${cp}.column`, v, tableId, c.column, "filter");
       if (c.value_var) {
         ref(`${cp}.value_var`, v, c.value_var);
-        // Seen live: a us_state lead input compared against a "Jurisdiction" column of full names. The lead
-        // side is always a 2-letter code, so the table side must be too or no row ever matches.
+        // Seen live: a region input compared against a column holding a different spelling of the same
+        // place ("TX" vs "Texas"), so no row ever matches. An input that declares where its answers come
+        // from is comparable by construction; it just has to be pointed at that same column.
         const src = vars.get(c.value_var);
-        const t = "column" in c && tableId ? tables.get(tableId) : undefined;
-        if (src?.kind === "input" && src.input_type === "us_state" && t && "column" in c) {
-          const cells = t.rows.map((r) => r[c.column]).filter((x) => x !== null && x !== undefined && x !== "");
-          if (cells.length && !cells.every((x) => STATE_CODE.test(String(x))))
-            err(`${cp}.column`, `${v.name}: "${c.value_var}" is a 2-letter state code but column "${c.column}" holds names — compare the state-code column instead`);
-        }
+        if (src?.kind === "input" && src.input_type === "region" && "column" in c && src.options_table && (src.options_table !== tableId || src.options_column !== c.column))
+          err(`${cp}.column`, `${v.name}: "${c.value_var}" is answered from ${src.options_table}.${src.options_column} but compared against ${tableId}.${c.column} — compare the column its answers come from`);
       } else if (c.op === "in" && !Array.isArray(c.values))
         err(`${cp}.values`, `${v.name}: "in" needs a values list`);
       else if (c.op !== "in" && c.value === undefined)
@@ -740,9 +740,12 @@ export function validate(
         if (!INPUT_TYPES.has(v.input_type))
           err(
             `${p}.input_type`,
-            `${v.name}: input_type "${v.input_type}" is not one of integer | choice | multi_choice | boolean | us_state — names, dates and free text are not lead inputs; remove the variable`,
+            `${v.name}: input_type "${v.input_type}" is not one of integer | choice | multi_choice | boolean | region — names, dates and free text are not lead inputs; remove the variable`,
           );
-        if (v.input_type === "choice" || v.input_type === "multi_choice") {
+        // A region declares where its answers come from for the same reason a choice does: it is the only
+        // thing that makes the lead's words and the table's column comparable. It differs from a choice in
+        // what happens OFF the list — a region may match nothing (an untaxed buyer), a choice may not.
+        if (v.input_type === "choice" || v.input_type === "multi_choice" || v.input_type === "region") {
           if (v.options_table) {
             table(`${p}.options_table`, v, v.options_table);
             column(
@@ -763,19 +766,22 @@ export function validate(
           const d = coerceInput(v, v.default, rules);
           const opts = inputOptions(v, rules);
           const listed = (x: unknown) => opts.some((o) => norm(o) === norm(String(x)));
-          const taxRead = (rules.variables ?? []).some((x) => x.kind === "lookup" && tables.get(x.table)?.kind === "taxes" && x.where.some((w) => w.value_var === v.name));
+          // Never guess an answer that feeds tax: a wrong tax figure is a legal error in a document the
+          // client signs. Keyed on what the input DOES — any kind of read of a taxes table — not on where
+          // the seller happens to trade. A seller-set lookup `fallback` is the sanctioned way to cover a
+          // buyer the table does not list: that is the seller stating their own policy, not a guess.
+          const taxRead = (rules.variables ?? []).some((x) => "table" in x && tables.get(x.table)?.kind === "taxes" && (x.where ?? []).some((w) => w.value_var === v.name));
           const bad =
             taxRead ? true
             : v.input_type === "integer" ? typeof v.default !== "number"
             : v.input_type === "boolean" ? typeof v.default !== "boolean"
-            : v.input_type === "us_state" ? true
-            : v.input_type === "choice" ? !listed(d)
+            : v.input_type === "choice" || v.input_type === "region" ? !listed(d)
             : !Array.isArray(d) || d.length === 0 || !d.every(listed);
           if (bad)
             err(
               `${p}.default`,
-              v.input_type === "us_state" || taxRead
-                ? `${v.name}: ${taxRead ? "a tax lookup reads this" : "a state"} — it is never assumed, the lead must say it`
+              taxRead
+                ? `${v.name}: tax is worked out from this — it is never assumed, the lead must say it (to cover a buyer your table does not list, set a fallback on the tax lookup instead)`
                 : `${v.name}: default ${JSON.stringify(v.default)} is not a valid ${v.input_type} answer${opts.length ? ` (one of ${opts.join(" | ")})` : ""}`,
             );
         }
@@ -787,6 +793,8 @@ export function validate(
           conds(`${p}.where`, v, v.where, v.table);
           column(`${p}.take`, v, v.table, v.take, "take");
         }
+        if (v.fallback !== undefined && NUMERIC_UNITS.has(v.unit) && typeof v.fallback !== "number")
+          err(`${p}.fallback`, `${v.name}: the fallback used when no row matches must be a ${v.unit} value, not ${JSON.stringify(v.fallback)}`);
         break;
       case "formula":
         formula(p, v, v, undefined);
@@ -901,11 +909,6 @@ export function validate(
         `variables[${rules.variables.indexOf(d)}].map`,
         `${loop.loop_tag}: map keys must be exactly [${loop.columns.join(", ")}]${missing.length ? `; missing ${missing.join(", ")}` : ""}${extra.length ? `; unexpected ${extra.join(", ")}` : ""}`,
       );
-  }
-  for (const v of rules.variables ?? []) {
-    const sample = rules.sample_inputs?.[v.name];
-    if (v.kind === "input" && v.input_type === "us_state" && typeof sample === "string" && sample && !STATE_CODE.test(sample))
-      err("sample_inputs", `${v.name}: sample value "${sample}" must be the 2-letter state code`);
   }
   return errors;
 }

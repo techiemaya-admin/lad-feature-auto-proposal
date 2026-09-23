@@ -55,14 +55,14 @@ test("leadFields: rules inputs plus the undefined non-date customer inputs, per 
     const s2 = stage2Of(id);
     return leadFields(rules, { ...s2, variables: [...s2.variables, ...extra] }).map((f) => `${f.name}:${f.input_type}${f.required ? "!" : ""}${f.options.length ? `[${f.options.join("|")}]` : ""}`);
   };
-  assert.deepEqual(brief("co1_seo"), ["location_count:integer!", "client_state:us_state!", "annual_prepay:boolean", "client_name:text!"]);
+  assert.deepEqual(brief("co1_seo"), ["location_count:integer!", "client_state:region![TX]", "annual_prepay:boolean", "client_name:text!"]);
   // seen live on co2: a "14 days" validity window is a Stage 2 customer input the sheet holds as a constant — never asked
   const validity = [{ variable_name: "proposal_validity_period", category: "customer_input", sample_value: "14 days" }];
   const withConstant = rulesOf("co1_seo");
   withConstant.variables.push({ name: "proposal_validity_period", label: "Validity", in_document: true, unit: "text", condition_flag: "", kind: "constant", value: "14 days" });
   assert.deepEqual(brief("co1_seo", validity, withConstant).at(-1), "client_name:text!");
   assert.deepEqual(brief("co1_seo", validity).at(-1), "proposal_validity_period:text!");
-  assert.deepEqual(brief("co2_msp"), ["seat_count:integer!", "selected_tier:choice![Essential|Standard|Premium]", "extra_device_count:integer", "client_state:us_state!", "client_name:text!"]);
+  assert.deepEqual(brief("co2_msp"), ["seat_count:integer!", "selected_tier:choice![Essential|Standard|Premium]", "extra_device_count:integer", "client_state:region![OH]", "client_name:text!"]);
   const co3 = brief("co3_dev");
   assert.equal(co3[0], "product_count:integer!");
   assert.match(co3[1], /^project_template_name:choice!\[.*E-Commerce Build.*\]$/);
@@ -136,7 +136,7 @@ test("Proposal routes", async (t) => {
     assert.deepEqual(full.body.missing, []);
     assert.deepEqual(full.body.fields.map((f: any) => f.name), ["location_count", "client_state", "annual_prepay", "client_name"]);
     assert.deepEqual(full.body.assumptions, ["Counted two clinics as 2 locations"]);
-    assert.match(prompts[0], /client_state \(Client state\): us_state/);
+    assert.match(prompts[0], /client_state \(Client state\): region/);
     assert.match(prompts[0], /annual_prepay .* \(optional\)/);
 
     setLeadModelCall(async () => ({ ...facts, client_state: null, assumptions: [] }));

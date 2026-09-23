@@ -31,7 +31,7 @@ interface PricingEngineDeckProps {
   isProceeding?: boolean;
 }
 
-const INPUT_TYPE_LABEL: Record<string, string> = { integer: "a number", choice: "one option", multi_choice: "several options", boolean: "yes / no", us_state: "US state" };
+const INPUT_TYPE_LABEL: Record<string, string> = { integer: "a number", choice: "one option", multi_choice: "several options", boolean: "yes / no", region: "a region" };
 
 export const PricingEngineDeck: React.FC<PricingEngineDeckProps> = ({
   companyId,

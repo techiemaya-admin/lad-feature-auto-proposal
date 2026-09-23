@@ -90,7 +90,10 @@ const shapeOf = (f: LeadField) => {
     case "boolean": return "boolean | null";
     case "choice": return `${opts} | null`;
     case "multi_choice": return `[${opts}] | null`;
-    case "us_state": return '"TX" (two-letter code) | null';
+    case "region": {
+      const eg = f.options.slice(0, 3).map((o) => JSON.stringify(o)).join(" | ");
+      return eg ? `${eg} | … | null (whatever region they name — not limited to these)` : "string | null";
+    }
     default: return "string | null";
   }
 };
@@ -157,10 +160,10 @@ export async function extractLeadFacts(company: CompanyRow, rules: PricingRules,
   const inputs: Record<string, Value> = {};
   for (const f of fields) {
     const v = raw[f.name];
-    const canon = (s: unknown) => f.options.find((o) => o.toLowerCase() === String(s).trim().toLowerCase()) ?? String(s);
+    const canon = (s: unknown) => f.options.find((o) => o.toLowerCase() === String(s).trim().toLowerCase()) ?? String(s).trim();
     inputs[f.name] = isBlank(v)
       ? null
-      : f.input_type === "choice"
+      : f.input_type === "choice" || f.input_type === "region"
         ? canon(v)
         : f.input_type === "multi_choice"
           ? (Array.isArray(v) ? v : [v]).map(canon)
@@ -168,9 +171,7 @@ export async function extractLeadFacts(company: CompanyRow, rules: PricingRules,
             ? Number.isFinite(Number(v)) ? Math.round(Number(v)) : null
             : f.input_type === "boolean"
               ? v === true || /^(true|yes)$/i.test(String(v))
-              : f.input_type === "us_state"
-                ? String(v).trim().toUpperCase()
-                : String(v);
+              : String(v);
   }
   const assumptions = Array.isArray(raw.assumptions) ? raw.assumptions.map(String).filter(Boolean) : [];
   const assumed = fillDefaults(fields, inputs);
