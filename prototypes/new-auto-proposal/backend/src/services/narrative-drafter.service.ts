@@ -5,6 +5,7 @@ import { generateJson } from "./ai-extraction.service.js";
 import { getAISettings } from "./ai-settings.service.js";
 import { getCompanyConfiguration } from "./company-config.service.js";
 import { logPipelineArtifact } from "./pipeline-log.js";
+import { BLANK } from "./pricing-calculator.js";
 import type { PricingRules, Stage2Context, Value } from "./pricing-rules.types.js";
 
 /**
@@ -98,7 +99,7 @@ export function buildNarrativePrompt(input: NarrativeInput): string {
     .filter(([, v]) => v !== null && v !== undefined && v !== "")
     .map(([k, v]) => `- ${labelOf.get(k) ?? k}: ${Array.isArray(v) ? v.join(", ") : String(v)}${assumed.includes(k) ? ' (assumed — write "based on", never "as you said")' : ""}`);
   const tags = Object.entries(payload)
-    .filter(([, v]) => (typeof v === "string" && v !== "") || typeof v === "number")
+    .filter(([, v]) => (typeof v === "string" && v !== "" && v !== BLANK) || typeof v === "number")
     .map(([k, v]) => `- {${k}} = ${JSON.stringify(v)}`);
   // Seen live: with has_tax unmentioned the drafter wrote "sales tax applies" for a lead with no state.
   // Seen live again, the other way: the compiler invented a has_tax flag on a seller who charges none

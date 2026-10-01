@@ -132,17 +132,15 @@ export interface GenerateInput {
   today?: Date;
 }
 
-export type GenerateResult =
-  | { declined: true; needs_review: Evaluation["needs_review"]; evaluation: Evaluation }
-  | {
-      declined: false;
-      evaluation: Evaluation;
-      payload: Record<string, unknown>;
-      narrative: NarrativeResult;
-      docx: Buffer;
-      pdf: Buffer | null;
-      pdf_error?: string;
-    };
+/** Always a document: `evaluation.needs_review` non-empty makes it a draft for the human to fix, not a refusal. */
+export type GenerateResult = {
+  evaluation: Evaluation;
+  payload: Record<string, unknown>;
+  narrative: NarrativeResult;
+  docx: Buffer;
+  pdf: Buffer | null;
+  pdf_error?: string;
+};
 
 export async function generateProposal(input: GenerateInput): Promise<GenerateResult> {
   const { company, rules, stage2, inputs } = input;
@@ -151,10 +149,6 @@ export async function generateProposal(input: GenerateInput): Promise<GenerateRe
   // Dates are computed here and also offered to the sheet, in case a compile made a date an input anyway.
   const dates = fillDates(stage2.variables, input.today);
   const evaluation = evaluate(rules, { ...dates, ...inputs });
-  if (evaluation.needs_review.length) {
-    clearProposalFiles(companyId); // a declined lead must not leave the previous run downloadable
-    return { declined: true, needs_review: evaluation.needs_review, evaluation };
-  }
 
   const payload: Record<string, unknown> = buildProposalPayload(rules, evaluation, stage2, input.tierMatrix);
 
@@ -190,5 +184,5 @@ export async function generateProposal(input: GenerateInput): Promise<GenerateRe
     pdf_error = err instanceof Error ? err.message : String(err);
     fs.rmSync(proposalFilePath(companyId, "pdf"), { force: true });
   }
-  return { declined: false, evaluation, payload, narrative, docx, pdf, pdf_error };
+  return { evaluation, payload, narrative, docx, pdf, pdf_error };
 }

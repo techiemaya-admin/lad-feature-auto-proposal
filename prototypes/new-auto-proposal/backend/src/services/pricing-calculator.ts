@@ -28,7 +28,9 @@ import type {
  * whitespace-normalised + case-insensitive; a null cell means "unbounded" (+∞) in numeric compares;
  * a `condition_flag` on a variable is a skip guard (value zeroed, present=false, no review fired);
  * splits get the rounding remainder on the last row; missing required input / lookup miss / ÷0 /
- * matching review rule → needs_review, never a silent 0.
+ * matching review rule → needs_review, never a silent 0. The first three also mark the value `broken`,
+ * and so is everything computed from it (even through a condition): present=false, printed as BLANK.
+ * A skipped value is not broken — a hidden add-on still leaves its total printed.
  */
 
 const norm = (s: string) =>
@@ -210,9 +212,12 @@ export function evaluate(
 ): Evaluation {
   const values: Record<string, Value> = {};
   const present: Record<string, boolean> = {};
+  const broken: Record<string, boolean> = {};
   const needs_review: Evaluation["needs_review"] = [];
-  const review = (reason: string, source: string) =>
+  const review = (reason: string, source: string) => {
     needs_review.push({ reason, source });
+    broken[source] = true;
+  };
   const { order } = topoOrder(rules.variables);
   const byName = new Map(rules.variables.map((v) => [v.name, v]));
 
@@ -274,6 +279,7 @@ export function evaluate(
     const v = byName.get(name)!;
     let value: Value | undefined;
     let isPresent = true;
+    if (dependencies(v).some((d) => broken[d])) broken[name] = true;
 
     if (v.condition_flag && !values[v.condition_flag]) {
       values[name] = ZERO[v.unit];
@@ -364,13 +370,13 @@ export function evaluate(
     } else {
       values[name] = value;
     }
-    present[name] = isPresent;
+    present[name] = isPresent && !broken[name];
   }
 
   for (const r of rules.review_rules)
-    if (holds(r.when)) review(r.reason, "review_rules");
+    if (holds(r.when)) needs_review.push({ reason: r.reason, source: "review_rules" }); // flags, blanks nothing
 
-  return { values, present, needs_review, order };
+  return { values, present, broken, needs_review, order };
 }
 
 // ---------------------------------------------------------------------------
@@ -518,9 +524,13 @@ export function sampleCheck(
   return out;
 }
 
+/** Printed where a broken value would go: visible in the PDF, searchable in Word, never $0.00. */
+export const BLANK = "[to confirm]";
+
 /**
  * What Stage 5 hands to easy-template-x: document variables in the quotation's notation (""
- * when hidden), loops as formatted row arrays, every condition as a boolean, plus the tier matrix.
+ * when hidden, BLANK when broken), loops as formatted row arrays, every condition as a boolean
+ * (a broken one is false), plus the tier matrix.
  */
 export function buildProposalPayload(
   rules: PricingRules,
@@ -530,19 +540,19 @@ export function buildProposalPayload(
 ): Record<string, string | boolean | Row[]> {
   const payload: Record<string, string | boolean | Row[]> = {};
   const s2 = new Map(stage2.variables.map((v) => [v.variable_name, v]));
-  const { values, present } = evaluation;
+  const { values, present, broken } = evaluation;
 
   for (const v of rules.variables) {
     const value = values[v.name];
     if (v.kind === "condition") {
-      payload[v.name] = value === true;
+      payload[v.name] = value === true && !broken[v.name];
     } else if (v.kind === "rows") {
       const t = tableOf(rules, v.table);
       payload[v.name] = (Array.isArray(value) ? (value as Row[]) : []).map(
         (row) => {
           const out: Row = {};
           for (const [tag, m] of Object.entries(v.map))
-            out[tag] = formatUnit(
+            out[tag] = broken[v.name] && typeof m !== "string" ? BLANK : formatUnit(
               typeof m === "string" ? (columnUnit(t, m) ?? "text") : "money",
               row[tag] ?? null,
             );
@@ -551,7 +561,9 @@ export function buildProposalPayload(
       );
     } else if (v.in_document) {
       const sample = s2.get(v.name)?.sample_value;
-      payload[v.name] = !present[v.name]
+      payload[v.name] = broken[v.name]
+        ? BLANK
+        : !present[v.name]
         ? ""
         : sample !== undefined
           ? formatLike(sample, value)

@@ -40,14 +40,12 @@ export interface NarrativeParagraph {
   unknown_tags: string[];
 }
 
-export type ProposalResult =
-  | {
-      success: true;
-      declined?: false;
-      evaluation: Evaluation;
-      payload: Record<string, unknown>;
-      narrative: Record<string, NarrativeParagraph>;
-      files: { docx: string; pdf: string | null };
-      pdf_error?: string;
-    }
-  | { success: false; declined: true; needs_review: Evaluation["needs_review"]; evaluation: Evaluation };
+/** Always a document; a non-empty `evaluation.needs_review` makes it a draft the human fixes before sending. */
+export type ProposalResult = {
+  success: true;
+  evaluation: Evaluation;
+  payload: Record<string, unknown>;
+  narrative: Record<string, NarrativeParagraph>;
+  files: { docx: string; pdf: string | null };
+  pdf_error?: string;
+};

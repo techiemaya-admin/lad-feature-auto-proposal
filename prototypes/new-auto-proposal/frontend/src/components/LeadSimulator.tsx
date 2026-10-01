@@ -153,7 +153,6 @@ export const LeadSimulator: React.FC<LeadSimulatorProps> = ({ company, rules }) 
   };
 
   const done = result?.success === true;
-  const declined = result?.success === false;
 
   const pdfUrl = result?.success ? result.files.pdf : null;
 
@@ -294,15 +293,14 @@ export const LeadSimulator: React.FC<LeadSimulatorProps> = ({ company, rules }) 
 
             {done && result.success && rules && <NumbersLedger rules={rules} evaluation={result.evaluation} payload={result.payload} />}
 
-            {declined && result.declined && (
+            {done && result.evaluation.needs_review.length > 0 && (
               <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 space-y-2">
                 <div className="flex items-center gap-2 text-sm font-semibold text-destructive">
                   <ShieldAlert className="size-4 shrink-0" />
-                  <span>Declined to auto-quote</span>
+                  <span>Draft: not ready to send. Check these first:</span>
                 </div>
-                <p className="text-xs text-muted-foreground max-w-prose">Your rules say this one needs a person before a price goes out. No document was written.</p>
                 <ul className="space-y-1 text-xs text-foreground/90 pl-5.5 max-w-prose">
-                  {result.needs_review.map((r, i) => <li key={i} className="list-disc">{r.reason}</li>)}
+                  {result.evaluation.needs_review.map((r, i) => <li key={i} className="list-disc">{r.reason}</li>)}
                 </ul>
               </div>
             )}

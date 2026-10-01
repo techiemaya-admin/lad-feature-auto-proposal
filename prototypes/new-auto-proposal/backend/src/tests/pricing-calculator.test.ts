@@ -7,7 +7,7 @@ import os from "node:os";
 import { Document } from "docxmlater";
 import { toMarkdown } from "@firecrawl/anydoc";
 import { applyTemplate } from "../services/template-mutator.service.js";
-import { buildProposalPayload, evaluate, formatLike, parseSampleNumber, sampleCheck, validate } from "../services/pricing-calculator.js";
+import { BLANK, buildProposalPayload, evaluate, formatLike, parseSampleNumber, sampleCheck, validate } from "../services/pricing-calculator.js";
 import { fromWire, toWire, type PricingRules, type Stage2Context, type Value } from "../services/pricing-rules.types.js";
 
 /**
@@ -59,6 +59,7 @@ test("co1 §4: cap boundaries, absent discount row, non-TX lead", () => {
 
   const monthly = run("co1_seo", { location_count: 2, client_state: "TX" });
   assert.equal(monthly.present.annual_discount_amount, false); // row absent, not $0.00
+  assert.equal(buildProposalPayload(rulesOf("co1_seo"), monthly, stage2Of("co1_seo")).annual_discount_amount, ""); // skipped, not broken
   assert.equal(monthly.values.subtotal_amount, 36000);
   assert.equal(monthly.values.total_investment_amount, 38970);
 
@@ -67,6 +68,7 @@ test("co1 §4: cap boundaries, absent discount row, non-TX lead", () => {
   assert.equal(ca.present.tax_amount, false);
   assert.equal(ca.values.total_investment_amount, 32400);
   assert.deepEqual(ca.needs_review, []); // a guarded lookup miss is not a review
+  assert.equal(ca.present.total_investment_amount, true); // a skipped tax line leaves the total printed
 });
 
 test("co2 benchmark: 42 seats, Standard, 5 devices, OH → $2,734.80/mo + $3,150.00 setup", () => {
@@ -106,6 +108,12 @@ test("co2 §4: inclusive band edges, non-stacking bands, seat floor, untaxed set
   assert.equal(noState.values.has_tax, false);
   assert.equal(noState.present.tax_amount, false);
   assert.match(noState.needs_review.map((r) => r.reason).join(), /Client state/);
+  // a broken value blanks everything computed from it, through has_tax too — never a total that silently drops tax
+  const noStatePayload = buildProposalPayload(rulesOf("co2_msp"), noState, stage2Of("co2_msp"));
+  assert.equal(noState.present.total_monthly_recurring, false);
+  assert.equal(noStatePayload.total_monthly_recurring, BLANK);
+  assert.equal(noStatePayload.has_tax, false);
+  assert.equal(noStatePayload.seat_subtotal, "$2,520.00"); // the rest still prints
 
   // choice inputs are matched loosely and canonicalised to the table's spelling
   assert.equal(run("co2_msp", { seat_count: 42, selected_tier: " standard ", client_state: "OH" }).values.selected_tier, "Standard");

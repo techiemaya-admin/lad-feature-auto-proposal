@@ -4,7 +4,7 @@ Paths are relative to `prototypes/new-auto-proposal/` unless noted. Ticket: [`.s
 
 ## Context
 
-Stage 5 of the prototype pipeline. A pasted inbound lead message becomes (1) structured lead facts the user can see and fix, (2) exact numbers from the Stage 4 calculator, (3) drafted narrative paragraphs that never contain a model-typed number, and (4) a hydrated `.docx` plus a `.pdf`, previewed in the browser and downloadable. When the message lacks a required fact, the stage stops at the facts form and drafts a clarification email instead; when the rules say "needs review", it declines to produce a document.
+Stage 5 of the prototype pipeline. A pasted inbound lead message becomes (1) structured lead facts the user can see and fix, (2) exact numbers from the Stage 4 calculator, (3) drafted narrative paragraphs that never contain a model-typed number, and (4) a hydrated `.docx` plus a `.pdf`, previewed in the browser and downloadable. When the message lacks a required fact, the stage stops at the facts form and drafts a clarification email instead; when the rules say "needs review", the document is still built and marked a draft (ticket 09).
 
 Most of the machinery already exists: `POST /rules/calculate` returns `{evaluation, payload}` where `buildProposalPayload` (`pricing-calculator.ts:330`) fills every pricing tag, `has_*` boolean, loop array and the tier matrix in the quotation's notation. Stage 5 only fills the gaps the payload leaves — Stage 2 `customer_input` variables (`client_name`, dates) and `ai_generated` paragraph variables — and renders.
 
@@ -41,10 +41,10 @@ Extractor response schema: one **required** property per field (`null` when the 
 { success: true, evaluation, payload, narrative: { [name]: { text, tags_placed: string[] } },
   files: { docx: "/api/companies/:id/proposal/download?format=docx", pdf: <same with pdf> | null }, pdf_error?: string }
 ```
-or `{ success: false, declined: true, needs_review: [...] , evaluation }` (200, no document) when `evaluation.needs_review` is non-empty (ticket 09 replaces this with the success shape plus `needs_review`), or 400 when required inputs are missing.
+Always this shape: a non-empty `evaluation.needs_review` marks it a draft (ticket 09). 400 when required inputs are missing.
 
 Steps inside `proposal-generator.service.ts`:
-1. `evaluate(rules, inputs)`; decline on `needs_review`.
+1. `evaluate(rules, inputs)`; `needs_review` travels with the result.
 2. `buildProposalPayload(rules, evaluation, stage2, tier_matrix)` — the pricing half.
 3. Customer inputs: `payload[name] = inputs[name]` for the extracted text fields; dates via `fillDates(stage2Variables, today)` (§1.4).
 4. Narrative: one `generateJson` call (§1.5); substitute `{tag}` → `payload[tag]` for known keys; unknown tags are stripped and reported in `tags_placed` diagnostics; `payload[paragraph_name] = text`.

@@ -291,16 +291,16 @@ test("Proposal routes", async (t) => {
     assert.equal((await request(app).get("/api/companies/co1_seo/proposal/download?format=pdf")).status, 404);
   });
 
-  await t.test("a review rule declines the lead and leaves no document behind", async () => {
+  await t.test("a review rule flags the lead as a draft and the document is still written, every number printed", async () => {
     const rules = rulesOf("co1_seo");
     rules.review_rules.push({ when: [{ var: "location_count", op: "gt", value: 100 }], reason: "Franchise-scale — needs a call" });
     assert.equal((await request(app).put("/api/companies/co1_seo/rules").send({ rules })).status, 200);
     const res = await request(app).post("/api/companies/co1_seo/proposal/generate").send({ inputs: { ...facts, location_count: 140 }, lead_text: lead });
     assert.equal(res.status, 200, res.text);
-    assert.equal(res.body.success, false);
-    assert.equal(res.body.declined, true);
-    assert.equal(res.body.needs_review[0].reason, "Franchise-scale — needs a call");
-    assert.ok(!fs.existsSync(docxPath));
+    assert.equal(res.body.success, true);
+    assert.equal(res.body.evaluation.needs_review[0].reason, "Franchise-scale — needs a call");
+    assert.deepEqual(res.body.evaluation.broken, {}); // a review rule blanks nothing
+    assert.ok(fs.existsSync(docxPath));
   });
 
   await t.test("regenerating the template clears a generated proposal (hard reset)", async () => {

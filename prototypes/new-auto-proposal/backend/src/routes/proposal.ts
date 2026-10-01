@@ -120,10 +120,6 @@ router.post("/:id/proposal/generate", async (req: Request, res: Response): Promi
       coveredBy: coveredByParagraph(workingState.template_stats?.details),
       leadText: typeof req.body?.lead_text === "string" ? req.body.lead_text : "",
     });
-    if (result.declined) {
-      res.json({ success: false, declined: true, needs_review: result.needs_review, evaluation: result.evaluation });
-      return;
-    }
     // The client's name for the filename: whatever Stage 2 called it, it is the first free-text fact.
     const nameField = fields.find((f) => f.input_type === "text");
     const client = encodeURIComponent(String((nameField && inputs[nameField.name]) || company.company_name));

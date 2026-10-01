@@ -64,6 +64,8 @@ export interface PricingRules {
 export interface Evaluation {
   values: Record<string, Value>;
   present: Record<string, boolean>;
+  /** Values a problem made unknowable (and everything computed from them): printed as "[to confirm]". */
+  broken: Record<string, boolean>;
   needs_review: { reason: string; source?: string }[];
   order: string[];
 }
