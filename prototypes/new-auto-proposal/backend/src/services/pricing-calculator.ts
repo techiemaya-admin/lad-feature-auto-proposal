@@ -178,6 +178,16 @@ export function inputOptions(
     : [];
 }
 
+/** What each table option is, aligned with inputOptions: its row's other text cells ("Standard" → "4-hour response, …"). */
+export function optionNotes(v: Extract<RuleVariable, { kind: "input" }>, rules: PricingRules): string[] {
+  const t = v.options?.length || !v.options_table ? undefined : tableOf(rules, v.options_table);
+  if (!t || !v.options_column) return [];
+  const text = t.columns.filter((c) => c.unit === "text" && c.key !== v.options_column).map((c) => c.key);
+  const name = (r: Record<string, unknown>) => String(r[v.options_column!] ?? "").toLowerCase();
+  // A cell that only restates the option ("Copywriting add-on" for "Copywriting") says nothing about it.
+  return t.rows.map((r) => text.map((k) => String(r[k] ?? "")).filter((x) => x && !x.toLowerCase().includes(name(r))).join("; "));
+}
+
 /** A lead's answer, coerced by input type; choices are canonicalised to the option's own spelling. */
 function coerceInput(
   v: Extract<RuleVariable, { kind: "input" }>,

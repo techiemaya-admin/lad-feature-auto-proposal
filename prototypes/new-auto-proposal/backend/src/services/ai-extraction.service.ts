@@ -15,9 +15,10 @@ export async function extractVariables(params: ExtractVariablesParams): Promise<
  * Provider-agnostic structured output. Gemini enforces `schema`; DeepSeek has no typed schema,
  * so `jsonShapeSuffix` spells the same shape out in the prompt.
  */
-export async function generateJson<T>(prompt: string, schema: ResponseSchema, jsonShapeSuffix: string): Promise<T> {
+/** temperature: 0.1 reads the same way every time; prose writers pass more for natural variety. */
+export async function generateJson<T>(prompt: string, schema: ResponseSchema, jsonShapeSuffix: string, temperature = 0.1): Promise<T> {
   const { provider, model } = getAISettings();
   return provider === "deepseek"
-    ? generateJsonWithDeepSeek<T>(prompt, jsonShapeSuffix, model)
-    : generateJsonWithGemini<T>(prompt, schema, model);
+    ? generateJsonWithDeepSeek<T>(prompt, jsonShapeSuffix, model, temperature)
+    : generateJsonWithGemini<T>(prompt, schema, model, temperature);
 }

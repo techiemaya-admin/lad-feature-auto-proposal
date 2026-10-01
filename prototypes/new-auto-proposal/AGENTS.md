@@ -59,7 +59,7 @@ Self-contained proof of concept for zero-configuration proposal generation: a re
 - "Reset to Mock Default" re-seeds from `companies_dataset.json` + `Mock Data/test_seeds.json`.
 
 ### 8. Testing
-- `npm test` runs offline (`tsx --test`); route tests stub the model call. The live extraction contract is `npm run test:live`.
+- `npm test` runs offline (`tsx --test`); route tests stub the model call. The live contracts (variable extraction, rules compile, lead + narrative) are `npm run test:live`.
 - Keep the golden test green: `tests/template-mutator.test.ts` pins the engine against `Mock Data/templated_markdown/*.md`, using `tests/fixtures/*.variables.json` (ideal responses) and `*.raw.json` (real model logs, which catch model quirks the ideal fixtures miss).
 - Tests assert observable behaviour and calculation accuracy — the three benchmark totals to the cent — rather than private helpers.
 - `tests/fixtures/*.raw.json` are captured model logs, not inputs to tune. A failing raw fixture means the engine must handle it; fix the engine, never the fixture.

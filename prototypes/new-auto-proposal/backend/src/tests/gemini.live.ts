@@ -81,6 +81,65 @@ test("Gemini extraction contract (live)", { skip: !process.env.GEMINI_API_KEY ||
   }
 });
 
+const DOCX: Record<string, string> = {
+  co1_seo: "Co1_Proposal_Northstar_BloomAndCo.docx",
+  co2_msp: "Co2_Proposal_FortressIT_WhitfieldAssociates.docx",
+  co3_dev: "Co3_Proposal_Fieldstone_RosewoodHomeGoods.docx",
+};
+
+/** Stage 1 for real with the seed pricing notes, Stage 2 from the golden fixture (+ the model's own tips), Stage 3 for real. */
+async function seedThroughStage3(app: ReturnType<typeof createApp>, id: string): Promise<void> {
+  const seeds = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../../Mock Data/test_seeds.json"), "utf8")).companies as any[];
+  const spec = seeds.find((s) => s.company_id === id).pricing_spec as string;
+  const submit = await request(app).post(`/api/companies/${id}/briefing/submit`).field("prompt", spec)
+    .attach("file", path.resolve(__dirname, "../../../Mock Data/docx", DOCX[id]));
+  assert.equal(submit.status, 200, submit.text);
+  const fx = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", `${id}.variables.json`), "utf8"));
+  const raw = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", `${id}.raw.json`), "utf8"));
+  const insert = getDatabase().prepare(
+    `INSERT INTO company_variables (id, company_id, variable_name, natural_name, category, data_type, is_custom, is_deleted, sort_order, descriptor_json, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, datetime('now'), datetime('now'))`);
+  fx.variables.forEach((v: any, i: number) => {
+    const r = raw.variables?.find((x: any) => x.variable_name === v.variable_name);
+    insert.run(`${id}_v${i}`, id, v.variable_name, r?.natural_name || v.variable_name, v.category, r?.data_type || (v.category === "pricing" ? "currency" : "string"), i,
+      JSON.stringify({ sample_value: v.sample_text, enum_options: v.enum_options, visibility_rule: v.condition_flag ? { condition_flag: v.condition_flag } : undefined, paragraph_config: r?.paragraph_config }));
+  });
+  (fx.loop_tables ?? []).forEach((t: any, i: number) =>
+    insert.run(`${id}_t${i}`, id, t.loop_tag, t.loop_tag, "table_loop", "table", 100 + i,
+      JSON.stringify({ table_id: t.loop_tag, type: "repeating_loop", loop_tag: t.loop_tag, header_texts: t.header_texts, row_labels: t.row_labels, columns: t.column_tags })));
+  const gen = await request(app).post(`/api/companies/${id}/template/generate`);
+  assert.equal(gen.status, 200, gen.text);
+}
+
+/**
+ * Stage 4 live contract: the real compiler, on each company's seed pricing notes, writes a sheet that is structurally
+ * valid and reproduces every value of its sample quotation. The compiler grades itself (validate + sampleCheck), so the
+ * check is the same one a human sees on the Pricing Engine deck.
+ */
+test("Rules compile contract (live)", { skip: !process.env.DEEPSEEK_API_KEY && !process.env.GEMINI_API_KEY, timeout: 900000 }, async (t) => {
+  const testDir = fs.mkdtempSync(path.join(os.tmpdir(), "auto-proposal-live-s4-"));
+  process.env.DB_PATH = path.join(testDir, "test.sqlite");
+  process.env.STORAGE_DIR = path.join(testDir, "storage");
+  fs.mkdirSync(process.env.STORAGE_DIR, { recursive: true });
+  initDatabase(process.env.DB_PATH);
+  const app = createApp();
+  t.after(() => {
+    closeDatabase();
+    try { fs.rmSync(testDir, { recursive: true, force: true }); } catch { /* leaked temp dir is not a failure */ }
+  });
+
+  for (const id of Object.keys(DOCX)) {
+    await t.test(`POST /rules/compile (${id}): no validation errors and every sample value reproduced`, { timeout: 300000 }, async () => {
+      await seedThroughStage3(app, id);
+      const res = await request(app).post(`/api/companies/${id}/rules/compile`).timeout(300000);
+      assert.equal(res.status, 200, res.text);
+      const state = res.body.pricing_rules;
+      assert.deepEqual(state.validation_errors, []);
+      assert.deepEqual(state.sample_check.filter((c: any) => !c.ok), []);
+    });
+  }
+});
+
 /**
  * Stage 5 live contract (co1): the lead extractor reads the sample WhatsApp reply correctly and the narrative
  * drafter writes placeholders, not numbers. Stages 2–4 come from the golden fixtures so only two calls are live.
@@ -102,22 +161,8 @@ test("Lead extraction + narrative contract (live, co1)", { skip: !process.env.DE
     try { fs.rmSync(testDir, { recursive: true, force: true }); } catch { /* leaked temp dir is not a failure */ }
   });
 
-  const fixturesDir = path.join(__dirname, "fixtures");
-  const fx = JSON.parse(fs.readFileSync(path.join(fixturesDir, "co1_seo.variables.json"), "utf8"));
-  const raw = JSON.parse(fs.readFileSync(path.join(fixturesDir, "co1_seo.raw.json"), "utf8"));
-  const submit = await request(app).post("/api/companies/co1_seo/briefing/submit").field("prompt", "Local $1000/mo, Growth $3000/mo, Authority $8000/mo. 10% off annual. Texas tax 8.25%.")
-    .attach("file", path.resolve(__dirname, "../../../Mock Data/docx/Co1_Proposal_Northstar_BloomAndCo.docx"));
-  assert.equal(submit.status, 200, submit.text);
-  const insert = getDatabase().prepare(
-    `INSERT INTO company_variables (id, company_id, variable_name, natural_name, category, data_type, is_custom, is_deleted, sort_order, descriptor_json, created_at, updated_at)
-     VALUES (?, 'co1_seo', ?, ?, ?, ?, 0, 0, ?, ?, datetime('now'), datetime('now'))`);
-  fx.variables.forEach((v: any, i: number) => {
-    const tips = raw.variables?.find((r: any) => r.variable_name === v.variable_name)?.paragraph_config;
-    insert.run(`v${i}`, v.variable_name, v.variable_name, v.category, v.category === "pricing" ? "currency" : "string", i,
-      JSON.stringify({ sample_value: v.sample_text, enum_options: v.enum_options, visibility_rule: v.condition_flag ? { condition_flag: v.condition_flag } : undefined, paragraph_config: tips }));
-  });
-  assert.equal((await request(app).post("/api/companies/co1_seo/template/generate")).status, 200);
-  setRulesModelCall(async () => toWire(JSON.parse(fs.readFileSync(path.join(fixturesDir, "co1_seo.rules.json"), "utf8"))));
+  await seedThroughStage3(app, "co1_seo");
+  setRulesModelCall(async () => toWire(JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", "co1_seo.rules.json"), "utf8"))));
   assert.equal((await request(app).post("/api/companies/co1_seo/rules/compile")).status, 200);
   assert.equal((await request(app).post("/api/companies/co1_seo/rules/proceed")).status, 200);
 
