@@ -172,6 +172,13 @@ export interface SampleCheckEntry {
   note?: string;
 }
 
+/**
+ * Stage 2's "Fixed & auto-filled" box is a screen label: inside the pipeline a `fixed` variable is handled
+ * exactly like a `customer_input` (old extractions keep dates under customer_input). Every customer-input
+ * check goes through here so the two never drift apart.
+ */
+export const isCustomerOrFixed = (v: { category: string }): boolean => v.category === "customer_input" || v.category === "fixed";
+
 export interface Stage2Variable {
   variable_name: string;
   natural_name?: string;

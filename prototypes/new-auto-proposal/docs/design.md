@@ -30,8 +30,9 @@ The Rush Away Auto-Proposal onboarding workflow is an **agentic configuration wo
                                       ▼
 ┌───────────────────────────────────────────────────────────────────────────┐
 │  STAGE 2: VARIABLE LEDGER (grouped chips + docked detail tray)            │
-│  - 3 rows, one per category, chips fill the width:                        │
-│    • Customer inputs (client name, dates, contract length)                │
+│  - 4 rows, one per category, chips fill the width:                        │
+│    • Customer inputs (client name, location count)                        │
+│    • Fixed & auto-filled (dates, validity, payment terms)                 │
 │    • Pricing (tier, rate, subtotal, tax, total; loop tables as ⊞ chips)   │
 │    • Paragraphs (chip glyph: ❝ fixed text / ✦ drafted per client)         │
 │  - Tap a chip → detail tray docks under the ledger, connector points at it│
@@ -119,8 +120,8 @@ The purpose of this step is an **overview first, detail on demand**: the user sh
 
 #### Layout
 - **Header:** icon (indigo sparkle while the step is open, emerald tick once a template exists — same "settled" signal as Stages 1 and 3), title `Variables`, subtitle `N spots in <Company>'s quotation will change for each client.` followed by the one instruction in foreground weight: `Tap one to check it.` Right: ghost `Re-scan`.
-- **Ledger:** three rows, one per category, label column left (`w-28`, muted) and chips wrapping to fill the rest of the width. No filter tabs, no "All" view.
-  - `Customer inputs` · `Pricing` (loop tables appear here as chips with a table glyph) · `Paragraphs` (chips carry a glyph: quote mark = fixed text, wand = drafted per client, so the mode decision is visible from the overview).
+- **Ledger:** four rows, one per category, label column left (`w-28`, muted) and chips wrapping to fill the rest of the width. No filter tabs, no "All" view.
+  - `Customer inputs` · `Fixed & auto-filled` (values the lead is never asked: dates, seller-set terms — a screen label, processed exactly like Customer inputs; see [plan.md](plan.md) §3) · `Pricing` (loop tables appear here as chips with a table glyph) · `Paragraphs` (chips carry a glyph: quote mark = fixed text, wand = drafted per client, so the mode decision is visible from the overview).
   - `+ Add one` is a dashed chip at the end of the last row.
 - **Chip anatomy:** `h-7 px-2.5 rounded-md text-xs font-medium`, `bg-card border-border shadow-xs`, hover lifts 1px. States: selected = inverted (`bg-foreground text-background`); left out = dashed border + strikethrough, stays in place; needs attention (template missed it) = 6px amber dot.
 - **Detail tray:** docks under the ledger with a connector that slides to the selected chip. Opaque `bg-muted` surface, `rounded-xl`, hairline below the header row.
@@ -137,7 +138,7 @@ Category no longer gets a hue. Colour is spent on **state only**: inverted = sel
 Every user edit in the tray (rename, category, mode, text, leave out / bring back, add, re-scan) calls `onVariablesEdited`; `App` drops `templateStats`, the Stage 3 card disappears and the header icon reverts to the sparkle until the user generates again.
 
 #### Scanning state
-While extraction runs the card shows an agent trace (`Reading the quotation → Finding what changes per client → Sorting into customer inputs, pricing and paragraphs → Checking for repeating tables`, ticking on a timer) above a ghost ledger of pulsing chip placeholders, with the shimmer bar on the card's top edge. The trace is timer-driven because the backend is one opaque call (`ponytail:` comment in code names the upgrade path: stream progress from `/variables/extract`).
+While extraction runs the card shows an agent trace (`Reading the quotation → Finding what changes per client → Sorting into inputs, fixed values, pricing and paragraphs → Checking for repeating tables`, ticking on a timer) above a ghost ledger of pulsing chip placeholders, with the shimmer bar on the card's top edge. The trace is timer-driven because the backend is one opaque call (`ponytail:` comment in code names the upgrade path: stream progress from `/variables/extract`).
 
 ---
 

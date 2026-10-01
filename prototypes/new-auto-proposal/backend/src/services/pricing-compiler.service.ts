@@ -6,7 +6,7 @@ import { generateJson } from "./ai-extraction.service.js";
 import { getAISettings } from "./ai-settings.service.js";
 import { logPipelineArtifact } from "./pipeline-log.js";
 import { evaluate, sampleCheck, validate } from "./pricing-calculator.js";
-import { fromWire, toWire, type AiPricingRules, type PricingRules, type PricingRulesState, type Stage2Context } from "./pricing-rules.types.js";
+import { fromWire, isCustomerOrFixed, toWire, type AiPricingRules, type PricingRules, type PricingRulesState, type Stage2Context } from "./pricing-rules.types.js";
 import type { MutationLogEntry } from "./template-mutator.service.js";
 
 /**
@@ -71,7 +71,7 @@ export function buildCompilePrompt(input: CompileInput, previous?: PreviousAttem
   const line = (v: Stage2Context["variables"][number]) =>
     `- ${v.variable_name} | ${v.natural_name ?? ""} | ${v.data_type ?? ""} | sample: ${JSON.stringify(v.sample_value)}${v.condition_flag ? ` | flag: ${v.condition_flag}` : ""}${v.enum_options?.length ? ` | options: ${v.enum_options.join(" / ")}` : ""}`;
   const pricing = s2.variables.filter((v) => v.category === "pricing");
-  const inputs = s2.variables.filter((v) => v.category === "customer_input");
+  const inputs = s2.variables.filter(isCustomerOrFixed);
   const flags = [...new Set(s2.variables.map((v) => v.condition_flag).filter(Boolean))] as string[];
   const flagOwners = (f: string) => s2.variables.filter((v) => v.condition_flag === f).map((v) => `${v.variable_name} (${v.category})`).join(", ");
 

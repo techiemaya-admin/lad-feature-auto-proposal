@@ -17,7 +17,7 @@ Respond with ONLY a single JSON object — no markdown fences, no commentary —
   "variables": [
     {
       "variable_name": string, "natural_name": string,
-      "category": "customer_input" | "pricing" | "paragraph",
+      "category": "customer_input" | "fixed" | "pricing" | "paragraph",
       "data_type": "string" | "number" | "currency" | "enum" | "date" | "paragraph",
       "sample_text": string, "description": string, "context_text": string, "condition_flag": string,
       "enum_options": string[] (optional),

@@ -9,7 +9,7 @@ import { getStorageDir } from "../db/database.js";
 import type { CompanyRow } from "../routes/companies.js";
 import { logPipelineArtifact } from "./pipeline-log.js";
 import { buildProposalPayload, evaluate } from "./pricing-calculator.js";
-import type { Evaluation, PricingRules, Stage2Context, Stage2Variable, Value } from "./pricing-rules.types.js";
+import { isCustomerOrFixed, type Evaluation, type PricingRules, type Stage2Context, type Stage2Variable, type Value } from "./pricing-rules.types.js";
 import { hydrateProposalTemplate, type TierMatrix } from "./template-mutator.service.js";
 import { draftNarrative, type NarrativeResult } from "./narrative-drafter.service.js";
 
@@ -39,7 +39,7 @@ export function parseSampleDate(sample: string): { utc: number; suffix: string }
 
 /** data_type "date", or (ponytail: fallback for extractions older than the date type) a string whose sample parses as one. */
 export const isDateVariable = (v: Stage2Variable): boolean =>
-  v.category === "customer_input" &&
+  isCustomerOrFixed(v) &&
   (v.data_type === "date" || ((!v.data_type || v.data_type === "string") && parseSampleDate(v.sample_value) !== null));
 
 /**
@@ -157,7 +157,7 @@ export async function generateProposal(input: GenerateInput): Promise<GenerateRe
   // computed for them (a live compile once defined client_name and the dates as inputs). Numeric facts the
   // sheet formats (seat counts) and seller-owned constants (validity days) keep the sheet's rendering.
   for (const v of stage2.variables) {
-    if (v.category !== "customer_input" || isDateVariable(v)) continue;
+    if (!isCustomerOrFixed(v) || isDateVariable(v)) continue;
     const raw = inputs[v.variable_name];
     if (raw === null || raw === undefined) {
       if (payload[v.variable_name] === undefined) payload[v.variable_name] = "";

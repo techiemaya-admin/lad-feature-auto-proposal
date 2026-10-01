@@ -12,7 +12,7 @@ This manual quoting workflow is slow (taking hours or days), error-prone, and in
 
 A zero-configuration, AI-assisted auto-proposal prototype that enables an agency tenant to onboard their quoting process in an intuitive, agentic workflow:
 1. **Compound Briefing Capsule:** Type pricing guidelines in natural language into a clean prompt area, with a docked quotation dropzone directly beneath it (prompt + quotation submitted together with `[Send ➔]`).
-2. **Categorized Variable Review Chip-Deck:** Review extracted dynamic variables organized into three clear buckets (`Customer Inputs`, `Pricing Placeholders`, and `Narrative Paragraphs`) as modular interactive chips rather than a dense administrative table.
+2. **Categorized Variable Review Chip-Deck:** Review extracted dynamic variables organized into four clear buckets (`Customer Inputs`, `Fixed & auto-filled`, `Pricing Placeholders`, and `Narrative Paragraphs`) as modular interactive chips rather than a dense administrative table.
 3. **Minimal Template Checkpoint:** Confirm XML-safe dynamic template tags and repeating line-item loops with an inline status card and optional quick preview before moving to pricing.
 4. **Interactive Pricing Engine:** Review and fine-tune compiled visual rule cards powered by a 100% deterministic JavaScript math engine.
 5. **Lead Simulator & Verification:** Paste an inbound lead message, see the facts read from it (a missing one drafts a clarification email and opens a reply loop until the thread answers it), and get a mathematically verified `.docx` + PDF proposal previewed in the browser — always for a human to check and send; when a review reason fires, it is flagged above the proposal and the values it touches are printed as `[to confirm]`, and a red Draft box lists the reasons.
@@ -28,7 +28,7 @@ A zero-configuration, AI-assisted auto-proposal prototype that enables an agency
 6. As a tenant who has submitted my briefing, I want the briefing capsule to transition into a clean read-only locked state, so that I do not accidentally modify my prompt or lose my place while reviewing downstream stages.
 7. As a tenant wanting to revise my pricing prompt or quotation, I want an explicit "Edit / Reset" action with a confirmation warning that downstream stages will be reset, while preserving my typed prompt text in the input box.
 8. As a reviewer inspecting document parsing, I want to open the bottom developer dock to view the Markdown extracted from my Word document, so that I can confirm headings, tables, and paragraphs were captured accurately without cluttering the primary tenant view.
-9. As a tenant reviewing detected variables, I want to see modular, categorized chips grouped into three buckets (Customer Inputs, Pricing Placeholders, Narrative Paragraphs), so that I understand what parts of my document become dynamic without scrolling through a dense table.
+9. As a tenant reviewing detected variables, I want to see modular, categorized chips grouped into four buckets (Customer Inputs, Fixed & auto-filled, Pricing Placeholders, Narrative Paragraphs), so that I understand what parts of my document become dynamic without scrolling through a dense table.
 10. As a tenant reviewing detected variables, I want to edit a chip's natural name, change its category bucket via a dropdown, or delete false positives, so that the final template only contains accurate placeholders.
 11. As a tenant deleting a variable chip, I want the underlying Word template to keep the original text as static Word content, so that removing a chip never breaks document layout or wording.
 12. As a tenant reviewing narrative paragraph variables, I want to toggle between "Fixed Boilerplate" (editable quote text) and "AI-Generated" (with a prompt tip input), so that static clauses remain verbatim while personalized sections are tailored for each deal.
@@ -99,7 +99,7 @@ interface PricingRules {
 
 ### 5. UI Architecture: Agentic Briefing & Ambient Controls
 - **Compound Briefing Capsule:** Unified prompt area + docked dropzone. `Enter` creates new lines; submission via explicit `[Send ➔]` button when both inputs are present. Transitions to read-only locked state with edit/reset modal.
-- **Categorized Variable Review Chip-Deck:** Replaces dense tables with 3 modular card buckets (`Customer Inputs`, `Pricing Placeholders`, `Narrative Paragraphs`). Supports AST-verified custom chips, dropdown bucket movement, and paragraph mode toggling.
+- **Categorized Variable Review Chip-Deck:** Replaces dense tables with 4 modular card buckets (`Customer Inputs`, `Fixed & auto-filled`, `Pricing Placeholders`, `Narrative Paragraphs`). `Fixed & auto-filled` (dates, seller-set values) is a screen label: the pipeline processes it exactly like Customer Inputs. Supports AST-verified custom chips, dropdown bucket movement, and paragraph mode toggling.
 - **Minimal Template Checkpoint:** Low-profile status banner with tag stats and optional `docx-preview` modal, acting as a lightweight confirmation step before pricing.
 - **Slide-Over Configuration Drawer:** Persistent per-company sheet for free-text voice notes, a reference proposal, clarification-email notes, and a mock inbox link.
 - **Bottom Developer Dock (HUD):** Collapsible drawer housing AnyDoc Markdown, raw Variables JSON, Rule Schema JSON, and pipeline logs.

@@ -21,7 +21,7 @@ export interface ParagraphConfig {
 export interface ExtractedVariable {
   variable_name: string;
   natural_name: string;
-  category: "customer_input" | "pricing" | "paragraph";
+  category: "customer_input" | "fixed" | "pricing" | "paragraph";
   data_type: "string" | "number" | "currency" | "enum" | "date" | "paragraph";
   /** Verbatim text copied from the quotation. Multi-line for paragraph blocks. */
   sample_text: string;
@@ -70,7 +70,7 @@ export const extractionResponseSchema: ResponseSchema = {
           category: {
             type: SchemaType.STRING,
             format: "enum",
-            enum: ["customer_input", "pricing", "paragraph"],
+            enum: ["customer_input", "fixed", "pricing", "paragraph"],
           },
           data_type: {
             type: SchemaType.STRING,
@@ -160,13 +160,14 @@ Name: "${params.companyName}"  Location: "${b?.location || ""}"  Email: "${b?.em
 2. Never extract the agency's own name, team name, address, phone, email, the standard closing call-to-action, or the closing legal disclaimer. Only extract things about the CLIENT, the chosen package, prices, dates, and client-specific prose.
 
 3. category:
-   - "customer_input": facts the client supplies — client company name, dates, headcount, number of sites, rooms, units or hours, etc.
-     * Proposal dates and validity dates ("March 3, 2027", "Valid until April 2, 2027") get data_type "date"; the engine computes them, they are never asked of the client.
+   - "customer_input": facts only the client can tell us — client company name, headcount, number of sites, rooms, units or hours, etc.
+   - "fixed": values the client is never asked — the agency sets them or the engine computes them: proposal and validity dates, validity days, payment terms, a contract length the agency fixes.
+     * Proposal dates and validity dates ("March 3, 2027", "Valid until April 2, 2027") get data_type "date"; the engine computes them.
    - "pricing": every money amount, rate, percentage, and the selected tier/package name.
      * The chosen tier gets variable_name "selected_tier", data_type "enum", enum_options = all tiers offered. Its sample_text is just the tier name (e.g. "Premium"). Do not create tier-specific names like "premium_monthly_rate" — use role names like "selected_tier_rate".
    - "paragraph": prose written for THIS client — the intro describing their situation, why the recommended tier fits, their payment preference, the upgrade path, a menu of optional extras marked selected/unselected, a "what's included" bullet list, tax or minimum-commitment notes that depend on their numbers. If a salesperson would rewrite it for the next lead, it is a paragraph variable. Set data_type "paragraph" and paragraph_config { mode: "ai_generated", purpose, tone, length_guideline }.
      * For a block of several lines or bullets, sample_text is the WHOLE block: one line per paragraph/bullet, each copied exactly, joined with newlines.
-     * Numbers, amounts and counts inside prose are STILL their own customer_input / pricing variables (the paragraph is drafted from them; the drafter never does arithmetic). A sentence whose only client-specific content is such values — "That works out to $415.00 per visit, invoiced monthly." — is NOT a paragraph variable: extract the values and leave the wording static.
+     * Numbers, amounts and counts inside prose are STILL their own customer_input / fixed / pricing variables (the paragraph is drafted from them; the drafter never does arithmetic). A sentence whose only client-specific content is such values — "That works out to $415.00 per visit, invoiced monthly." — is NOT a paragraph variable: extract the values and leave the wording static.
      * Static boilerplate that reads identically for any client is NOT a variable.
 
 4. condition_flag: set it on the amount variable of any table row that may not apply to every client — a tax line, a discount, an optional fee or surcharge. Name it "has_<what the row is>", e.g. "has_tax", "has_weekend_surcharge". The engine wraps that whole row so it disappears when the flag is false. Otherwise "".

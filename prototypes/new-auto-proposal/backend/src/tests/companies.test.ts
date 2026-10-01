@@ -59,14 +59,15 @@ test("Companies: reset re-seeds the mock default", async (t) => {
 
 });
 
-test("Database: a pre-`date` company_variables table is rebuilt in place, rows kept", () => {
+test("Database: a pre-`fixed` company_variables table is rebuilt in place, rows kept", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "auto-proposal-migrate-"));
   const dbPath = path.join(dir, "old.sqlite");
   const old = new DatabaseSync(dbPath);
   old.exec(`
     CREATE TABLE company_variables (
       id TEXT PRIMARY KEY, company_id TEXT NOT NULL, variable_name TEXT NOT NULL, natural_name TEXT NOT NULL,
-      category TEXT NOT NULL, data_type TEXT NOT NULL CHECK (data_type IN ('string', 'number', 'currency', 'enum', 'paragraph', 'table')),
+      category TEXT NOT NULL CHECK (category IN ('customer_input', 'pricing', 'paragraph', 'table_loop', 'comparison_matrix', 'compound_table')),
+      data_type TEXT NOT NULL CHECK (data_type IN ('string', 'number', 'currency', 'enum', 'date', 'paragraph', 'table')),
       is_custom INTEGER DEFAULT 0, is_deleted INTEGER DEFAULT 0, sort_order INTEGER DEFAULT 0, descriptor_json TEXT NOT NULL,
       created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE INDEX idx_company_variables_lookup ON company_variables (company_id, category, is_deleted);
@@ -75,7 +76,7 @@ test("Database: a pre-`date` company_variables table is rebuilt in place, rows k
   old.close();
   closeDatabase();
   const db = initDatabase(dbPath);
-  db.prepare("INSERT INTO company_variables VALUES ('v2', 'co1_seo', 'd', 'D', 'customer_input', 'date', 0, 0, 1, '{}', 't', 't')").run();
+  db.prepare("INSERT INTO company_variables VALUES ('v2', 'co1_seo', 'd', 'D', 'fixed', 'date', 0, 0, 1, '{}', 't', 't')").run();
   assert.equal((db.prepare("SELECT count(*) AS n FROM company_variables").get() as { n: number }).n, 2);
   closeDatabase();
   try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* handle may linger on Windows */ }

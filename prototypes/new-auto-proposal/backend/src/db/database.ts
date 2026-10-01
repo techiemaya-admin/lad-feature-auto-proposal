@@ -34,7 +34,7 @@ const COMPANY_VARIABLES_DDL = `
       company_id TEXT NOT NULL,
       variable_name TEXT NOT NULL,
       natural_name TEXT NOT NULL,
-      category TEXT NOT NULL CHECK (category IN ('customer_input', 'pricing', 'paragraph', 'table_loop', 'comparison_matrix', 'compound_table')),
+      category TEXT NOT NULL CHECK (category IN ('customer_input', 'fixed', 'pricing', 'paragraph', 'table_loop', 'comparison_matrix', 'compound_table')),
       data_type TEXT NOT NULL CHECK (data_type IN ('string', 'number', 'currency', 'enum', 'date', 'paragraph', 'table')),
       is_custom INTEGER DEFAULT 0,
       is_deleted INTEGER DEFAULT 0,
@@ -138,9 +138,9 @@ export function initDatabase(dbPath?: string): DatabaseSync {
     db.exec("ALTER TABLE company_sessions ADD COLUMN briefing_locked INTEGER DEFAULT 0;");
   }
 
-  // SQLite cannot alter a CHECK: databases created before the `date` data_type get the table rebuilt in place.
+  // SQLite cannot alter a CHECK: databases created before the `fixed` category (or the older `date` data_type) get the table rebuilt in place.
   const variablesDdl = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'company_variables'").get() as { sql: string } | undefined;
-  if (variablesDdl && !variablesDdl.sql.includes("'date'")) {
+  if (variablesDdl && !variablesDdl.sql.includes("'fixed'")) {
     // Standard SQLite rebuild recipe: FK checks off (must be outside the transaction) so the copy never trips on them.
     db.exec(`
       PRAGMA foreign_keys = OFF;

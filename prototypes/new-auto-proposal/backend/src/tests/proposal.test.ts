@@ -39,6 +39,9 @@ test("fillDates: earliest sample date becomes today, the others keep their offse
   assert.deepEqual(fillDates(vars, new Date(2026, 8, 18)), { proposal_date: "September 18, 2026", proposal_valid_until: "October 2, 2026 (14 days)" });
   assert.deepEqual(fillDates(vars, new Date(2026, 11, 25)), { proposal_date: "December 25, 2026", proposal_valid_until: "January 8, 2027 (14 days)" });
   assert.deepEqual(fillDates([vars[0], vars[3]]), {});
+  // The Fixed box is where new extractions put dates; old companies keep them under customer_input (above).
+  const fixed = vars.map((v) => (v.variable_name.startsWith("proposal_") ? { ...v, category: "fixed" } : v));
+  assert.deepEqual(fillDates(fixed, new Date(2026, 8, 18)), { proposal_date: "September 18, 2026", proposal_valid_until: "October 2, 2026 (14 days)" });
 });
 
 test("substitutePlaceholders: known tags are filled, unknown tags stripped and reported", () => {
@@ -62,6 +65,11 @@ test("leadFields: rules inputs plus the undefined non-date customer inputs, per 
   withConstant.variables.push({ name: "proposal_validity_period", label: "Validity", in_document: true, unit: "text", condition_flag: "", kind: "constant", value: "14 days" });
   assert.deepEqual(brief("co1_seo", validity, withConstant).at(-1), "client_name:text!");
   assert.deepEqual(brief("co1_seo", validity).at(-1), "proposal_validity_period:text!");
+  // Fixed & auto-filled is a screen label only: a seller value in it is handled exactly like a customer input,
+  // and a Fixed date is never asked.
+  const fixedValidity = [{ ...validity[0], category: "fixed" }, { variable_name: "proposal_date", category: "fixed", data_type: "date", sample_value: "September 7, 2026" }];
+  assert.deepEqual(brief("co1_seo", fixedValidity, withConstant).at(-1), "client_name:text!");
+  assert.deepEqual(brief("co1_seo", fixedValidity).at(-1), "proposal_validity_period:text!");
   assert.deepEqual(brief("co2_msp"), ["seat_count:integer!", "selected_tier:choice![Essential|Standard|Premium]", "extra_device_count:integer", "client_state:region![OH]", "client_name:text!"]);
   const co3 = brief("co3_dev");
   assert.equal(co3[0], "product_count:integer!");

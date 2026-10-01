@@ -6,7 +6,7 @@ Paths are relative to `prototypes/new-auto-proposal/` unless noted. Ticket: [`.s
 
 Stage 5 of the prototype pipeline. A pasted inbound lead message becomes (1) structured lead facts the user can see and fix, (2) exact numbers from the Stage 4 calculator, (3) drafted narrative paragraphs that never contain a model-typed number, and (4) a hydrated `.docx` plus a `.pdf`, previewed in the browser and downloadable. When the message lacks a required fact, the stage stops at the facts form and drafts a clarification email instead; when the rules say "needs review", the document is still built and marked a draft (ticket 09).
 
-Most of the machinery already exists: `POST /rules/calculate` returns `{evaluation, payload}` where `buildProposalPayload` (`pricing-calculator.ts:330`) fills every pricing tag, `has_*` boolean, loop array and the tier matrix in the quotation's notation. Stage 5 only fills the gaps the payload leaves — Stage 2 `customer_input` variables (`client_name`, dates) and `ai_generated` paragraph variables — and renders.
+Most of the machinery already exists: `POST /rules/calculate` returns `{evaluation, payload}` where `buildProposalPayload` (`pricing-calculator.ts:330`) fills every pricing tag, `has_*` boolean, loop array and the tier matrix in the quotation's notation. Stage 5 only fills the gaps the payload leaves — Stage 2 `customer_input` (or `fixed`) variables (`client_name`, dates) and `ai_generated` paragraph variables — and renders.
 
 **Decided with the user (2026-09-16/18):**
 - Two endpoints, run back-to-back by the UI: `POST /lead/extract` (message → facts) and `POST /proposal/generate` (**structured facts** → document). `generate` never re-reads the email; production separates these steps too (a human or a clarification email sits between them).
@@ -26,7 +26,7 @@ Most of the machinery already exists: `POST /rules/calculate` returns `{evaluati
 ### 1.1 Lead facts (`LeadFacts`)
 Built per company, nothing hardcoded:
 - every `kind: "input"` variable of the rules (`name`, `input_type` integer | number | boolean | choice | multi_choice | region | text, `options`, `required`, `default?`, `assume_when?`);
-- plus every Stage 2 `customer_input` variable that no rule variable defines (constants count) and is not a date (e.g. `client_name`) — required, `text`.
+- plus every Stage 2 `customer_input` (or `fixed`) variable that no rule variable defines (constants count) and is not a date (e.g. `client_name`) — required, `text`.
 
 Extractor response schema: one **required** property per field (`null` when the message does not say it), plus `assumptions: string[]` (required, may be empty). Rules in the prompt: number words → digits; a range → the higher end, noted in `assumptions`; never infer a state/jurisdiction that is not stated; choice values must be one of `options` (case-insensitive, the option's spelling is returned).
 
@@ -55,7 +55,7 @@ Steps inside `proposal-generator.service.ts`:
 `GET /api/companies/:id/proposal/download?format=docx|pdf[&download=1]` — the PDF is served `inline` (so the Stage 5 `<iframe>` renders it instead of downloading); `download=1`, and any `.docx`, get `Content-Disposition: attachment; filename="Proposal - <client_name>.<ext>"`. 404 with a message when the file is absent.
 
 ### 1.4 Dates (`fillDates`)
-Date customer inputs = `data_type === "date"` **or** (fallback, `ponytail:`) a `string` whose `sample_value` starts with a parseable month-name date. Earliest sample = anchor → `today`; every other date = today + (sample − anchor). Output keeps the sample's format (`September 7, 2026`) and any trailing suffix (` (14 days)`), suffix left verbatim. Pure function, unit-tested.
+Date customer inputs (`customer_input` or `fixed`) = `data_type === "date"` **or** (fallback, `ponytail:`) a `string` whose `sample_value` starts with a parseable month-name date. Earliest sample = anchor → `today`; every other date = today + (sample − anchor). Output keeps the sample's format (`September 7, 2026`) and any trailing suffix (` (14 days)`), suffix left verbatim. Pure function, unit-tested.
 
 ### 1.5 Narrative drafter
 Prompt sections: company profile (name, value proposition, industry); voice (`style_notes`, optional `reference_proposal_text` as a few-shot); the lead message; the lead facts (natural names + values); AVAILABLE TAGS — every payload key with its formatted value, and the instruction "write `{tag}` wherever a number, price, tier name, count or date belongs; never type the value"; one block per `ai_generated` paragraph with its `sample_value` (structure reference), `purpose`, `tone`, `length_guideline`, `guidance`, and which tags were `covered` by it (must appear). Response schema `{ [paragraph_name]: string }`, all required. Fixed-mode paragraphs are not drafted (they are static text in the template).

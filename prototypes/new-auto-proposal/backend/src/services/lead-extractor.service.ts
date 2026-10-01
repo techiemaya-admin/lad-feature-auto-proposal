@@ -4,7 +4,7 @@ import { generateJson } from "./ai-extraction.service.js";
 import { getAISettings } from "./ai-settings.service.js";
 import { logPipelineArtifact } from "./pipeline-log.js";
 import { inputOptions, optionNotes } from "./pricing-calculator.js";
-import type { InputType, PricingRules, Stage2Context, Value } from "./pricing-rules.types.js";
+import { isCustomerOrFixed, type InputType, type PricingRules, type Stage2Context, type Value } from "./pricing-rules.types.js";
 import { isDateVariable } from "./proposal-generator.service.js";
 
 /**
@@ -45,7 +45,9 @@ export function leadFields(rules: PricingRules, stage2: Stage2Context): LeadFiel
   // Every rule variable counts as defined: a Stage 2 input the sheet holds as a constant (validity days) is not re-asked as text.
   const defined = new Set(rules.variables.map((v) => v.name));
   for (const v of stage2.variables) {
-    if (v.category !== "customer_input" || defined.has(v.variable_name) || isDateVariable(v)) continue;
+    // ponytail: a Fixed value Stage 4 leaves undefined is still asked here, as a customer input is — the box is a
+    // label, Stage 4 has the final say. Upgrade path: print its sample instead, if that ever confuses a reviewer.
+    if (!isCustomerOrFixed(v) || defined.has(v.variable_name) || isDateVariable(v)) continue;
     fields.push({ name: v.variable_name, label: v.natural_name || v.variable_name, input_type: "text", options: [], required: true });
   }
   return fields;

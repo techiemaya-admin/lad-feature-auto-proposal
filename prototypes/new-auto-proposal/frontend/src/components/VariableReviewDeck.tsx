@@ -53,12 +53,14 @@ type VariablePatch = Partial<
 
 const GROUPS: { category: VariableCategory; label: string }[] = [
   { category: "customer_input", label: "Customer inputs" },
+  { category: "fixed", label: "Fixed & auto-filled" },
   { category: "pricing", label: "Pricing" },
   { category: "paragraph", label: "Paragraphs" },
 ];
 
 const CATEGORY_OPTIONS = [
   { value: "customer_input", label: "Customer input" },
+  { value: "fixed", label: "Fixed & auto-filled" },
   { value: "pricing", label: "Pricing" },
   { value: "paragraph", label: "Paragraph" },
 ];
@@ -68,11 +70,11 @@ const CATEGORY_OPTIONS = [
 const SCAN_TRACE = [
   "Reading the quotation",
   "Finding what changes per client",
-  "Sorting into customer inputs, pricing and paragraphs",
+  "Sorting into inputs, fixed values, pricing and paragraphs",
   "Checking for repeating tables",
 ];
 const TRACE_STEP_MS = 1800;
-const GHOST_ROWS = [[88, 64, 112, 72], [96, 120, 80, 68, 104, 76], [140, 92, 116]];
+const GHOST_ROWS = [[88, 64, 112, 72], [104, 132], [96, 120, 80, 68, 104, 76], [140, 92, 116]];
 
 const tableKey = (t: CompoundTable) => `table:${t.table_id}`;
 
