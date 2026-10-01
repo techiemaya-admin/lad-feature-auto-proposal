@@ -89,7 +89,15 @@ export const TemplateCheckpointCard: React.FC<TemplateCheckpointCardProps> = ({
   }, [blob]);
 
   useEffect(() => {
-    if (isPreviewOpen) renderInto(modalRef.current);
+    // Shrink pages wider than the box (landscape, wide tables) so the preview never scrolls sideways
+    const el = modalRef.current;
+    if (isPreviewOpen)
+      renderInto(el, () => {
+        if (!el) return;
+        const pages = el.querySelectorAll<HTMLElement>("section.docx");
+        const widest = Math.max(...Array.from(pages, (p) => p.offsetWidth));
+        if (widest > el.clientWidth) pages.forEach((p) => (p.style.zoom = String(el.clientWidth / widest)));
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPreviewOpen, blob]);
 
@@ -275,7 +283,7 @@ export const TemplateCheckpointCard: React.FC<TemplateCheckpointCardProps> = ({
               ) : (
                 <div
                   ref={modalRef}
-                  className="bg-white text-zinc-900 rounded-lg shadow-md p-6 sm:p-10 max-w-2xl w-full min-h-125 overflow-x-auto text-xs"
+                  className="bg-white text-zinc-900 rounded-lg shadow-md w-[816px] max-w-full min-h-125 overflow-x-hidden text-xs"
                 />
               )}
             </div>
