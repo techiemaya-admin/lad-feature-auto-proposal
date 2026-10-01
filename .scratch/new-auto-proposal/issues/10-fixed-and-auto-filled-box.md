@@ -6,7 +6,7 @@ This is a **UX change, not a pipeline change.** Inside the system a `fixed` vari
 
 **Blocked by:** None (can start immediately)
 
-**Status:** in progress — code, checks, live flow and docs done (2026-10-01); waiting on `npm run test:live` (human) and the commit
+**Status:** completed (2026-10-01).
 
 **Decisions (2026-10-01, grill session, with the user):**
 - **Name:** "Fixed & auto-filled" on screen, stored key `fixed`. Screen order: Customer inputs → Fixed & auto-filled → Pricing → Paragraphs.
@@ -30,7 +30,7 @@ DB `CHECK` constraint + the existing table-rebuild migration in `db/database.ts`
 - [x] Screen: 4th box in that order, in the move menu and in the add-chip modal.
 - [x] `npm test` green, golden test included.
 - [x] After: regenerate co1/co2/co3 (done deterministically: stored state copied, AI + PDF stubbed, run as-is and with every date relabelled `fixed` — lead-form fields, Stage 4 compile prompt, payload, review flags and narrative prompt identical to the baseline). Numbers, dates and lead-form fields match the baseline; only the box a chip sits in may differ (AI prose may vary by wording, so it is compared by eye, not exactly).
-- [ ] Human runs `npm run test:live` (the Stage 2 prompt changed).
+- [x] Human runs `npm run test:live` (the Stage 2 prompt changed).
 - [x] Doc drift (show diff, wait for OK, after tests pass): "3 boxes" → 4 and dates under the new box in `docs/plan.md`, `docs/design.md`, `docs/plans/06-lead-simulator.md`, `spec.md`, and `AGENTS.md` §4 if needed. State explicitly that Fixed & auto-filled is its own box on screen but is processed exactly like Customer inputs, so nobody later "fixes" the two being grouped together.
 
 ## Comments
