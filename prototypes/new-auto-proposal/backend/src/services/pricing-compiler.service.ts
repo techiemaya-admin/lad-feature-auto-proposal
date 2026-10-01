@@ -241,7 +241,10 @@ export async function compilePricingRules(companyId: string, company: CompanyRow
 
   // Re-serialise through toWire so the model sees the typed reading of its own output (what fromWire kept).
   const second = await attempt({ wire: toWire(first.state.rules), errors: errorLines(first.state) });
-  logPipelineArtifact(companyId, "rules-repair.json", { ai: getAISettings(), errors: errorLines(second.state), ...second.wire });
   const [a, b] = [issuesOf(first.state), issuesOf(second.state)];
-  return b[0] < a[0] || (b[0] === a[0] && b[1] <= a[1]) ? second.state : first.state;
+  const keepSecond = b[0] < a[0] || (b[0] === a[0] && b[1] <= a[1]);
+  logPipelineArtifact(companyId, "rules-repair.json", {
+    ai: getAISettings(), kept: keepSecond ? "second" : "first", fixing: errorLines(first.state), errors: errorLines(second.state), ...second.wire,
+  });
+  return keepSecond ? second.state : first.state;
 }

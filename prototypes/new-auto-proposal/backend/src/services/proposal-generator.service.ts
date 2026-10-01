@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
+import { toMarkdown } from "@firecrawl/anydoc";
 import { getStorageDir } from "../db/database.js";
 import type { CompanyRow } from "../routes/companies.js";
 import { logPipelineArtifact } from "./pipeline-log.js";
@@ -174,6 +175,10 @@ export async function generateProposal(input: GenerateInput): Promise<GenerateRe
 
   const docx = await hydrateProposalTemplate(fs.readFileSync(path.join(getStorageDir(), companyId, "template.docx")), payload);
   fs.writeFileSync(proposalFilePath(companyId, "docx"), docx);
+  // Log anydoc markdown of the final docx (best-effort, never blocks generation)
+  toMarkdown(proposalFilePath(companyId, "docx"))
+    .then((md) => logPipelineArtifact(companyId, "proposal.md", md))
+    .catch((err) => console.warn("[pipeline-log] anydoc conversion failed:", err));
 
   let pdf: Buffer | null = null;
   let pdf_error: string | undefined;
