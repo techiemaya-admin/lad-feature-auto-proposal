@@ -21,6 +21,7 @@ const OPS = Object.entries(OP_SYMBOL).map(([value, label]) => ({ value, label })
 const FORMULA_OPS: { value: Formula["op"]; label: string }[] = [
   { value: "add", label: "add (+)" }, { value: "sub", label: "subtract (−)" }, { value: "mul", label: "multiply (×)" },
   { value: "div", label: "divide (÷)" }, { value: "min", label: "smaller of" }, { value: "max", label: "larger of" },
+  { value: "add_days", label: "date + days" }, { value: "add_months", label: "date + months" },
 ];
 const INPUT_TYPES = ["integer", "choice", "multi_choice", "boolean", "region"].map((v) => ({ value: v, label: v.replace("_", " ") }));
 
@@ -31,7 +32,7 @@ function defaultsFor(kind: RuleKind, base: RuleVariable, rules: PricingRules): R
   const col = rules.tables[0]?.columns[0]?.key ?? "";
   switch (kind) {
     case "input": return { ...head, kind, input_type: "integer", required: true };
-    case "constant": return { ...head, kind, value: base.unit === "text" ? "" : base.unit === "boolean" ? false : 0 };
+    case "constant": return { ...head, kind, value: base.unit === "text" || base.unit === "date" ? "" : base.unit === "boolean" ? false : 0 };
     case "lookup": return { ...head, kind, table, where: [], take: col };
     case "formula": return { ...head, kind, op: "add", args: [] };
     case "condition": return { ...head, kind, unit: "boolean", all: [] };
@@ -216,7 +217,11 @@ interface LedgerTrayProps {
 }
 
 export const LedgerTray: React.FC<LedgerTrayProps> = ({ rules, variable: v, sample, onChange, onDelete, onClose }) => {
-  const varOptions = rules.variables.filter((x) => x.name !== v.name && x.unit !== "text" && x.unit !== "rows").map((x) => ({ value: x.name, label: x.label || x.name }));
+  // `today` is reserved: the engine supplies it, so it is offered here without being a sheet variable.
+  const varOptions = [
+    { value: "today", label: "today" },
+    ...rules.variables.filter((x) => x.name !== v.name && x.unit !== "text" && x.unit !== "rows").map((x) => ({ value: x.name, label: x.label || x.name })),
+  ];
   const flagOptions = [{ value: "", label: "always" }, ...rules.variables.filter((x) => x.kind === "condition" && x.name !== v.name).map((x) => ({ value: x.name, label: `only when ${x.label || x.name}` }))];
   const tableCols = (id: string) => tableColsOf(rules, id);
 
@@ -250,6 +255,8 @@ export const LedgerTray: React.FC<LedgerTrayProps> = ({ rules, variable: v, samp
         <Field label="Value">
           {v.unit === "boolean" ? (
             <CustomDropdown size="xs" value={v.value ? "true" : "false"} options={[{ value: "true", label: "Yes" }, { value: "false", label: "No" }]} onChange={(s) => onChange({ ...v, value: s === "true" })} />
+          ) : v.unit === "date" ? (
+            <input type="date" className={`${box} max-w-40 font-mono`} value={typeof v.value === "string" ? v.value : ""} onChange={(e) => onChange({ ...v, value: e.target.value })} />
           ) : (
             <Commit mono={v.unit !== "text"} className="max-w-48" value={cellInputText(v.unit, v.value)} onCommit={(s) => onChange({ ...v, value: parseCellInput(v.unit, s) })} />
           )}

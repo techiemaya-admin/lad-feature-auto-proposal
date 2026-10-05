@@ -314,6 +314,17 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
   const handleSampleValue = (id: string, sample_value: string) =>
     patchDescriptor(id, (v) => ({ ...v.descriptor, sample_value }), "Text updated");
 
+  /** The check lives on the server (date-fns does it there), so re-read it after saving rather than guess. */
+  const handleDateFormat = async (id: string, date_format: string) => {
+    const current = variables.find((v) => v.id === id);
+    if (!current || (current.descriptor.date_format ?? "") === date_format) return;
+    const updated = variables.map((v) => (v.id === id ? { ...v, descriptor: { ...v.descriptor, date_format } } : v));
+    commit(updated);
+    await persist({ id, descriptor: updated.find((v) => v.id === id)?.descriptor }, "Date format saved");
+    const fresh = (await fetchVariables(companyId).catch(() => null))?.variables.find((v) => v.id === id);
+    if (fresh) setVariables((cur) => cur.map((v) => (v.id === id ? { ...v, date_format_ok: fresh.date_format_ok } : v)));
+  };
+
   const handleGuidance = (id: string, guidance: string) =>
     patchDescriptor(
       id,
@@ -536,6 +547,9 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
                               {needsAttention && !v.is_deleted && (
                                 <span className="size-1.5 rounded-full bg-amber-500" title="Didn't land in the last template" />
                               )}
+                              {v.date_format_ok === false && !v.is_deleted && !needsAttention && (
+                                <span className="size-1.5 rounded-full bg-amber-500" title="Date format doesn't match the quotation" />
+                              )}
                             </button>
                           );
                         })}
@@ -599,6 +613,7 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
                         onCategory={handleCategory}
                         onParagraphMode={handleParagraphMode}
                         onSampleValue={handleSampleValue}
+                        onDateFormat={handleDateFormat}
                         onGuidance={handleGuidance}
                         onToggleLeaveOut={handleToggleLeaveOut}
                       />
@@ -694,6 +709,7 @@ interface VariableTrayProps {
   onCategory: (id: string, c: VariableCategory) => void;
   onParagraphMode: (id: string, mode: "fixed" | "ai_generated") => void;
   onSampleValue: (id: string, text: string) => void;
+  onDateFormat: (id: string, format: string) => void;
   onGuidance: (id: string, text: string) => void;
   onToggleLeaveOut: (id: string, is_deleted: boolean) => void;
 }
@@ -705,6 +721,7 @@ const VariableTray: React.FC<VariableTrayProps> = ({
   onCategory,
   onParagraphMode,
   onSampleValue,
+  onDateFormat,
   onGuidance,
   onToggleLeaveOut,
 }) => {
@@ -764,6 +781,30 @@ const VariableTray: React.FC<VariableTrayProps> = ({
           {d.sample_value && (
             <Fact label="In the quotation">
               <span className="text-[13px] font-medium">&ldquo;{d.sample_value}&rdquo;</span>
+            </Fact>
+          )}
+          {v.data_type === "date" && (
+            <Fact label="Date format">
+              <input
+                key={`${v.id}-date-format`}
+                type="text"
+                defaultValue={d.date_format || ""}
+                onBlur={(e) => onDateFormat(v.id, e.target.value.trim())}
+                onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                placeholder="MMMM d, yyyy"
+                spellCheck={false}
+                aria-describedby={v.date_format_ok === false ? `${v.id}-date-format-warning` : undefined}
+                className="mt-0.5 w-full max-w-64 font-mono text-xs bg-background/60 border border-border/40 rounded-md px-2 py-1 focus:outline-hidden focus:border-border text-foreground"
+              />
+              {v.date_format_ok === false && (
+                <p id={`${v.id}-date-format-warning`} className="mt-1 flex items-start gap-1 text-[11px] text-amber-700 dark:text-amber-400">
+                  <AlertCircle className="size-3 mt-px shrink-0" />
+                  <span>
+                    This format doesn&rsquo;t write the quotation&rsquo;s date back exactly, so proposals print dates like &ldquo;September 7, 2026&rdquo;
+                    instead. Use date-fns letters, e.g. <code className="font-mono">d MMMM yyyy</code> or <code className="font-mono">dd/MM/yyyy</code>.
+                  </span>
+                </p>
+              )}
             </Fact>
           )}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3">

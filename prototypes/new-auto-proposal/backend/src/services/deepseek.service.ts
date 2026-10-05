@@ -19,7 +19,7 @@ Respond with ONLY a single JSON object — no markdown fences, no commentary —
       "variable_name": string, "natural_name": string,
       "category": "customer_input" | "fixed" | "pricing" | "paragraph",
       "data_type": "string" | "number" | "currency" | "enum" | "date" | "paragraph",
-      "sample_text": string, "description": string, "context_text": string, "condition_flag": string,
+      "sample_text": string, "description": string, "context_text": string, "condition_flag": string, "date_format": string,
       "enum_options": string[] (optional),
       "paragraph_config": { "mode": "fixed" | "ai_generated", "purpose": string, "tone": string, "length_guideline": string } (optional)
     }

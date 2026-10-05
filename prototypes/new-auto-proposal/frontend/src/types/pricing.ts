@@ -8,8 +8,9 @@
  * Mirror of backend/src/services/pricing-rules.types.ts (types only).
  */
 
-export type Unit = "money" | "percent" | "integer" | "text" | "boolean" | "rows";
-export type CellUnit = Exclude<Unit, "rows">;
+/** "date" = an ISO date ("2026-10-02"), printed in its Stage 2 date_format; never a table cell or a lead input. */
+export type Unit = "money" | "percent" | "integer" | "text" | "boolean" | "date" | "rows";
+export type CellUnit = Exclude<Unit, "rows" | "date">;
 export type CompareOp = "eq" | "neq" | "gte" | "lte" | "gt" | "lt" | "in";
 /** null in an integer column = unbounded (a cap of ∞). */
 export type Cell = string | number | boolean | null;
@@ -26,8 +27,8 @@ export interface Where { column: string; op: CompareOp; value_var?: string; valu
 /** Variable test: `var <op> (value_var | value | values)`. */
 export interface Cond { var: string; op: CompareOp; value_var?: string; value?: Cell; values?: Cell[] }
 
-export type FormulaOp = "add" | "sub" | "mul" | "div" | "min" | "max";
-/** One flat operation. add/mul/min/max are n-ary (≥1); sub/div take exactly 2. "col:<key>" allowed inside rows.map. */
+export type FormulaOp = "add" | "sub" | "mul" | "div" | "min" | "max" | "add_days" | "add_months";
+/** One flat operation. add/mul/min/max are n-ary (≥1); sub/div take exactly 2; add_days/add_months take (a date or `today`, a whole number). "col:<key>" allowed inside rows.map. */
 export interface Formula { op: FormulaOp; args: (string | number)[] }
 
 export type InputType = "integer" | "choice" | "multi_choice" | "boolean" | "region";
@@ -82,6 +83,7 @@ export interface Stage2Variable {
   condition_flag?: string;
   enum_options?: string[];
   paragraph_mode?: string;
+  date_format?: string;
 }
 export interface Stage2Context {
   variables: Stage2Variable[];

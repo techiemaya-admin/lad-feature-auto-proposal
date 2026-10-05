@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { getDatabase } from "../db/database.js";
 import { extractVariables } from "../services/ai-extraction.service.js";
 import { getAISettings } from "../services/ai-settings.service.js";
+import { checkFormat } from "../services/dates.js";
 import type { ExtractionResponse } from "../services/gemini.service.js";
 import { logPipelineArtifact } from "../services/pipeline-log.js";
 import type { CompanyRow } from "./companies.js";
@@ -31,6 +32,10 @@ function normalizeWhitespace(text: string): string {
   return text.replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim();
 }
 
+/** Worked out on read, so never stale: does a date's format print its own sample back? Variable Review warns when not. */
+const dateFormatOk = (dataType: string, d: Record<string, unknown>) =>
+  dataType === "date" ? { date_format_ok: checkFormat(String(d.sample_value ?? ""), d.date_format as string | undefined) } : {};
+
 function formatVariableRow(row: VariableRow) {
   let descriptor: Record<string, unknown> = {};
   try {
@@ -50,6 +55,7 @@ function formatVariableRow(row: VariableRow) {
     is_deleted: Boolean(row.is_deleted),
     sort_order: row.sort_order,
     descriptor,
+    ...dateFormatOk(row.data_type, descriptor),
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -160,6 +166,7 @@ router.post("/:id/variables/extract", async (req: Request, res: Response): Promi
         sample_value: v.sample_text,
         description: v.description,
         context_text: v.context_text || undefined,
+        date_format: v.data_type === "date" ? v.date_format || undefined : undefined,
         enum_options: v.enum_options,
         visibility_rule: v.condition_flag ? { condition_flag: v.condition_flag } : undefined,
         paragraph_config: v.paragraph_config,
@@ -177,6 +184,7 @@ router.post("/:id/variables/extract", async (req: Request, res: Response): Promi
         is_deleted: false,
         sort_order: sortIndex,
         descriptor: JSON.parse(descriptorJson),
+        ...dateFormatOk(v.data_type, descriptor),
         created_at: now,
         updated_at: now,
       });

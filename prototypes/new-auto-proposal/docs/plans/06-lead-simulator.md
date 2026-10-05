@@ -14,7 +14,7 @@ Most of the machinery already exists: `POST /rules/calculate` returns `{evaluati
 - ~~`evaluation.needs_review` non-empty → **no document**; a "Declined to auto-quote" panel lists the reasons.~~ Superseded 2026-09-23 (ticket 09): a human sends every proposal, so review flags rather than blocks — the document is still built, the reasons are shown to the human, and only the values a reason touches are left blank. No clarification email for this case.
 - Dev-only seeds (`pricing_spec`, `sample_lead_text`) move to a **separate file** `Mock Data/test_seeds.json`; `companies_dataset.json` keeps only what the main backend imports (`pricing_engine_spec` is removed from it). `sample_lead_text` is not stored — the company response attaches it from the file and the Stage 5 textarea starts with it (as `PromptDocCapsule` starts with `pricing_spec`). "Reset to mock default" stays and re-seeds from both files.
 - No `proposals` table, no persistence of runs. Files overwrite `storage/<id>/proposal.docx` / `proposal.pdf`; a refresh loses the on-screen result, the files stay downloadable.
-- Dates are code, not model: Stage 2 gains `data_type: "date"`; Stage 5 fills every date customer input deterministically (earliest sample date → today, the others keep their offset, sample format and suffix kept). Fallback for old extractions: a `string` whose sample parses as a month-name date (`ponytail:`). Seller-owned values (validity days, payment terms) are compiled as constants, never asked (seen live on co1 and co2).
+- Dates are code, not model: Stage 2 gains `data_type: "date"`, and dates are Stage 4 sheet values built from `today` — see [07-date-type.md](07-date-type.md). Seller-owned values (validity days, payment terms) are compiled as constants, never asked (seen live on co1 and co2).
 - Drafter writes `{tag}` placeholders, never numbers; one model call for all `ai_generated` paragraphs, every paragraph a required field.
 - Extractor `assumptions[]` (range picked, number words, inferred devices) shown as an amber strip under the facts form.
 - PDF via LibreOffice headless (`soffice --headless --convert-to pdf` spawned directly with a persistent profile; `libreoffice-convert` was tried and dropped — a fresh profile per run costs 20–30 s and its harmless stderr "parser error" is mistaken for failure; same binary in a Docker image in production). PDF failure never fails the run: `pdf: null` + reason, docx still returned.
@@ -46,7 +46,7 @@ Always this shape: a non-empty `evaluation.needs_review` marks it a draft (ticke
 Steps inside `proposal-generator.service.ts`:
 1. `evaluate(rules, inputs)`; `needs_review` travels with the result.
 2. `buildProposalPayload(rules, evaluation, stage2, tier_matrix)` — the pricing half.
-3. Customer inputs: `payload[name] = inputs[name]` for the extracted text fields; dates via `fillDates(stage2Variables, today)` (§1.4).
+3. Customer inputs: `payload[name] = inputs[name]` for the extracted text fields; dates come out of the sheet, evaluated with `today` (§1.4).
 4. Narrative: one `generateJson` call (§1.5); substitute `{tag}` → `payload[tag]` for known keys; unknown tags are stripped and reported in `tags_placed` diagnostics; `payload[paragraph_name] = text`.
 5. `easy-template-x` `TemplateHandler.process(template.docx, payload)` → `storage/<id>/proposal.docx`.
 6. headless `soffice` → `storage/<id>/proposal.pdf`; on error `pdf: null`, `pdf_error`.
@@ -54,8 +54,8 @@ Steps inside `proposal-generator.service.ts`:
 
 `GET /api/companies/:id/proposal/download?format=docx|pdf[&download=1]` — the PDF is served `inline` (so the Stage 5 `<iframe>` renders it instead of downloading); `download=1`, and any `.docx`, get `Content-Disposition: attachment; filename="Proposal - <client_name>.<ext>"`. 404 with a message when the file is absent.
 
-### 1.4 Dates (`fillDates`)
-Date customer inputs (`customer_input` or `fixed`) = `data_type === "date"` **or** (fallback, `ponytail:`) a `string` whose `sample_value` starts with a parseable month-name date. Earliest sample = anchor → `today`; every other date = today + (sample − anchor). Output keeps the sample's format (`September 7, 2026`) and any trailing suffix (` (14 days)`), suffix left verbatim. Pure function, unit-tested.
+### 1.4 Dates
+Replaced by [07-date-type.md](07-date-type.md): dates are sheet values built from `today`.
 
 ### 1.5 Narrative drafter
 Prompt sections: company profile (name, value proposition, industry); voice (`style_notes`, optional `reference_proposal_text` as a few-shot); the lead message; the lead facts (natural names + values); AVAILABLE TAGS — every payload key with its formatted value, and the instruction "write `{tag}` wherever a number, price, tier name, count or date belongs; never type the value"; one block per `ai_generated` paragraph with its `sample_value` (structure reference), `purpose`, `tone`, `length_guideline`, `guidance`, and which tags were `covered` by it (must appear). Response schema `{ [paragraph_name]: string }`, all required. Fixed-mode paragraphs are not drafted (they are static text in the template).

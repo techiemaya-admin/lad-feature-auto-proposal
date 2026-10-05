@@ -70,7 +70,10 @@
     { "name": "tax_amount", "label": "Sales tax", "in_document": true, "unit": "money", "condition_flag": "has_tax", "kind": "formula", "op": "mul", "args": ["monthly_recurring_subtotal", "tax_rate"] },
     { "name": "total_monthly_recurring", "label": "Total monthly recurring", "in_document": true, "unit": "money", "condition_flag": "", "kind": "formula", "op": "add", "args": ["monthly_recurring_subtotal", "tax_amount"] },
     { "name": "onboarding_rate_per_seat", "label": "Onboarding rate per seat", "in_document": true, "unit": "money", "condition_flag": "", "kind": "constant", "value": 75 },
-    { "name": "setup_fee_total", "label": "One-time setup fee", "in_document": true, "unit": "money", "condition_flag": "", "kind": "formula", "op": "mul", "args": ["billed_seat_count", "onboarding_rate_per_seat"] }
+    { "name": "setup_fee_total", "label": "One-time setup fee", "in_document": true, "unit": "money", "condition_flag": "", "kind": "formula", "op": "mul", "args": ["billed_seat_count", "onboarding_rate_per_seat"] },
+    { "name": "proposal_date", "label": "Proposal date", "in_document": true, "unit": "date", "condition_flag": "", "kind": "formula", "op": "add_days", "args": ["today", 0] },
+    { "name": "validity_days", "label": "Days the proposal is valid", "in_document": true, "unit": "integer", "condition_flag": "", "kind": "constant", "value": 14 },
+    { "name": "proposal_valid_until", "label": "Valid until", "in_document": true, "unit": "date", "condition_flag": "", "kind": "formula", "op": "add_days", "args": ["proposal_date", "validity_days"] }
   ],
   "review_rules": [],
   "assumptions": [

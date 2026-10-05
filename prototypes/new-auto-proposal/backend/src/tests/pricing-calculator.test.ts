@@ -7,8 +7,10 @@ import os from "node:os";
 import { Document } from "docxmlater";
 import { toMarkdown } from "@firecrawl/anydoc";
 import { applyTemplate } from "../services/template-mutator.service.js";
-import { BLANK, buildProposalPayload, evaluate, formatLike, parseSampleNumber, sampleCheck, validate } from "../services/pricing-calculator.js";
+import { BLANK, buildProposalPayload, evaluate, formatLike, parseSampleNumber, sampleCheck, sampleToday, validate } from "../services/pricing-calculator.js";
 import { fromWire, toWire, type PricingRules, type Stage2Context, type Value } from "../services/pricing-rules.types.js";
+import { checkFormat, dateFormatOf, writeDate } from "../services/dates.js";
+import { dateLines } from "../services/pricing-compiler.service.js";
 
 /**
  * The pure calculator against hand-written ideal rules (fixtures/*.rules.json), whose
@@ -27,15 +29,18 @@ const stage2Of = (id: Id): Stage2Context => {
   const fx = JSON.parse(fs.readFileSync(path.join(fixturesDir, `${id}.variables.json`), "utf8"));
   return {
     variables: fx.variables.map((v: any) => ({
-      variable_name: v.variable_name, category: v.category, sample_value: v.sample_text,
+      variable_name: v.variable_name, category: v.category, data_type: v.data_type, date_format: v.date_format, sample_value: v.sample_text,
       condition_flag: v.condition_flag, enum_options: v.enum_options, paragraph_mode: v.mode,
     })),
     loop_tables: fx.loop_tables.map((t: any) => ({ loop_tag: t.loop_tag, columns: t.column_tags, row_labels: t.row_labels })),
   };
 };
+/** The sample lead, dated where the sheet says the sample proposal is (what buildRulesState runs). */
+const onSample = (rules: PricingRules, id: Id) => evaluate(rules, { ...rules.sample_inputs, today: sampleToday(rules, stage2Of(id)) ?? null });
+const TODAY = "2026-10-05";
 const run = (id: Id, inputs?: Record<string, Value>) => {
   const rules = rulesOf(id);
-  return evaluate(rules, inputs ?? rules.sample_inputs);
+  return inputs ? evaluate(rules, { today: TODAY, ...inputs }) : onSample(rules, id);
 };
 
 test("co1 benchmark: 2 locations, TX, annual prepay → $35,073.00", () => {
@@ -160,7 +165,7 @@ test("split rows absorb the rounding remainder on the last row so they always su
   splits.rows = [1, 2, 3].map((n) => ({ milestone_name: `Third ${n}`, trigger_description: "", share: 1 / 3 }));
   rules.variables = rules.variables.map((v) =>
     v.name === "total_project_investment" ? { ...v, kind: "constant", value: 100 } as any : v);
-  const { values } = evaluate(rules, rules.sample_inputs);
+  const { values } = onSample(rules, "co3_dev");
   assert.deepEqual((values.payment_milestones as any[]).map((r) => r.payment_amount), [33.33, 33.33, 33.34]);
 });
 
@@ -229,7 +234,7 @@ test("a lookup miss: review by default, the seller's fallback when set", () => {
   const rules = rulesOf("co1_seo");
   const rate = rules.variables.find((v) => v.name === "tax_rate") as any;
   rate.condition_flag = ""; // unguarded, so a miss actually reaches the lookup
-  const ca = { location_count: 2, client_state: "CA", annual_prepay: true };
+  const ca = { location_count: 2, client_state: "CA", annual_prepay: true, today: TODAY };
 
   const stopped = evaluate(rules, ca);
   assert.equal(stopped.present.tax_rate, false);
@@ -254,7 +259,7 @@ test("a region the seller's table does not list still matches no row — and a m
   assert.equal(evaluate(rules, { location_count: 2, client_state: "tx" }).values.client_state, "TX");
   // "Texas" where the table says "TX" no longer errors in validate; the sample check reports it
   rules.sample_inputs.client_state = "Texas";
-  const bad = sampleCheck(rules, evaluate(rules, rules.sample_inputs), stage2Of("co1_seo"));
+  const bad = sampleCheck(rules, onSample(rules, "co1_seo"), stage2Of("co1_seo"));
   assert.equal(bad.find((c) => c.name === "tax_amount")?.ok, false);
 });
 
@@ -285,7 +290,7 @@ for (const id of ids) {
   test(`${id}: every document variable reproduces its sample value`, () => {
     const rules = rulesOf(id);
     const stage2 = stage2Of(id);
-    const check = sampleCheck(rules, evaluate(rules, rules.sample_inputs), stage2);
+    const check = sampleCheck(rules, onSample(rules, id), stage2);
     assert.deepEqual(check.filter((c) => !c.ok), []);
     const docVars = stage2.variables.filter((v) => v.category === "pricing").map((v) => v.variable_name);
     for (const name of docVars) assert.ok(check.some((c) => c.name === name), `${name} has a ledger entry`);
@@ -296,7 +301,7 @@ for (const id of ids) {
 test("sampleCheck reports a mismatch with both values formatted like the quotation", () => {
   const rules = rulesOf("co1_seo");
   (rules.variables.find((v) => v.name === "annual_discount_percentage") as any).value = 0.15;
-  const check = sampleCheck(rules, evaluate(rules, rules.sample_inputs), stage2Of("co1_seo"));
+  const check = sampleCheck(rules, onSample(rules, "co1_seo"), stage2Of("co1_seo"));
   const bad = check.filter((c) => !c.ok).map((c) => `${c.name}: ${c.computed} ≠ ${c.expected}`);
   assert.deepEqual(bad, [
     "annual_discount_percentage: 15% ≠ 10%",
@@ -328,7 +333,7 @@ for (const id of ids) {
 
     const rules = rulesOf(id);
     const stage2 = stage2Of(id);
-    const evaluation = evaluate(rules, rules.sample_inputs);
+    const evaluation = onSample(rules, id);
     const payload = buildProposalPayload(rules, evaluation, stage2, tier_matrix);
 
     const loopTags = new Set(stage2.loop_tables.map((t) => t.loop_tag));
@@ -380,4 +385,89 @@ test("fromWire types cells by column unit and is lenient to model spellings", ()
   assert.equal(r.tables[1].rows[0].rate, 0.0825);
   assert.equal((r.variables.find((v) => v.name === "annual_discount_percentage") as any).value, 0.1);
   assert.deepEqual((r.variables.find((v) => v.name === "base_investment_amount") as any).args, ["selected_tier_rate", "contract_months"]);
+});
+
+// --- Dates (docs/plans/07-date-type.md) ---------------------------------------------------------------
+
+const dateVar = (name: string, op: "add_days" | "add_months", args: (string | number)[]): PricingRules["variables"][number] =>
+  ({ name, label: name, in_document: true, unit: "date", condition_flag: "", kind: "formula", op, args });
+
+test("date maths: add_days / add_months from today, month ends clamp, a fractional day count breaks the date instead of throwing", () => {
+  const rules = rulesOf("co1_seo");
+  rules.variables.push(dateVar("next_month", "add_months", ["proposal_date", 1]), dateVar("odd", "add_days", ["proposal_date", 14.5]));
+  const at = (today: string) => evaluate(rules, { ...rules.sample_inputs, today });
+  const { values, broken, needs_review } = at("2026-12-25");
+  assert.equal(values.proposal_date, "2026-12-25");
+  assert.equal(values.proposal_valid_until, "2027-01-08"); // validity_days = 14, across the year end
+  assert.equal(at("2027-01-31").values.next_month, "2027-02-28"); // Jan 31 + 1 month
+  assert.equal(broken.odd, true);
+  assert.deepEqual(needs_review.map((r) => r.source), ["odd"]); // the money is untouched
+  const payload = buildProposalPayload(rules, at("2026-12-25"), stage2Of("co1_seo"));
+  assert.equal(payload.proposal_valid_until, "January 8, 2027");
+  assert.equal(payload.odd, BLANK);
+  // no today at all: every date is broken (printed [to confirm]), the money still prints
+  const noToday = evaluate(rulesOf("co1_seo"), rulesOf("co1_seo").sample_inputs);
+  assert.equal(noToday.broken.proposal_valid_until, true);
+  assert.equal(noToday.values.total_investment_amount, 35073);
+});
+
+test("date formats: each style prints its own sample back; a wrong format falls back to the default", () => {
+  const ok: [string, string][] = [
+    ["September 7, 2026", "MMMM d, yyyy"], ["07/09/2026", "dd/MM/yyyy"], ["September 7th, 2026", "MMMM do, yyyy"],
+    ["Monday, September 7, 2026", "EEEE, MMMM d, yyyy"], ["07/09/26", "dd/MM/yy"], ["7 September 2026", "d MMMM yyyy"],
+    ["December 2026", "MMMM yyyy"], ["12/2026", "MM/yyyy"], ["Q4 2026", "QQQ yyyy"],
+  ];
+  for (const [sample, fmt] of ok) assert.equal(checkFormat(sample, fmt), true, `${fmt} reads and prints ${sample}`);
+  // the wrong formats seen in review: D / YYYY (date-fns throws), zero-padded day, a duration left in, a wrong weekday
+  for (const [sample, fmt] of [["September 7, 2026", "MMMM D, YYYY"], ["September 7, 2026", "MMMM dd, yyyy"], ["September 21, 2026 (14 days)", "MMMM d, yyyy"], ["Tuesday, September 7, 2026", "EEEE, MMMM d, yyyy"]])
+    assert.equal(checkFormat(sample, fmt), false, `${fmt} is rejected for ${sample}`);
+  assert.equal(dateFormatOf({ sample_value: "September 7, 2026", date_format: "MMMM D, YYYY" }), "MMMM d, yyyy");
+  assert.equal(dateFormatOf({ sample_value: "07/09/2026", date_format: "dd/MM/yyyy" }), "dd/MM/yyyy");
+  assert.equal(writeDate("2026-09-21", "EEEE, MMMM do"), "Monday, September 21st"); // the weekday is the new date's
+});
+
+test("validate: dates only go into add_days / add_months, every document date is defined, today is reserved", () => {
+  const errs = (mutate: (r: PricingRules) => void) => {
+    const r = rulesOf("co1_seo");
+    mutate(r);
+    return validate(r, stage2Of("co1_seo")).map((e) => e.message).join("\n");
+  };
+  // num("2026-10-02") is 0, so this would print "5" with no error
+  assert.match(errs((r) => { r.variables.push({ name: "later", label: "Later", in_document: false, unit: "integer", condition_flag: "", kind: "formula", op: "add", args: ["proposal_date", 5] }); }), /later: "proposal_date" is a date/);
+  assert.match(errs((r) => { r.review_rules.push({ when: [{ var: "today", op: "gt", value: 0 }], reason: "x" }); }), /"today" is a date/);
+  assert.match(errs((r) => { r.variables = r.variables.filter((v) => v.name !== "proposal_valid_until"); }), /proposal_valid_until: this document date must be defined with unit "date"/);
+  assert.match(errs((r) => { r.variables.push({ name: "today", label: "Today", in_document: false, unit: "date", condition_flag: "", kind: "constant", value: "2026-01-01" }); }), /"today" is reserved/);
+  assert.match(errs((r) => { (r.variables.find((v) => v.name === "proposal_valid_until") as any).args = ["proposal_date", "subtotal_amount"]; }), /"subtotal_amount" must be a whole number/);
+  assert.match(errs((r) => { r.variables.push({ name: "start", label: "Start", in_document: false, unit: "date", condition_flag: "", kind: "input", input_type: "integer", required: true }); }), /start: a date is built with add_days/);
+  assert.equal(errs((r) => { r.variables.push({ name: "kickoff", label: "Kickoff", in_document: false, unit: "date", condition_flag: "", kind: "constant", value: "2026-11-02" }); }), ""); // a date picked in the ledger
+});
+
+test("sample check: dated at the add_days(today, 0) sample, checked at the precision each date prints", () => {
+  const rules = rulesOf("co1_seo");
+  const stage2 = stage2Of("co1_seo");
+  assert.equal(sampleToday(rules, stage2), "2026-09-07");
+  rules.variables.push(dateVar("project_start", "add_months", ["proposal_date", 3]));
+  stage2.variables.push({ variable_name: "project_start", category: "fixed", data_type: "date", date_format: "MMMM yyyy", sample_value: "December 2026" });
+  stage2.variables.push({ variable_name: "go_live", category: "fixed", data_type: "date", sample_value: "TBC" });
+  rules.variables.push({ name: "go_live", label: "Go live", in_document: true, unit: "date", condition_flag: "", kind: "constant", value: "2027-03-01" });
+  const check = (r: PricingRules) => sampleCheck(r, evaluate(r, { ...r.sample_inputs, today: sampleToday(r, stage2) ?? null }), stage2).filter((c) => /date|valid|start|live/.test(c.name));
+  assert.deepEqual(check(rules).map((c) => `${c.name}: ${c.computed} ${c.ok ? "✓" : "✗"}`), [
+    "proposal_date: September 7, 2026 ✓", "validity_days: 14 ✓", "proposal_valid_until: September 21, 2026 ✓", "project_start: December 2026 ✓",
+  ]); // an unreadable "TBC" sample is skipped, never a red row
+  // Seen on co3 before this ticket: validity set to 30 still printed a date 14 days away. Now the check catches it.
+  (rules.variables.find((v) => v.name === "validity_days") as any).value = 30;
+  assert.deepEqual(check(rules).filter((c) => !c.ok).map((c) => `${c.name}: ${c.computed} ≠ ${c.expected}`), ["validity_days: 30 ≠ 14", "proposal_valid_until: October 7, 2026 ≠ September 21, 2026"]);
+});
+
+test("compile prompt: each date's gap from the earliest date is worked out by code", () => {
+  const stage2 = stage2Of("co1_seo");
+  stage2.variables.push(
+    { variable_name: "delivery_date", category: "fixed", data_type: "date", date_format: "MMMM d, yyyy", sample_value: "October 7, 2026" },
+    { variable_name: "project_start", category: "fixed", data_type: "date", date_format: "MMMM yyyy", sample_value: "December 2026" },
+  );
+  const lines = dateLines(stage2).join("\n");
+  assert.match(lines, /proposal_date .*\(the earliest date\)/);
+  assert.match(lines, /proposal_valid_until .*\(14 days after proposal_date\)/);
+  assert.match(lines, /delivery_date .*\(30 days \/ 1 month after proposal_date\)/);
+  assert.match(lines, /project_start .*\(3 months after proposal_date\)/);
 });

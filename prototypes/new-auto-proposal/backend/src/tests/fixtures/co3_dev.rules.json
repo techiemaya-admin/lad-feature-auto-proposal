@@ -96,7 +96,10 @@
     { "name": "tax_rate", "label": "Tax rate", "in_document": false, "unit": "percent", "condition_flag": "", "kind": "constant", "value": 0 },
     { "name": "tax_amount", "label": "Tax", "in_document": false, "unit": "money", "condition_flag": "", "kind": "formula", "op": "mul", "args": ["addon_total_after_discount", "tax_rate"] },
     { "name": "total_project_investment", "label": "Total project investment", "in_document": true, "unit": "money", "condition_flag": "", "kind": "formula", "op": "add", "args": ["base_template_fee", "addon_total_after_discount", "tax_amount"] },
-    { "name": "payment_milestones", "label": "Payment schedule", "in_document": true, "unit": "rows", "condition_flag": "", "kind": "rows", "table": "payment_splits", "rows": "all", "key_column": "milestone_name", "map": { "milestone_name": "milestone_name", "trigger_description": "trigger_description", "payment_amount": { "op": "mul", "args": ["col:share", "total_project_investment"] } } }
+    { "name": "payment_milestones", "label": "Payment schedule", "in_document": true, "unit": "rows", "condition_flag": "", "kind": "rows", "table": "payment_splits", "rows": "all", "key_column": "milestone_name", "map": { "milestone_name": "milestone_name", "trigger_description": "trigger_description", "payment_amount": { "op": "mul", "args": ["col:share", "total_project_investment"] } } },
+    { "name": "proposal_date", "label": "Proposal date", "in_document": true, "unit": "date", "condition_flag": "", "kind": "formula", "op": "add_days", "args": ["today", 0] },
+    { "name": "validity_days", "label": "Days the proposal is valid", "in_document": true, "unit": "integer", "condition_flag": "", "kind": "constant", "value": 14 },
+    { "name": "proposal_valid_until", "label": "Valid until", "in_document": true, "unit": "date", "condition_flag": "", "kind": "formula", "op": "add_days", "args": ["proposal_date", "validity_days"] }
   ],
   "review_rules": [
     { "when": [{ "var": "product_count", "op": "gt", "value_var": "template_product_cap" }], "reason": "Product count exceeds the template's product cap — needs a scoping call" },

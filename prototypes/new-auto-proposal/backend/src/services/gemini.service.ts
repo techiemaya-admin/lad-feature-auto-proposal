@@ -33,6 +33,8 @@ export interface ExtractedVariable {
   context_text: string;
   /** "has_tax", "has_annual_discount"… wraps the containing table row in {#flag}…{/flag}. "" = always shown. */
   condition_flag: string;
+  /** A date's date-fns format ("MMMM d, yyyy"), the one field the model derives rather than copies; "" for non-dates. */
+  date_format: string;
   enum_options?: string[];
   paragraph_config?: ParagraphConfig;
 }
@@ -81,6 +83,7 @@ export const extractionResponseSchema: ResponseSchema = {
           description: { type: SchemaType.STRING },
           context_text: { type: SchemaType.STRING },
           condition_flag: { type: SchemaType.STRING },
+          date_format: { type: SchemaType.STRING },
           enum_options: { type: SchemaType.ARRAY, items: { type: SchemaType.STRING } },
           paragraph_config: {
             type: SchemaType.OBJECT,
@@ -102,6 +105,7 @@ export const extractionResponseSchema: ResponseSchema = {
           "description",
           "context_text",
           "condition_flag",
+          "date_format",
         ],
       },
     },
@@ -163,6 +167,8 @@ Name: "${params.companyName}"  Location: "${b?.location || ""}"  Email: "${b?.em
    - "customer_input": facts only the client can tell us — client company name, headcount, number of sites, rooms, units or hours, etc.
    - "fixed": values the client is never asked — the agency sets them or the engine computes them: proposal and validity dates, validity days, payment terms, a contract length the agency fixes.
      * Proposal dates and validity dates ("March 3, 2027", "Valid until April 2, 2027") get data_type "date"; the engine computes them.
+     * A date's sample_text is the date alone. A duration beside it ("September 21, 2026 (14 days)") is its own "number" variable ("14", context_text = the date's line), so the date and its day count can change together.
+     * date_format: for a date, its date-fns format, e.g. "MMMM d, yyyy" (September 7, 2026), "MMMM do, yyyy" (September 7th, 2026), "d MMMM yyyy", "dd/MM/yyyy", "EEEE, MMMM d, yyyy", "MMMM yyyy" (a month only). When day and month order is unclear (07/09/2026), use day-first ("dd/MM/yyyy"). "" for anything that is not a date.
    - "pricing": every money amount, rate, percentage, and the selected tier/package name.
      * The chosen tier gets variable_name "selected_tier", data_type "enum", enum_options = all tiers offered. Its sample_text is just the tier name (e.g. "Premium"). Do not create tier-specific names like "premium_monthly_rate" — use role names like "selected_tier_rate".
    - "paragraph": prose written for THIS client — the intro describing their situation, why the recommended tier fits, their payment preference, the upgrade path, a menu of optional extras marked selected/unselected, a "what's included" bullet list, tax or minimum-commitment notes that depend on their numbers. If a salesperson would rewrite it for the next lead, it is a paragraph variable. Set data_type "paragraph" and paragraph_config { mode: "ai_generated", purpose, tone, length_guideline }.

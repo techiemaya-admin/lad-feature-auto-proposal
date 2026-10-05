@@ -1,3 +1,5 @@
+import { addDays, addMonths, format, isValid, parseISO } from "date-fns";
+import { DEFAULT_DATE_FORMAT, dateFormatOf, hasDay, isDateVariable, sampleDate, writeDate } from "./dates.js";
 import {
   buildTierMatrixPayload,
   type TierMatrix,
@@ -13,6 +15,7 @@ import type {
   RuleVariable,
   SampleCheckEntry,
   Stage2Context,
+  Stage2Variable,
   Unit,
   ValidationError,
   Value,
@@ -31,6 +34,8 @@ import type {
  * matching review rule → needs_review, never a silent 0. The first three also mark the value `broken`,
  * and so is everything computed from it (even through a condition): present=false, printed as BLANK.
  * A skipped value is not broken — a hidden add-on still leaves its total printed.
+ * Dates are ISO strings built from the reserved input `today` with add_days / add_months; a day count
+ * that is not a whole number breaks the date, never throws.
  */
 
 const norm = (s: string) =>
@@ -48,6 +53,7 @@ const ZERO: Record<Unit, Value> = {
   integer: 0,
   text: "",
   boolean: false,
+  date: null,
   rows: [],
 };
 
@@ -220,7 +226,8 @@ export function evaluate(
   rules: PricingRules,
   inputs: Record<string, Value>,
 ): Evaluation {
-  const values: Record<string, Value> = {};
+  // `today` is reserved: supplied by the caller like any input, never defined by the sheet.
+  const values: Record<string, Value> = { today: inputs.today ?? null };
   const present: Record<string, boolean> = {};
   const broken: Record<string, boolean> = {};
   const needs_review: Evaluation["needs_review"] = [];
@@ -257,7 +264,20 @@ export function evaluate(
     return rows;
   };
 
-  const formula = (f: Formula, name: string, row?: Row): number | undefined => {
+  const formula = (f: Formula, name: string, row?: Row): number | string | undefined => {
+    if (f.op === "add_days" || f.op === "add_months") {
+      const [date, n] = f.args.map((a) => (typeof a === "number" ? a : values[a]));
+      if (typeof date !== "string") {
+        if (!broken[name]) review(`${name}: no date to count from (${f.args[0]} is not set)`, name);
+        return undefined;
+      }
+      if (typeof n !== "number" || !Number.isInteger(n)) {
+        review(`${name}: ${f.args[1]} is not a whole number of ${f.op === "add_days" ? "days" : "months"}`, name);
+        return undefined;
+      }
+      // addMonths clamps month ends: Jan 31 + 1 month = Feb 28.
+      return format((f.op === "add_days" ? addDays : addMonths)(parseISO(date), n), "yyyy-MM-dd");
+    }
     const args = f.args.map((a) =>
       typeof a === "number"
         ? a
@@ -346,7 +366,7 @@ export function evaluate(
             if (typeof m === "string") out[tag] = r[m] ?? null;
             else {
               const x = formula(m, name, r);
-              out[tag] = x === undefined ? null : cents(x);
+              out[tag] = x === undefined ? null : cents(num(x));
             }
           }
           return out;
@@ -444,6 +464,28 @@ export function parseSampleNumber(sample: string): number | null {
   return m[4].trimStart().startsWith("%") ? n / 100 : n;
 }
 
+/** A date value in its document's own style (the Stage 2 format once it passes the check). */
+const printDate = (value: Value | undefined, s?: Stage2Variable): string =>
+  typeof value === "string" && value ? writeDate(value, s ? dateFormatOf(s) : DEFAULT_DATE_FORMAT) : "";
+
+/**
+ * The sample's `today`: the sample date of the variable defined as add_days(today, 0), so the sample
+ * check is anchored where the sheet says the proposal is dated.
+ */
+export function sampleToday(rules: PricingRules, stage2: Stage2Context): string | undefined {
+  const s2 = new Map(stage2.variables.map((v) => [v.variable_name, v]));
+  const anchor = rules.variables.find((v) => v.kind === "formula" && v.op === "add_days" && v.args[0] === "today" && v.args[1] === 0);
+  const own = anchor && s2.get(anchor.name) ? sampleDate(s2.get(anchor.name)!) : null;
+  if (own) return own;
+  // ponytail: no such date → the earliest readable day-precision sample. A template whose earliest date is
+  // before the proposal date ("RFP received Aug 30") needs the proposal date defined as add_days(today, 0).
+  return stage2.variables
+    .filter((v) => isDateVariable(v) && hasDay(dateFormatOf(v)))
+    .map(sampleDate)
+    .filter((d): d is string => d !== null)
+    .sort()[0];
+}
+
 /** Default notation for cells that have no sample to imitate (loop rows). */
 const formatUnit = (unit: string, value: Cell): string => {
   if (value === null || value === undefined) return "";
@@ -471,12 +513,17 @@ export function sampleCheck(
     const v = byName.get(name)!;
     const s = s2.get(name);
     if (!v.in_document || !s || v.unit === "rows") continue;
+    // An unreadable date sample ("TBC") has nothing to check against; Variable Review already warns on it.
+    if (v.unit === "date" && sampleDate(s) === null) continue;
     const value = values[name];
     const expected = s.sample_value;
-    const computed = formatLike(expected, value);
+    // A date is compared as it prints, so it is checked at the precision its document shows (a day, or a month).
+    const computed = v.unit === "date" ? printDate(value, s) : formatLike(expected, value);
     let ok: boolean;
     const target = parseSampleNumber(expected);
-    if (
+    if (v.unit === "date") {
+      ok = computed === expected.trim();
+    } else if (
       (v.unit === "money" || v.unit === "percent" || v.unit === "integer") &&
       target !== null &&
       typeof value === "number"
@@ -575,7 +622,9 @@ export function buildProposalPayload(
         ? BLANK
         : !present[v.name]
         ? ""
-        : sample !== undefined
+        : v.unit === "date"
+          ? printDate(value, s2.get(v.name))
+          : sample !== undefined
           ? formatLike(sample, value)
           : formatUnit(v.unit, value as Cell);
     }
@@ -598,12 +647,15 @@ const UNITS = new Set([
   "integer",
   "text",
   "boolean",
+  "date",
   "rows",
 ]);
 const NUMERIC_UNITS = new Set(["money", "percent", "integer"]);
 const OPS = new Set(["eq", "neq", "gte", "lte", "gt", "lt", "in"]);
 const INPUT_TYPES = new Set(["integer", "choice", "multi_choice", "boolean", "region"]);
-const FORMULA_OPS = new Set(["add", "sub", "mul", "div", "min", "max"]);
+const DATE_OPS = new Set(["add_days", "add_months"]);
+const FORMULA_OPS = new Set(["add", "sub", "mul", "div", "min", "max", ...DATE_OPS]);
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * Structural + domain checks. Every message names the variable and what is wrong, so the
@@ -637,7 +689,9 @@ export function validate(
           `duplicate column key "${c.key}" in table "${t.id}"`,
         );
       keys.add(c.key);
-      if (!UNITS.has(c.unit) || (c.unit as string) === "rows")
+      if ((c.unit as string) === "date")
+        err(`${p}.columns[${j}].unit`, `column "${c.key}" in table "${t.id}": a table cell cannot be a date — build dates with add_days / add_months`);
+      else if (!UNITS.has(c.unit) || (c.unit as string) === "rows")
         err(
           `${p}.columns[${j}].unit`,
           `column "${c.key}" in table "${t.id}" has unknown unit "${c.unit}"`,
@@ -654,6 +708,8 @@ export function validate(
       );
     if (vars.has(v.name))
       err(`${p}.name`, `duplicate variable name "${v.name}"`);
+    if (v.name === "today")
+      err(`${p}.name`, `"today" is reserved — the engine supplies it; build the proposal date as add_days(today, 0)`);
     vars.set(v.name, v);
     if (!UNITS.has(v.unit))
       err(`${p}.unit`, `${v.name}: unknown unit "${v.unit}"`);
@@ -677,6 +733,11 @@ export function validate(
     if (!tables.get(id)) err(p, `${v.name}: table "${id}" does not exist`);
     return tables.get(id);
   };
+  /** A date (or `today`) — usable only inside add_days / add_months. */
+  const isDate = (name: string) => name === "today" || vars.get(name)?.unit === "date";
+  // num("2026-10-02") is 0, so a date in number maths or a comparison would print a plausible figure with no error.
+  const notInMaths = (p: string, v: RuleVariable, name: string) =>
+    err(p, `${v.name}: "${name}" is a date — a date only goes into add_days / add_months, never into number maths or a comparison`);
   const ref = (p: string, v: RuleVariable, name: string) => {
     if (!vars.has(name))
       err(p, `${v.name}: refers to "${name}", which is not a defined variable`);
@@ -691,11 +752,15 @@ export function validate(
       const cp = `${p}[${j}]`;
       if (!OPS.has(c.op))
         err(`${cp}.op`, `${v.name}: unknown operator "${c.op}"`);
-      if ("var" in c && c.var !== undefined) ref(`${cp}.var`, v, c.var);
+      if ("var" in c && c.var !== undefined) {
+        if (isDate(c.var)) notInMaths(`${cp}.var`, v, c.var);
+        else ref(`${cp}.var`, v, c.var);
+      }
       if ("column" in c && tableId)
         column(`${cp}.column`, v, tableId, c.column, "filter");
       if (c.value_var) {
-        ref(`${cp}.value_var`, v, c.value_var);
+        if (isDate(c.value_var)) notInMaths(`${cp}.value_var`, v, c.value_var);
+        else ref(`${cp}.value_var`, v, c.value_var);
         // Seen live: a region input compared against a column holding a different spelling of the same
         // place ("TX" vs "Texas"), so no row ever matches. An input that declares where its answers come
         // from is comparable by construction; it just has to be pointed at that same column.
@@ -726,6 +791,19 @@ export function validate(
     if (!FORMULA_OPS.has(f.op))
       err(`${p}.op`, `${v.name}: unknown formula op "${f.op}"`);
     const n = f.args?.length ?? 0;
+    if (DATE_OPS.has(f.op)) {
+      const [date, count] = f.args ?? [];
+      if (allowCol) err(`${p}.op`, `${v.name}: "${f.op}" cannot be used inside a rows map`);
+      if (n !== 2) return err(`${p}.args`, `${v.name}: "${f.op}" takes exactly 2 arguments (a date, a whole number), got ${n}`);
+      if (typeof date !== "string" || !isDate(date))
+        err(`${p}.args[0]`, `${v.name}: "${f.op}" counts from a date variable or today, not ${JSON.stringify(date)}`);
+      if (typeof count === "number") {
+        if (!Number.isInteger(count)) err(`${p}.args[1]`, `${v.name}: ${count} is not a whole number`);
+      } else if (!vars.has(count)) ref(`${p}.args[1]`, v, count);
+      else if (vars.get(count)!.unit !== "integer")
+        err(`${p}.args[1]`, `${v.name}: "${count}" must be a whole number (unit integer), it is ${vars.get(count)!.unit}`);
+      return;
+    }
     if ((f.op === "sub" || f.op === "div") && n !== 2)
       err(
         `${p}.args`,
@@ -749,6 +827,7 @@ export function validate(
         }
         return;
       }
+      if (isDate(a)) return notInMaths(`${p}.args[${j}]`, v, a);
       ref(`${p}.args[${j}]`, v, a);
       const u = vars.get(a)?.unit;
       if (u === "text" || u === "rows")
@@ -771,6 +850,13 @@ export function validate(
 
   (rules.variables ?? []).forEach((v, i) => {
     const p = `variables[${i}]`;
+    const dateOp = v.kind === "formula" && DATE_OPS.has(v.op);
+    if (v.unit === "date" && !dateOp && v.kind !== "constant")
+      err(`${p}.kind`, `${v.name}: a date is built with add_days / add_months (or set as a fixed date) — never ${v.kind === "input" ? "asked from the lead" : `a ${v.kind}`}`);
+    else if (dateOp && v.unit !== "date")
+      err(`${p}.unit`, `${v.name}: "${(v as Formula).op}" gives a date, so the unit must be "date"`);
+    else if (v.unit === "date" && v.kind === "constant" && !(typeof v.value === "string" && ISO_DATE.test(v.value) && isValid(parseISO(v.value))))
+      err(`${p}.value`, `${v.name}: a fixed date must be written YYYY-MM-DD, not ${JSON.stringify(v.value)}`);
     if (v.condition_flag) {
       const f = vars.get(v.condition_flag);
       if (!f)
@@ -786,11 +872,11 @@ export function validate(
     }
     switch (v.kind) {
       case "input":
-        // Seen live: the model makes client_name / proposal dates "text" inputs. Those are Stage 5's (facts + calendar), never the sheet's.
+        // Seen live: the model makes client_name / proposal dates "text" inputs. Names are Stage 5's facts; dates are the sheet's, built from today.
         if (!INPUT_TYPES.has(v.input_type))
           err(
             `${p}.input_type`,
-            `${v.name}: input_type "${v.input_type}" is not one of integer | choice | multi_choice | boolean | region — names, dates and free text are not lead inputs; remove the variable`,
+            `${v.name}: input_type "${v.input_type}" is not one of integer | choice | multi_choice | boolean | region — names and free text are not lead inputs (remove the variable), and a date is never one (define it with unit "date" as add_days(today, N))`,
           );
         // A region declares where its answers come from for the same reason a choice does: it is the only
         // thing that makes the lead's words and the table's column comparable. It differs from a choice in
@@ -932,6 +1018,17 @@ export function validate(
         `variables[${rules.variables.indexOf(d)}].in_document`,
         `${v.variable_name} is in the document and must have in_document: true`,
       );
+  }
+  // Every document date is a sheet value too: Stage 5 has no other source for it.
+  for (const v of s2.filter(isDateVariable)) {
+    const d = vars.get(v.variable_name);
+    if (!d || d.unit !== "date")
+      err(
+        d ? `variables[${rules.variables.indexOf(d)}].unit` : "variables",
+        `${v.variable_name}: this document date must be defined with unit "date" (from today: add_days(today, N) / add_months(…))`,
+      );
+    else if (!d.in_document)
+      err(`variables[${rules.variables.indexOf(d)}].in_document`, `${v.variable_name} is in the document and must have in_document: true`);
   }
   for (const flag of new Set(
     s2.map((v) => v.condition_flag).filter((f): f is string => Boolean(f)),

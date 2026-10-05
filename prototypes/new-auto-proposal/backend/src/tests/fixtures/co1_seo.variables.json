@@ -1,8 +1,9 @@
 {
   "variables": [
     { "variable_name": "client_name", "category": "customer_input", "sample_text": "Bloom & Co Dental Group" },
-    { "variable_name": "proposal_date", "category": "customer_input", "sample_text": "September 7, 2026" },
-    { "variable_name": "proposal_valid_until", "category": "customer_input", "sample_text": "September 21, 2026 (14 days)" },
+    { "variable_name": "proposal_date", "category": "customer_input", "data_type": "date", "date_format": "MMMM d, yyyy", "sample_text": "September 7, 2026" },
+    { "variable_name": "proposal_valid_until", "category": "customer_input", "data_type": "date", "date_format": "MMMM d, yyyy", "sample_text": "September 21, 2026" },
+    { "variable_name": "validity_days", "category": "fixed", "data_type": "number", "sample_text": "14" },
     { "variable_name": "selected_tier", "category": "pricing", "sample_text": "Growth", "enum_options": ["Local", "Growth", "Authority"] },
     { "variable_name": "selected_tier_rate", "category": "pricing", "sample_text": "$3,000/mo" },
     { "variable_name": "contract_months", "category": "pricing", "sample_text": "12" },
