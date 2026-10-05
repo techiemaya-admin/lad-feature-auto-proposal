@@ -13,7 +13,7 @@ import { setExtractionModelCall } from "../services/ai-extraction.service.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-test("Variables & Gemini Extraction Suite", async (t) => {
+test("Variables: custom-chip verification, edits, and cascade delete", async (t) => {
   const testDir = fs.mkdtempSync(path.join(os.tmpdir(), "auto-proposal-vars-test-"));
   const testDbPath = path.join(testDir, "test.sqlite");
   const testStorageDir = path.join(testDir, "storage");
@@ -26,24 +26,7 @@ test("Variables & Gemini Extraction Suite", async (t) => {
   seedTemplateFixtures();
   const app = createApp();
 
-  const candidateMockDirs = [
-    path.resolve(__dirname, "../../../Mock Data"),
-    path.resolve(process.cwd(), "../Mock Data"),
-    path.resolve(process.cwd(), "Mock Data"),
-    path.resolve(process.cwd(), "prototypes/new-auto-proposal/Mock Data"),
-  ];
-  const mockDataDir = candidateMockDirs.find((d) => fs.existsSync(d));
-  if (!mockDataDir) {
-    throw new Error(`Mock Data directory not found. Looked in: ${candidateMockDirs.join(", ")}`);
-  }
-
-  const findDocx = (name: string) => {
-    const docxSub = path.join(mockDataDir, "docx", name);
-    return fs.existsSync(docxSub) ? docxSub : path.join(mockDataDir, name);
-  };
-  const northstarDocx = findDocx("Co1_Proposal_Northstar_BloomAndCo.docx");
-  const fortressDocx = findDocx("Co2_Proposal_FortressIT_WhitfieldAssociates.docx");
-  const fieldstoneDocx = findDocx("Co3_Proposal_Fieldstone_RosewoodHomeGoods.docx");
+  const northstarDocx = path.resolve(__dirname, "../../../Mock Data/docx/Co1_Proposal_Northstar_BloomAndCo.docx");
 
   t.after(() => {
     setExtractionModelCall(null);
@@ -99,16 +82,24 @@ test("Variables & Gemini Extraction Suite", async (t) => {
     assert.equal(validRes.body.variable.is_custom, true);
     assert.equal(validRes.body.variable.descriptor.sample_value, "Bloom & Co Dental Group");
 
-    // 5. Verify custom variable is returned by GET /variables
+    // 4b. A date the seller never asks for goes in the Fixed box
+    const fixedDate = await request(app)
+      .post("/api/companies/co1_seo/templates/default-co1_seo/variables/custom")
+      .send({ natural_name: "Proposal date", category: "fixed", data_type: "date", exact_quotation_snippet: "September 7, 2026" });
+    assert.equal(fixedDate.status, 201, fixedDate.text);
+    assert.equal(fixedDate.body.variable.category, "fixed");
+    assert.equal(fixedDate.body.variable.data_type, "date");
+
+    // 5. Verify custom variables are returned by GET /variables
     const listRes = await request(app).get("/api/companies/co1_seo/templates/default-co1_seo/variables");
     assert.equal(listRes.status, 200);
-    assert.equal(listRes.body.variables.length, 1);
-    assert.equal(listRes.body.variables[0].natural_name, "Client Target Business");
+    assert.equal(listRes.body.variables.length, 2);
+    assert.ok(listRes.body.variables.some((v: any) => v.natural_name === "Client Target Business"));
   });
 
   await t.test("PUT /api/companies/co1_seo/templates/default-co1_seo/variables updates natural names, categories, and soft deletes", async () => {
     const listRes = await request(app).get("/api/companies/co1_seo/templates/default-co1_seo/variables");
-    const customVar = listRes.body.variables[0];
+    const customVar = listRes.body.variables.find((v: any) => v.natural_name === "Client Target Business");
 
     const putRes = await request(app)
       .put("/api/companies/co1_seo/templates/default-co1_seo/variables")

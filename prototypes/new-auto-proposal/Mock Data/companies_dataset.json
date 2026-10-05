@@ -57,9 +57,6 @@
         ],
         "why_buyers_pick_you": "Plain-language monthly reporting (no vanity metrics), a dedicated strategist per account instead of a call-center account manager, and transparent tiered pricing with no long-term lock-in.",
         "guarantee_risk_reversal": "Month-to-month after the initial 3-month minimum — no annual lock-in required (though annual prepay gets a discount). If you don't see ranking movement on agreed keywords by month 4, we do a free strategy reset call."
-      },
-      "pricing_engine_spec": {
-        "pricing_context": "We have 3 packages. Local is $1000/mo, for one location - GBP cleanup, on page stuff, one blog post a month. Growth is $3000/mo, up to 3 locations, more content (4 posts/mo), citations. Authority is $8000/mo, unlimited locations, dedicated strategist, weekly content - mostly our franchise clients end up here. For Austin/Texas clients we add sales tax, around 8.25%, bookkeeper has the exact number. Also do 10% off if someone pays annually upfront instead of monthly, always forget to put that down but we do offer it."
       }
     },
     {
@@ -117,9 +114,6 @@
         ],
         "why_buyers_pick_you": "Transparent per-seat pricing with no surprise invoices, documented SLA response times by tier, and a named account engineer instead of a rotating help-desk queue.",
         "guarantee_risk_reversal": "90-day satisfaction guarantee — if you're not satisfied in the first 90 days, we'll refund the difference between what you paid and a prorated month-to-month rate, no long-term contract penalty."
-      },
-      "pricing_engine_spec": {
-        "pricing_context": "Pricing is per seat per month based on support tier. Essential $45/seat/mo - basic helpdesk, patching, monitoring, business hours only. Standard $65/seat/mo - faster SLA, backup management, after hours emergency line. Premium $85/seat/mo - vCIO quarterly review, 24/7 support, priority response under 1hr. Once a client crosses 25 total seats it's $5/seat off whatever tier rate, and past 50 seats it's $10/seat off instead (not stacked, just whichever band they're in). Devices beyond a 1:1 ratio with seats - servers, shared workstations, kiosks - billed separately at $12/device/mo regardless of tier. One time onboarding fee of $75 per seat. 10 seat minimum commit (billed for 10 even if fewer, though we don't really take on anyone smaller than that anyway). Tax is flat 6% Ohio rate for home state clients, applied to the recurring monthly total, not the setup fee."
       }
     },
     {
@@ -175,9 +169,6 @@
         ],
         "why_buyers_pick_you": "One fixed price agreed before work starts, a real delivery date, and a phase-by-phase review process so there are no surprise revisions at the end.",
         "guarantee_risk_reversal": "If we miss the agreed delivery date for reasons on our side, the final payment milestone drops by 10% per week late, up to 30%."
-      },
-      "pricing_engine_spec": {
-        "pricing_context": "Fixed templates. Landing Page $2,500, single page, one revision round, ~2 weeks - phases Design then Build/Launch. Business Website $6,000, up to 8 pages, phases Discovery/Design/Build/Launch. E-commerce $9,500, up to 100 products, Shopify or custom cart, phases Discovery/Design/Build/QA/Launch. Custom Web App starts at $22,000 - always needs a scoping call so that's a starting price only, not final. Payment split is usually 50% deposit / 50% at delivery, sometimes thirds for Business Website and E-commerce if the client wants that. Add-ons: CMS integration +$800, copywriting +$600, basic SEO setup +$450, extra revision round +$300, rush delivery (~30% faster) +20% of base price. 2+ add-ons bundled = 10% off the add-on subtotal, started that last year. Tax - honestly not sure, ask accounting, don't think we charge sales tax on services in our state but not 100% on that."
       }
     }
   ]

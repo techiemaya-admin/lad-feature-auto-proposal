@@ -11,12 +11,12 @@ Sales teams running AI outbound/inbound campaigns generate high volumes of inbou
 For small-to-midsize service businesses (marketing agencies, IT MSPs, dev shops), this manual quoting step is slow (hours to days), inconsistent, and bottlenecked against inbound volume.
 
 This prototype (`prototypes/new-auto-proposal`) builds and proves an end-to-end concept for **Zero-Config Quotation Auto-Generation**:
-1. **Import & Ingest:** Preload company profile and natural-language pricing notes (`pricing_engine_spec`).
+1. **Import & Ingest:** Preload company profile (`companies_dataset.json`) and, for the dev harness only, the natural-language pricing notes (`pricing_spec`) and a sample lead message from `Mock Data/test_seeds.json`.
 2. **Document Understanding:** Convert real `.docx` quotations into Markdown via `@firecrawl/anydoc`.
 3. **Variable Detection & Taxonomy:** Discover scalar entities, pricing numbers, table loops, and dynamic paragraphs with human-in-the-loop review.
 4. **Non-Destructive Word Mutation:** Use `docxmlater` to replace text anchors and collapse repeating table rows into dynamic loop syntax while preserving headers and summary footers.
 5. **Interactive Pricing Engine:** Compile natural pricing notes into visual rule cards and deterministic JSON execution logic.
-6. **Proposal Generation & Verification:** Ingest unstructured lead emails, extract parameters via Gemini, compute exact totals deterministically, generate tailored sales copy, and render final `.docx` documents using `easy-template-x`.
+6. **Proposal Generation & Verification:** Ingest an unstructured lead message, extract structured facts (read-only; a missing fact drafts a clarification email and opens a reply loop — the thread is re-read until nothing is missing), compute exact totals deterministically (a review reason marks the proposal a draft), draft narrative paragraphs as `{tag}` placeholders that code fills, render the `.docx` with `easy-template-x` and a PDF with headless LibreOffice.
 
 ---
 
@@ -34,11 +34,11 @@ The system runs a **5-stage sequential pipeline** anchored by an **ambient shell
   └── [Send ➔] executes Stage 1 backend & locks capsule into read-only summary
             │
             ├── @firecrawl/anydoc converts .docx to Markdown
-            └── Gemini extracts dynamic variables
+            └── the extraction model finds dynamic variables
             │
             ▼
 [STAGE 2: VARIABLE LEDGER]
-  Chips grouped in 3 rows: [Customer inputs] [Pricing] [Paragraphs]; tap a chip to open its detail tray
+  Chips grouped in 4 rows: [Customer inputs] [Fixed & auto-filled] [Pricing] [Paragraphs]; tap a chip to open its detail tray
   ├── Tray: inline rename, category dropdown, leave out / bring back, AST-verified custom chip via [+ Add one]
   ├── Paragraph mode: [Fixed text] vs [Drafted per client] (glyph on the chip)
   ├── Any edit or re-scan drops the Stage 3 template until regenerated
@@ -53,19 +53,23 @@ The system runs a **5-stage sequential pipeline** anchored by an **ambient shell
             │
             ▼
 [STAGE 4: PRICING ENGINE & RULE CARDS]
-  Gemini compiles rules from: Prompt Spec + Confirmed Variables + Sample Quote Values
+  The rule compiler builds rules from: Prompt Spec + Confirmed Variables + Sample Quote Values
   ├── Interactive visual cards for Tiers, Breakpoints, Add-ons, and Taxes
+  ├── Per lead input: "If the lead doesn't say it" = ask (required) / assume a default (amber chip, header count) / leave blank, plus an assume_when reading hint
   ├── Pure JavaScript deterministic math execution engine (100% calculation precision)
-  └── [Proceed to Lead Simulation ➔]
+  └── [Proceed to Check & Generate Proposal ➔]
             │
             ▼
 [STAGE 5: LEAD SIMULATION & VERIFICATION]
-  Inbound lead message (email) + "Load Sample Lead Message"
-  ├── Gemini extracts lead deal parameters (seats, locations, addons, state)
-  ├── Deterministic math computes exact subtotal, discounts, taxes, and total
-  ├── Gemini drafts tailored narrative copy using prompt tips
-  ├── easy-template-x renders finalized proposal .docx
-  └── In-browser proposal preview via docx-preview + one-click download
+  Inbound lead message textarea, prefilled with the company's dev-only sample_lead_text
+  ├── POST /lead/extract → structured facts per the rules' inputs (+ client name): null = not said, assumptions[]; code fills Assume defaults → assumed[]
+  │     └── required fact missing → read-only facts panel (field highlighted) + POST /lead/clarify ask → reply box (typed, or POST /lead/reply drafts it as the lead) → re-extract the thread
+  ├── POST /proposal/generate (facts in, never the email): evaluate → needs_review → reasons flagged for the human, document still built with the affected values printed as `[to confirm]`
+  │     ├── buildProposalPayload (every pricing tag, has_* flags, loops, tier matrix) + customer facts + fillDates (code)
+  │     ├── one model call drafts every ai_generated paragraph as {tag} placeholders → code substitutes from the payload
+  │     ├── easy-template-x → storage/<id>/proposal.docx; headless LibreOffice → proposal.pdf (failure → pdf: null)
+  │     └── nothing persisted: files overwritten per run, no proposals table
+  └── Split view: facts form + assumptions + numbers ledger | PDF <iframe> + .docx / .pdf downloads
 
 AMBIENT SHELL COMPONENTS:
 ├── Slide-Over Configuration Drawer ("Voice & inbox"): style notes, reference proposal, clarification-email notes, mock inbox link
@@ -74,16 +78,18 @@ AMBIENT SHELL COMPONENTS:
 
 ---
 
-## 3. The 4-Tier Taxonomy & 3-Bucket Visual Mapping
+## 3. The 4-Tier Taxonomy & 4-Bucket Visual Mapping
 
-The underlying engine classifies variables into four architectural tiers, mapped to three intuitive visual buckets in the frontend Chip-Deck:
+The underlying engine classifies variables into four architectural tiers, mapped to four intuitive visual buckets in the frontend Chip-Deck:
 
 | Backend Architectural Tier | Class | Front-End Visual Bucket | Purpose & Handling | Examples |
 | :--- | :--- | :--- | :--- | :--- |
-| **Tier 1: Scalar Entity** | Inbound message & tenant profile | **Customer Inputs** | Fixed string facts. Replaced directly in text runs. | `client_name`, `client_state`, `contact_email`, `rep_name`, `date` |
+| **Tier 1: Scalar Entity** | Inbound message & tenant profile | **Customer Inputs** / **Fixed & auto-filled** | Fixed string facts. Replaced directly in text runs. | `client_name`, `client_state`, `contact_email`, `rep_name` / `proposal_date`, `validity_days`, `payment_terms` |
 | **Tier 2: Deterministic Pricing** | Rule engine calculations | **Pricing Placeholders** | Computed numeric totals and rates. Handled strictly by JS math; never generated by LLM arithmetic. | `seat_count`, `rate_per_seat`, `subtotal`, `tax_amount`, `grand_total` |
 | **Tier 3: Repeating Table Rows** | Rule line items & milestones | **Pricing Placeholders** | Dynamic array of objects rendered into table loops (`{#items}...{/items}`). | `line_items[]`, `payment_milestones[]`, `addon_list[]` |
-| **Tier 4: Dynamic Narrative & Logic** | Gemini generation & boolean toggles | **Narrative Paragraphs** | Tailored sales copy or static legal clauses. Controlled via [Fixed \| AI-Generated] toggle with prompt tips. | `scope_of_work`, `deliverables`, `sla_terms`, `payment_terms` |
+| **Tier 4: Dynamic Narrative & Logic** | Model generation & boolean toggles | **Narrative Paragraphs** | Tailored sales copy or static legal clauses. Controlled via [Fixed \| AI-Generated] toggle with prompt tips. | `scope_of_work`, `deliverables`, `sla_terms`, `payment_terms` |
+
+**Fixed & auto-filled is a screen label, not a pipeline tier.** Stage 2 puts values the lead is never asked for (dates, validity days, payment terms, a contract length the seller fixes) in their own box, so the reviewer isn't told the lead will be asked. Inside the pipeline a `fixed` variable is handled exactly like `customer_input` (`isCustomerOrFixed`): the same Stage 4 compile list, date fill and lead-form fallback. Stage 4 still defines the values and has the final say. Don't split their handling without a ticket. The box is unrelated to a paragraph's *Fixed* mode (static text vs. drafted per client).
 
 ---
 
@@ -94,19 +100,19 @@ The underlying engine classifies variables into four architectural tiers, mapped
 - Markdown output exposes headings, list items, and table syntax without sending heavy XML to the LLM.
 - Displayed in the UI inside a collapsible Reviewer Dropdown.
 
-### 4.2 Variable Extraction Contract (Gemini) — text only
-Gemini is reliable at *reading* ("this exact text is the tax amount") and unreliable at *positional bookkeeping* ("table 2, row `Subtotal`, column 1"). The extraction contract (`backend/src/services/gemini.service.ts`) therefore contains no locators and no mutation instructions:
+### 4.2 Variable Extraction Contract — text only
+The extraction model is reliable at *reading* ("this exact text is the tax amount") and unreliable at *positional bookkeeping* ("table 2, row `Subtotal`, column 1"). The extraction contract (`gemini.service.ts` / `deepseek.service.ts`, dispatched by `ai-extraction.service.ts`) therefore contains no locators and no mutation instructions:
 
 | Field | Meaning |
 | :--- | :--- |
 | `sample_text` | Verbatim text copied from the quotation. Multi-line for paragraph/bullet blocks. The engine searches for exactly this. |
-| `category` | `customer_input` / `pricing` / `paragraph`. `paragraph` = client-specific prose the salesperson would rewrite per lead (intro, tier justification, add-on menu, what's-included list, tax/commitment notes). |
+| `category` | `customer_input` / `fixed` / `pricing` / `paragraph`. `fixed` = the lead is never asked (dates, seller-set values); processed like `customer_input` (§3). `paragraph` = client-specific prose the salesperson would rewrite per lead (intro, tier justification, add-on menu, what's-included list, tax/commitment notes). |
 | `condition_flag` | `has_tax`, `has_annual_discount`, … — the engine wraps the containing table row (or, for a `paragraph` variable, the paragraph itself) in `{#flag}…{/flag}`. `""` = always shown. |
 | `enum_options` | On the tier selector (`selected_tier`): every tier offered. The engine uses these names to find the tier comparison matrix — no locator needed. |
 | `context_text` | Almost always `""` (= replace everywhere). Only when the identical text appears elsewhere with a different meaning: the row label / nearby words of the right occurrence. |
 | `loop_tables[]` | `header_texts` (exact row-0 cell texts), `loop_tag`, `column_tags`, `row_labels` (exact first-cell text of each repeating row). No table indexes. |
 
-Every field the engine depends on is `required` in the Gemini response schema — optional schema fields get skipped by `gemini-2.5-flash` regardless of prompt wording.
+Every field the engine depends on is `required` in the response schema — optional schema fields get skipped by `gemini-2.5-flash` regardless of prompt wording.
 
 ### 4.3 Template Mutation with `docxmlater`
 `backend/src/services/template-mutator.service.ts` owns **all** location logic and derives the mutation from the variable itself:
@@ -122,7 +128,7 @@ Every field the engine depends on is `required` in the Gemini response schema �
 - Every variable yields a `details[]` entry (`applied`, `info`) surfaced in the Template Checkpoint, including `N other occurrence(s) skipped by context_text` and `"…" not found in document` — the review deck is where model variance gets caught. After all mutations `applyTemplate` checks every placed tag against the final text: a tag swallowed by a later paragraph/loop mutation, or a value that only ever lived inside one (`location_count` = "two" inside the intro paragraph), becomes `action: "covered"` (applied, no tag; the drafter of that block receives it as input); a tag that vanished for any other reason is flipped to a miss. The UI treats only `applied: false` as "didn't land".
 - **Tier comparison matrix** (columns = tiers, rows = features): easy-template-x has no column loops and the "recommended" highlight is cell shading the engine never touches, so the matrix is tagged **positionally** and the selected tier is *rotated into the highlighted column* at hydration. Detection: the table whose header row names ≥2 of the selector's `enum_options` including its `sample_text`. Every tier column's cells become `{tierN_name}` (header text outside the name, e.g. ` — Recommended`, stays) and `{tierN_rM}`; label columns stay static. The captured grid + `recommended_index` are returned as `tier_matrix` and persisted in `template_stats`; `buildTierMatrixPayload(matrix, selectedTier)` produces the flat tag values with the selected tier in the highlighted column and the others in their original order (Local → `Growth | Local — Recommended | Authority`). Runs before the global replacements so `{selected_tier}` / `{selected_tier_rate}` do not touch the matrix.
 
-Golden test: `backend/src/tests/template-mutator.test.ts` + `tests/fixtures/*.variables.json` (an ideal Gemini response per company) must reproduce the tag layout of `Mock Data/templated_markdown/*.md`, plus the matrix rotation, conditional-paragraph and "a miss is reported, never dropped" cases. `tests/fixtures/*.raw.json` are real model responses copied from `logs/` and must come through with zero losses (placed or covered) — the ideal fixtures alone never go red on model quirks. Live extraction quality is measured by `npm run test:live` (`tests/gemini.live.ts`, needs `GEMINI_API_KEY`, not part of `npm test`) as "every `sample_text` is verbatim in the quotation markdown".
+Golden test: `backend/src/tests/template-mutator.test.ts` + `tests/fixtures/*.variables.json` (an ideal model response per company) must reproduce the tag layout of `Mock Data/templated_markdown/*.md`, plus the matrix rotation, conditional-paragraph and "a miss is reported, never dropped" cases. `tests/fixtures/*.raw.json` are real model responses copied from `logs/` and must come through with zero losses (placed or covered) — the ideal fixtures alone never go red on model quirks. Live extraction quality is measured by `npm run test:live` (`tests/gemini.live.ts`, needs `GEMINI_API_KEY`, not part of `npm test`) as "every `sample_text` is verbatim in the quotation markdown".
 
 Model choice: provider/model are persisted in `app_settings` (default `deepseek-flash`) and stamped into every `variables-raw.json` log as `ai`. Measured on Co1 (2026-09-15, 2 runs each): `gemini-flash-lite-latest` dropped `$36,000.00` in 3 of 4 runs regardless of prompt; `gemini-2.5-flash` and `deepseek-flash` returned every amount.
 
@@ -132,19 +138,25 @@ Model choice: provider/model are persisted in `app_settings` (default `deepseek-
 - Payload keys equal `variable_name`; conditionals need boolean `has_*` keys; loops need arrays keyed by `loop_tag`; the tier matrix values come from `buildTierMatrixPayload(template_stats.tier_matrix, selected_tier)`.
 - Outputs the finalized proposal document ready for download and browser preview.
 
+### 4.5 Stage 5 Generation (`proposal-generator.service.ts`)
+- `POST /api/companies/:id/lead/extract` (`{lead_text}` → `{fields, inputs, missing, assumptions, assumed}`), `POST /lead/clarify` (`{lead_text, inputs, missing, assumed?}` → `{subject, body}`), `POST /lead/reply` (`{lead_text: thread}` → `{subject, body}`, the model playing the lead), `POST /proposal/generate` (`{inputs, lead_text, assumed?}` → `{evaluation, payload, narrative, files, pdf_error?}` (non-empty `evaluation.needs_review` = draft); defaults re-applied server-side before the missing check, 400 when a required fact is missing, 409 before `stage === "lead_simulation"`), `GET /proposal/download?format=docx|pdf`.
+- Facts are built per company from the rules' `input` variables plus the Stage 2 customer inputs no rule variable defines (a validity window the compiler holds as a constant is not re-asked); dates (`data_type: "date"` or a month-name sample) are never asked — `fillDates` moves the earliest sample date to today and keeps every other date's offset, format and suffix. A silent input follows its Ask / Assume / Blank setting: `fillDefaults` (the one place a gap is filled) applies `default` on extract and again on generate, and names the fields in `assumed[]`.
+- The drafter gets the voice-drawer notes, the lead message, the facts, every payload tag with its value and every boolean flag with its label; it returns one string per `ai_generated` paragraph; `{tag}` placeholders are substituted in code, unknown tags stripped and reported in `narrative[name].unknown_tags`.
+- PDF via `soffice --headless --convert-to pdf` (`SOFFICE_PATH`, persistent profile in the temp dir); a failure returns the `.docx` with `pdf: null`. Every raw model response and the final payload land in `logs/<company>/` for the Dev Dock. Full design: [docs/plans/06-lead-simulator.md](plans/06-lead-simulator.md).
+
 ---
 
 ## 5. Pricing Engine Architecture: Rule Cards & Deterministic Math
 
 ```
 [Natural Language Spec]
-       │ (Gemini Rule Compiler)
+       │ (rule compiler)
        ▼
 [PricingRules — a spreadsheet whose cells are the Stage 2 variable names]
        ├── tables[]: generic grids with a kind hint (packages | bands | addons | taxes | splits | other)
        ├── variables[]: one flat definition per cell — input | constant | lookup | formula | condition | aggregate | rows
        │     in_document:true = a Stage 2 pricing variable; in_document:false = pricing-only helper
-       ├── review_rules[] ("decline to auto-quote"), assumptions[], sample_inputs (the sample lead)
+       ├── review_rules[] ("flag for human review"), assumptions[], sample_inputs (the sample lead)
        └── persisted in working_state_json.pricing_rules; both compile attempts logged to logs/<id>/*-rules-raw.json / *-rules-repair.json
        │
        ├─────────────────────────────────┐
@@ -205,8 +217,8 @@ Verified against `logs/*/variables-raw.json` and `company_variables` on 2026-09-
 | **Phase 0** | **Infrastructure & Shell** | Establish decoupled backend & frontend | Express + TypeScript server, SQLite database, storage directory structure, Vite + Shadcn shell. |
 | **Phase 1** | **Company Harness & Mock Ingestion** | Multi-company switching & profile review | 3 Company tabs, "Import Settings" button prefilling data, editable pricing spec textarea, collapsible JSON inspector. |
 | **Phase 2** | **Compound Briefing Capsule & Ingestion** | Ingest quotation & lock briefing capsule | Fused Prompt textarea + docked dropzone, Enter=newline, Send validation, AnyDoc Markdown converter, locked state with reset warning modal. |
-| **Phase 3** | **Categorized Variable Review Chip-Deck** | Review dynamic variables in 3 buckets | Gemini variable extraction, 3-bucket chip-deck (Customer Inputs, Pricing Placeholders, Paragraphs), AST-verified custom chip modal, dropdown bucket switcher, [Fixed \| AI] paragraph toggle. |
+| **Phase 3** | **Categorized Variable Review Chip-Deck** | Review dynamic variables in 3 buckets | Model variable extraction, 3-bucket chip-deck (Customer Inputs, Pricing Placeholders, Paragraphs), AST-verified custom chip modal, dropdown bucket switcher, [Fixed \| AI] paragraph toggle. |
 | **Phase 4** | **docxmlater Mutation & Minimal Checkpoint** | Mutate .docx AST & confirm template | `docxmlater` replacement pipeline, smart table row collapse, compact inline checkpoint card with tag stats and optional `docx-preview` modal. |
-| **Phase 5** | **Pricing Compiler & Rule Cards** | Compile spec to visual & executable rules | Gemini rule compiler using Prompt + Variables + Sample Quote Values, interactive rule cards UI, collapsible JSON editor, deterministic JS math engine. |
-| **Phase 6** | **Lead Simulator & Proposal Verification** | Generate proposal from lead message & verify math | Inbound email textarea + sample load button, lead parameter extraction, narrative copy generator, `easy-template-x` proposal generation, math verification against benchmarks. |
+| **Phase 5** | **Pricing Compiler & Rule Cards** | Compile spec to visual & executable rules | Rule compiler using Prompt + Variables + Sample Quote Values, interactive rule cards UI, collapsible JSON editor, deterministic JS math engine. |
+| **Phase 6** | **Check & Generate Proposal** | Generate proposal from lead message & verify math | Prefilled lead textarea, structured fact extraction with a read-only facts panel and a clarification-reply loop on a missing fact, deterministic numbers ledger, placeholder-only narrative drafting, `easy-template-x` + LibreOffice PDF generation with iframe preview and downloads, red Draft box on review reasons. |
 | **Auxiliary** | **Ambient Shell Enhancements** | Independent settings & developer tools | Slide-Over Configuration Drawer (free-text voice notes, reference proposal, clarification-email notes, mock inbox link) and Bottom Developer Dock (AnyDoc MD, Variables JSON, Rule Schema JSON, pipeline logs + run artifacts). |

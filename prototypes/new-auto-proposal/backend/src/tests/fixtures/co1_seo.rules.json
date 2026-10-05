@@ -30,7 +30,7 @@
   ],
   "variables": [
     { "name": "location_count", "label": "Number of locations", "in_document": false, "unit": "integer", "condition_flag": "", "kind": "input", "input_type": "integer", "required": true },
-    { "name": "client_state", "label": "Client state", "in_document": false, "unit": "text", "condition_flag": "", "kind": "input", "input_type": "us_state", "required": true },
+    { "name": "client_state", "label": "Client state", "in_document": false, "unit": "text", "condition_flag": "", "kind": "input", "input_type": "region", "options_table": "taxes", "options_column": "state", "required": true },
     { "name": "annual_prepay", "label": "Pays annually up front", "in_document": false, "unit": "boolean", "condition_flag": "", "kind": "input", "input_type": "boolean", "required": false },
 
     { "name": "selected_tier", "label": "Selected package", "in_document": true, "unit": "text", "condition_flag": "", "kind": "lookup", "table": "packages", "where": [{ "column": "location_cap", "op": "gte", "value_var": "location_count" }], "take": "name" },

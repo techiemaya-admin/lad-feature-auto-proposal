@@ -5,7 +5,6 @@
 The current onboarding contract starts with a company-specific library: import exactly three AI briefs into an empty library, persist name/description/pricing_spec immediately, open the existing pipeline from a card, allow user-supplied briefs and deletion, and enforce seven templates per company. Fresh databases start without templates; existing workflows are preserved. Custom creation now requires all three fields. The empty state uses a themed welcome panel and larger import button. Cards use compact spacing and display up to four description lines with full text on mouse hover. AI descriptions are prompted to stay within 160 characters in one sentence; the API and custom-input limit remains 1000 characters. See the [complete workflow and implementation guide](../../prototypes/new-auto-proposal/docs/icp-template-library.md) for API contracts, validation, tests and limitations. This supersedes older entry-flow and name-only creation requirements below.
 # Specification — Zero-Config Auto-Proposal Prototype
 
-**Detailed Variable & Template Spec:** [variable-and-template-architecture-spec.md](variable-and-template-architecture-spec.md)  
 
 ## Problem Statement
 
@@ -17,10 +16,10 @@ This manual quoting workflow is slow (taking hours or days), error-prone, and in
 
 A zero-configuration, AI-assisted auto-proposal prototype that enables an agency tenant to onboard their quoting process in an intuitive, agentic workflow:
 1. **Compound Briefing Capsule:** Type pricing guidelines in natural language into a clean prompt area, with a docked quotation dropzone directly beneath it (prompt + quotation submitted together with `[Send ➔]`).
-2. **Categorized Variable Review Chip-Deck:** Review extracted dynamic variables organized into three clear buckets (`Customer Inputs`, `Pricing Placeholders`, and `Narrative Paragraphs`) as modular interactive chips rather than a dense administrative table.
+2. **Categorized Variable Review Chip-Deck:** Review extracted dynamic variables organized into four clear buckets (`Customer Inputs`, `Fixed & auto-filled`, `Pricing Placeholders`, and `Narrative Paragraphs`) as modular interactive chips rather than a dense administrative table.
 3. **Minimal Template Checkpoint:** Confirm XML-safe dynamic template tags and repeating line-item loops with an inline status card and optional quick preview before moving to pricing.
 4. **Interactive Pricing Engine:** Review and fine-tune compiled visual rule cards powered by a 100% deterministic JavaScript math engine.
-5. **Lead Simulator & Verification:** Simulate inbound lead emails to produce mathematically verified `.docx` proposals previewable directly in the browser.
+5. **Lead Simulator & Verification:** Paste an inbound lead message, see the facts read from it (a missing one drafts a clarification email and opens a reply loop until the thread answers it), and get a mathematically verified `.docx` + PDF proposal previewed in the browser — always for a human to check and send; when a review reason fires, it is flagged above the proposal and the values it touches are printed as `[to confirm]`, and a red Draft box lists the reasons.
 6. **Ambient Controls:** Persistent slide-over drawer for proposal voice notes and a mock inbox link, and a bottom developer dock for raw Markdown, JSON schemas, and pipeline logs.
 
 ## User Stories
@@ -33,7 +32,7 @@ A zero-configuration, AI-assisted auto-proposal prototype that enables an agency
 6. As a tenant who has submitted my briefing, I want the briefing capsule to transition into a clean read-only locked state, so that I do not accidentally modify my prompt or lose my place while reviewing downstream stages.
 7. As a tenant wanting to revise my pricing prompt or quotation, I want an explicit "Edit / Reset" action with a confirmation warning that downstream stages will be reset, while preserving my typed prompt text in the input box.
 8. As a reviewer inspecting document parsing, I want to open the bottom developer dock to view the Markdown extracted from my Word document, so that I can confirm headings, tables, and paragraphs were captured accurately without cluttering the primary tenant view.
-9. As a tenant reviewing detected variables, I want to see modular, categorized chips grouped into three buckets (Customer Inputs, Pricing Placeholders, Narrative Paragraphs), so that I understand what parts of my document become dynamic without scrolling through a dense table.
+9. As a tenant reviewing detected variables, I want to see modular, categorized chips grouped into four buckets (Customer Inputs, Fixed & auto-filled, Pricing Placeholders, Narrative Paragraphs), so that I understand what parts of my document become dynamic without scrolling through a dense table.
 10. As a tenant reviewing detected variables, I want to edit a chip's natural name, change its category bucket via a dropdown, or delete false positives, so that the final template only contains accurate placeholders.
 11. As a tenant deleting a variable chip, I want the underlying Word template to keep the original text as static Word content, so that removing a chip never breaks document layout or wording.
 12. As a tenant reviewing narrative paragraph variables, I want to toggle between "Fixed Boilerplate" (editable quote text) and "AI-Generated" (with a prompt tip input), so that static clauses remain verbatim while personalized sections are tailored for each deal.
@@ -81,14 +80,14 @@ interface PricingRules {
                   columns: Array<{ key; label; unit: "money" | "percent" | "integer" | "text" | "boolean" }>;
                   rows: Array<Record<string, string | number | boolean | null>> }>;   // null integer = unbounded
   variables: Array<{ name; label; in_document: boolean; unit; condition_flag: string } & (
-    | { kind: "input"; input_type: "integer" | "choice" | "multi_choice" | "boolean" | "us_state"; options_table?; options_column?; options?; required }
+    | { kind: "input"; input_type: "integer" | "choice" | "multi_choice" | "boolean" | "region"; options_table?; options_column?; options?; required; default?; assume_when? }  // silent lead: required → ask, default → assume (never on an input the tax calculation reads), neither → blank. region = geography; declares options_table/_column like a choice but may match no row
     | { kind: "constant"; value }                                                    // percent stored as fraction
-    | { kind: "lookup"; table; where: Where[]; take }                                // first row in table order
+    | { kind: "lookup"; table; where: Where[]; take; fallback? }                     // first row in table order; no row → fallback if set, else stop for review
     | { kind: "formula"; op: "add" | "sub" | "mul" | "div" | "min" | "max"; args: Array<string | number> }  // one flat op; nest via helpers
     | { kind: "condition"; all: Cond[] }
     | { kind: "aggregate"; fn: "sum" | "count"; table; rows: "selected" | "all"; selected_var?; key_column; column?; where? }
     | { kind: "rows"; table; rows: "selected" | "all"; selected_var?; key_column; where?; map: Record<loopColumnTag, columnKey | Formula> } )>;
-  review_rules: Array<{ when: Cond[]; reason: string }>;      // explicit "decline to auto-quote"
+  review_rules: Array<{ when: Cond[]; reason: string }>;      // flag for the human who sends the proposal
   assumptions: Array<{ text: string; resolved_as: string }>;  // what the owner's notes left open
   sample_inputs: Record<string, unknown>;                      // the lead facts behind the sample quotation
 }
@@ -97,13 +96,14 @@ interface PricingRules {
 
 - Engine guarantees: topological evaluation; money rounded to cents immediately after each money variable; percent kept as a fraction; text compares whitespace-normalised and case-insensitive; `null` cell = unbounded in `gte`/`gt`; `condition_flag` on a rules variable is an optional *skip guard* (value zeroed, no review fired) while row presence in the payload comes from the Stage 2 flag; split rows receive the rounding remainder on the last row; amounts are unsigned (templates hard-code `−`); missing required input / no matching lookup row / division by zero / matching `review_rules` → `needs_review[]`, never a silent 0.
 - Pure module `backend/src/services/pricing-calculator.ts`: `evaluate(rules, inputs)`, `validate(rules, stage2)` (domain-level errors: unknown name, cycle, Stage 2 pricing variable without definition, flag without condition, loop map ≠ columns), `formatLike(sample_value, value)` (`$3,000/mo`, `8.25%`, `10%`), `sampleCheck` (per-variable ✓/✗ against the sample quotation), `buildProposalPayload` (keys = `variable_name`, `has_*` booleans, loops by `loop_tag`, tier matrix via `buildTierMatrixPayload`).
-- Compile validates, evaluates with `sample_inputs`, runs the sample check, and **retries once** with the error list (structural errors and sample mismatches) before persisting; both attempts are logged to `logs/<company>/*-rules-raw.json` / `*-rules-repair.json`. Gemini receives a flat wire shape (table rows as `cells[]`, every kind's fields present) because its response schema has no unions or dynamic keys; DeepSeek gets the same shape in the prompt; `fromWire()` types cells by column unit.
+- Compile validates, evaluates with `sample_inputs`, runs the sample check, and **retries once** with the error list (structural errors and sample mismatches) before persisting; both attempts are logged to `logs/<company>/*-rules-raw.json` / `*-rules-repair.json` (the repair log also carries `fixing`, the errors it was asked to fix, and `kept`, which attempt won). Gemini receives a flat wire shape (table rows as `cells[]`, every kind's fields present) because its response schema has no unions or dynamic keys; DeepSeek gets the same shape in the prompt; `fromWire()` types cells by column unit.
 - API (`/api/companies/:id/rules`): `POST /compile`, `GET`, `PUT` (400 with `errors[{path,message}]` on structural errors, nothing persisted), `POST /calculate` (`{inputs}` → evaluation + payload for an arbitrary lead; Stage 5's entry point — the deck's live check goes through `PUT`, which re-runs the sample), `POST /proceed` (`stage: "lead_simulation"`, 409 while validation errors exist). Any template regeneration or briefing unlock clears `pricing_rules`.
-- UI (`PricingEngineDeck.tsx`): assumptions strip → one editable grid card per `tables[]` entry (icon by `kind`) → "What we ask the lead" (inputs) → Calculation ledger (each variable: readable definition, computed sample value, quote sample value, ✓/✗; tap → tray to change kind/operator/operands/conditions; `[+ Add variable]` for helpers marked "not in document") → review rules → footer with "N of M match", `Regenerate`, `Proceed to Lead Simulation`. Dev Dock tab edits the raw `PricingRules` JSON with validation.
+- Stage 5 API (`/api/companies/:id`): `POST /lead/extract` (`{lead_text}` → `{fields, inputs, missing, assumptions, assumed}`; 400 empty / > 12,000 chars, 409 before Stage 5), `POST /lead/clarify` (`{lead_text, inputs, missing, assumed?}` → `{subject, body}`, never sent), `POST /lead/reply` (`{lead_text}` = the thread ending with our ask → `{subject, body}`, the model playing the lead), `POST /proposal/generate` (`{inputs, lead_text, assumed?}` — structured facts, never re-extracted; defaults re-applied server-side → `{evaluation, payload, narrative, files: {docx, pdf | null}, pdf_error?}` (non-empty `evaluation.needs_review` = draft); 400 on a missing required fact), `GET /proposal/download?format=docx|pdf[&download=1]` (the PDF serves `inline` for the preview iframe; `download=1` or a `.docx` returns an attachment). Nothing is persisted; `storage/<id>/proposal.docx|pdf` are overwritten per run and cleared by every earlier-stage reset. Contracts: `prototypes/new-auto-proposal/docs/plans/06-lead-simulator.md` §1.
+- UI (`PricingEngineDeck.tsx`): assumptions strip → one editable grid card per `tables[]` entry (icon by `kind`) → "What we ask the lead" (inputs; an Assume input carries a permanent amber chip and the header counts them; the tray sets ask / assume / blank, the typed default, the `assume_when` hint, and lists the lookups a default affects) → Calculation ledger (each variable: readable definition, computed sample value, quote sample value, ✓/✗; tap → tray to change kind/operator/operands/conditions; `[+ Add variable]` for helpers marked "not in document") → review rules → footer with "N of M match", `Regenerate`, `Proceed to Lead Simulation`. Dev Dock tab edits the raw `PricingRules` JSON with validation.
 
 ### 5. UI Architecture: Agentic Briefing & Ambient Controls
 - **Compound Briefing Capsule:** Unified prompt area + docked dropzone. `Enter` creates new lines; submission via explicit `[Send ➔]` button when both inputs are present. Transitions to read-only locked state with edit/reset modal.
-- **Categorized Variable Review Chip-Deck:** Replaces dense tables with 3 modular card buckets (`Customer Inputs`, `Pricing Placeholders`, `Narrative Paragraphs`). Supports AST-verified custom chips, dropdown bucket movement, and paragraph mode toggling.
+- **Categorized Variable Review Chip-Deck:** Replaces dense tables with 4 modular card buckets (`Customer Inputs`, `Fixed & auto-filled`, `Pricing Placeholders`, `Narrative Paragraphs`). `Fixed & auto-filled` (dates, seller-set values) is a screen label: the pipeline processes it exactly like Customer Inputs. Supports AST-verified custom chips, dropdown bucket movement, and paragraph mode toggling.
 - **Minimal Template Checkpoint:** Low-profile status banner with tag stats and optional `docx-preview` modal, acting as a lightweight confirmation step before pricing.
 - **Slide-Over Configuration Drawer:** Persistent per-company sheet for free-text voice notes, a reference proposal, clarification-email notes, and a mock inbox link.
 - **Bottom Developer Dock (HUD):** Collapsible drawer housing AnyDoc Markdown, raw Variables JSON, Rule Schema JSON, and pipeline logs.
@@ -117,7 +117,7 @@ interface PricingRules {
 - Three mock companies (`co1_seo`, `co2_msp`, `co3_dev`).
 - Binary files stored per company under `backend/storage/<company_id>/`.
 - Working state (variable tables, pricing specs, extracted rules, configurations) persisted in SQLite so switching company tabs maintains progress.
-- An explicit "Reset to Mock Default" action re-initializes a company's state from the baseline dataset.
+- An explicit "Reset to Mock Default" action re-initializes a company's state from the baseline dataset plus the dev-only seeds (`Mock Data/test_seeds.json`: `pricing_spec`, `sample_lead_text`).
 
 ## Testing Decisions
 
@@ -142,11 +142,11 @@ interface PricingRules {
 - User authentication, JWT tokens, and multi-tenant database row isolation.
 - Production schema migrations or integrations with legacy TypeORM entities.
 - Direct email sending (SMTP, Gmail API) or inbound webhook receivers.
-- PDF generation or conversion engines (LibreOffice / Gotenberg).
+- Hosted PDF conversion services (Gotenberg or similar); Stage 5 uses a local headless LibreOffice and degrades to `.docx`-only when it is absent.
 - Billing, Stripe integrations, or electronic signature workflows.
 
 ## Further Notes
 
 - The prototype runs completely self-contained in `prototypes/new-auto-proposal`.
-- AI capabilities leverage Google Gemini via `GEMINI_API_KEY` defined in `backend/.env`.
+- The extraction/drafting provider and model are chosen in `app_settings` (default `deepseek-flash`); keys live in `backend/.env` (`GEMINI_API_KEY`, `DEEPSEEK_API_KEY`).
 - All mock assets, documents, and verification guides originate from `prototypes/new-auto-proposal/Mock Data/`.

@@ -34,8 +34,9 @@ The Rush Away Auto-Proposal onboarding workflow is an **agentic configuration wo
                                       ▼
 ┌───────────────────────────────────────────────────────────────────────────┐
 │  STAGE 2: VARIABLE LEDGER (grouped chips + docked detail tray)            │
-│  - 3 rows, one per category, chips fill the width:                        │
-│    • Customer inputs (client name, dates, contract length)                │
+│  - 4 rows, one per category, chips fill the width:                        │
+│    • Customer inputs (client name, location count)                        │
+│    • Fixed & auto-filled (dates, validity, payment terms)                 │
 │    • Pricing (tier, rate, subtotal, tax, total; loop tables as ⊞ chips)   │
 │    • Paragraphs (chip glyph: ❝ fixed text / ✦ drafted per client)         │
 │  - Tap a chip → detail tray docks under the ledger, connector points at it│
@@ -66,18 +67,19 @@ The Rush Away Auto-Proposal onboarding workflow is an **agentic configuration wo
 │  - Assumptions strip → one editable card per table → "What we ask the     │
 │    lead" → calculation ledger (readable rule · sample · quotation · ✓/✗)  │
 │  - Tap a ledger row → tray edits kind / operator / operands / conditions  │
-│  - Footer "N of M match" · [Regenerate] · [Proceed to Lead Simulation ➔]  │
+│  - Footer "N of M match" · [Regenerate] · [Proceed to Check & Generate    │
+│    Proposal ➔]                                                            │
 └───────────────────────────────────────────────────────────────────────────┘
                                       │
-               User clicks [Proceed to Lead Simulation ➔]
+          User clicks [Proceed to Check & Generate Proposal ➔]
                                       ▼
 ┌───────────────────────────────────────────────────────────────────────────┐
-│  STAGE 5: LEAD SIMULATION & PROPOSAL VERIFICATION                         │
-│  - Paste unstructured lead email or click "Load Sample Inquiry"           │
-│  - Gemini extracts lead parameters; deterministic math runs               │
-│  - Gemini drafts tailored narrative based on prompt tips                  │
-│  - easy-template-x renders final .docx proposal                           │
-│  - In-browser preview via docx-preview + one-click download               │
+│  STAGE 5: CHECK & GENERATE PROPOSAL                                       │
+│  - Lead textarea prefilled with the sample message → [Generate proposal]  │
+│  - Facts read from the message (read-only; missing → ask / reply loop)    │
+│  - Deterministic numbers ledger; review rule → flagged for the human      │
+│  - Placeholder narrative → easy-template-x .docx → LibreOffice PDF        │
+│  - PDF preview in an iframe + .docx / .pdf downloads                       │
 └───────────────────────────────────────────────────────────────────────────┘
 
 AMBIENT SHELL COMPONENTS:
@@ -122,8 +124,8 @@ The purpose of this step is an **overview first, detail on demand**: the user sh
 
 #### Layout
 - **Header:** icon (indigo sparkle while the step is open, emerald tick once a template exists — same "settled" signal as Stages 1 and 3), title `Variables`, subtitle `N spots in <Company>'s quotation will change for each client.` followed by the one instruction in foreground weight: `Tap one to check it.` Right: ghost `Re-scan`.
-- **Ledger:** three rows, one per category, label column left (`w-28`, muted) and chips wrapping to fill the rest of the width. No filter tabs, no "All" view.
-  - `Customer inputs` · `Pricing` (loop tables appear here as chips with a table glyph) · `Paragraphs` (chips carry a glyph: quote mark = fixed text, wand = drafted per client, so the mode decision is visible from the overview).
+- **Ledger:** four rows, one per category, label column left (`w-28`, muted) and chips wrapping to fill the rest of the width. No filter tabs, no "All" view.
+  - `Customer inputs` · `Fixed & auto-filled` (values the lead is never asked: dates, seller-set terms — a screen label, processed exactly like Customer inputs; see [plan.md](plan.md) §3) · `Pricing` (loop tables appear here as chips with a table glyph) · `Paragraphs` (chips carry a glyph: quote mark = fixed text, wand = drafted per client, so the mode decision is visible from the overview).
   - `+ Add one` is a dashed chip at the end of the last row.
 - **Chip anatomy:** `h-7 px-2.5 rounded-md text-xs font-medium`, `bg-card border-border shadow-xs`, hover lifts 1px. States: selected = inverted (`bg-foreground text-background`); left out = dashed border + strikethrough, stays in place; needs attention (template missed it) = 6px amber dot.
 - **Detail tray:** docks under the ledger with a connector that slides to the selected chip. Opaque `bg-muted` surface, `rounded-xl`, hairline below the header row.
@@ -140,7 +142,7 @@ Category no longer gets a hue. Colour is spent on **state only**: inverted = sel
 Every user edit in the tray (rename, category, mode, text, leave out / bring back, add, re-scan) calls `onVariablesEdited`; `App` drops `templateStats`, the Stage 3 card disappears and the header icon reverts to the sparkle until the user generates again.
 
 #### Scanning state
-While extraction runs the card shows an agent trace (`Reading the quotation → Finding what changes per client → Sorting into customer inputs, pricing and paragraphs → Checking for repeating tables`, ticking on a timer) above a ghost ledger of pulsing chip placeholders, with the shimmer bar on the card's top edge. The trace is timer-driven because the backend is one opaque call (`ponytail:` comment in code names the upgrade path: stream progress from `/variables/extract`).
+While extraction runs the card shows an agent trace (`Reading the quotation → Finding what changes per client → Sorting into inputs, fixed values, pricing and paragraphs → Checking for repeating tables`, ticking on a timer) above a ghost ledger of pulsing chip placeholders, with the shimmer bar on the card's top edge. The trace is timer-driven because the backend is one opaque call (`ponytail:` comment in code names the upgrade path: stream progress from `/variables/extract`).
 
 ---
 
@@ -170,17 +172,20 @@ The user needs three things here: did it work, is anything wrong, what's next. T
    - **Elevation & Layout:** Cards are pure elevated white (`bg-card`) with crisp 1px borders and `hover:-translate-y-0.5 transition-transform duration-100`.
    - **Input Editing:** Numeric cells enforce `tabular-nums`, commit on blur / Enter, and use clean focus rings (`focus-visible:ring-2 focus-visible:ring-blue-500/20`), avoiding layout jitter.
    - **No Technical Jargon:** the deck never shows JSON; the raw `PricingRules` live in the Dev Dock.
-   - **Primary Action:** footer "N of M match the quotation", ghost `[Regenerate]`, theme-blue `[ Proceed to Lead Simulation ➔ ]` (`bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-xs btn-tactile`), disabled while validation errors exist.
+   - **Primary Action:** footer "N of M match the quotation", ghost `[Regenerate]`, theme-blue `[ Proceed to Check & Generate Proposal ➔ ]` (`bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-xs btn-tactile`), disabled while validation errors exist.
 
 ---
 
-### 3.5 Stage 5: Lead Simulator & Proposal Verification (`LeadSimulator.tsx`)
+### 3.5 Stage 5: Check & Generate Proposal (`LeadSimulator.tsx`)
 
-1. **Inbound Simulation:**
-   - Multi-line inquiry textarea using the Stage 1 fluid input pattern: auto-resizes to fit email text, padded with `p-1`, equipped with `overflow-y-auto max-h-72 resize-none` to prevent clipped lines, and no internal divider lines.
-   - Clean quick-action button: `Load Sample Inquiry` pre-configured per company.
-2. **Deterministic Calculation Display:** Formatted line-item breakdown using `tabular-nums` on an elevated surface.
-3. **Proposal Preview:** Embedded in-browser preview via `docx-preview` housed in a clean container with `[ Download Proposal (.docx) ]` (`bg-blue-600 hover:bg-blue-500 text-white`).
+Rendered under the pricing deck once `working_state.stage === "lead_simulation"`. Header: inbox icon (emerald tick once a proposal exists), `Check & Generate Proposal`, subtitle `Paste what a lead sent you. The numbers come from the rules above, the words from the drafter.`
+
+1. **Lead message:** the Stage 1 fluid textarea (auto-resize, `p-1`, `overflow-y-auto max-h-72 resize-none`, no dividers), prefilled with the company's dev-only `sample_lead_text` and re-synced on company switch; one primary `[ Generate proposal ➔ ]` (`bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-xs btn-tactile`) that runs extract → generate back to back. The `.shimmer-bar` runs on the card edge while any call is in flight; every failure is an explicit panel with `Try again`, never a stuck shimmer.
+2. **Facts panel (`What the lead told us`):** one read-only value row per fact (booleans as `Yes / No`, lists comma-joined, integers `tabular-nums`). A required fact the thread did not answer reads `not in the message` in an amber ring; the run stops here and a **conversation card** drafts the ask (`We asked`: subject, body, `Copy` on the latest one) and opens a reply box (`What the lead wrote back…`) with `[ Let the model answer as the lead ]` — which fills the box, still editable — and `[ Send reply & re-read ]`. The reply joins the thread as `The lead replied`; the whole thread is re-read, facts are replaced outright (the lead's latest word wins, there are no hand edits), and the loop either drafts the next ask or generates on its own once nothing is missing.
+3. **Assumptions strip:** amber `Read between the lines:` list of the extractor's judgement calls (range picked, inferred tier, counted devices).
+4. **Numbers ledger (`The numbers`):** the in-document money / percent / integer values in calculation order, `font-mono tabular-nums`, the last money value emphasised. No benchmark banner on Stage 5.
+5. **Draft box**: when `needs_review` is non-empty, a red box above the proposal, "Draft: not ready to send. Check these first:", lists the reasons. The document and both downloads are still there; values a problem made unknowable print `[to confirm]`.
+6. **Split view** (`lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]`): facts, assumptions and ledger left; right a PDF `<iframe>` (or `PDF preview unavailable — download the .docx` with the reason) and `[ Download .docx ]` `[ Download .pdf ]` in the primary style. `docx-preview` is not used here.
 
 ---
 

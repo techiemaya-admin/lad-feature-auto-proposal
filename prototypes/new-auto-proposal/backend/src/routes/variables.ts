@@ -25,8 +25,8 @@ export interface VariableRow {
   updated_at: string;
 }
 
-const CATEGORIES = ["customer_input", "pricing", "paragraph"];
-const DATA_TYPES = ["string", "number", "currency", "enum", "paragraph"];
+const CATEGORIES = ["customer_input", "fixed", "pricing", "paragraph"];
+const DATA_TYPES = ["string", "number", "currency", "enum", "date", "paragraph"];
 
 function normalizeWhitespace(text: string): string {
   return text.replace(/\u00A0/g, " ").replace(/\s+/g, " ").trim();

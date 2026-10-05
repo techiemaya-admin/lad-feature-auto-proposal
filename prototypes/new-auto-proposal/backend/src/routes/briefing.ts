@@ -6,6 +6,7 @@ import fs from "node:fs";
 import { toMarkdown } from "@firecrawl/anydoc";
 import { getDatabase } from "../db/database.js";
 import { formatCompanyResponse, CompanyRow } from "./companies.js";
+import { clearProposalFiles } from "../services/proposal-generator.service.js";
 
 const router = Router({ mergeParams: true });
 
@@ -128,6 +129,7 @@ router.post("/briefing/submit", handleUpload, async (req: Request, res: Response
 
     // Downstream state initialization / clear previous downstream results on re-submit
     db.prepare("DELETE FROM company_variables WHERE company_id = ? AND template_id = ?").run(id, templateId);
+    clearProposalFiles(id, templateId);
     const workingState = {
       stage: "variable_review",
       briefing_completed_at: now,
@@ -216,6 +218,7 @@ router.post("/briefing/unlock", (req: Request, res: Response): void => {
         // Ignore file unlink error
       }
     }
+    clearProposalFiles(id, templateId);
 
     // Reset downstream progress while preserving prompt text and quotation file
     const resetWorkingState = {

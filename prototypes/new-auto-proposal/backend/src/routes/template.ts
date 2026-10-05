@@ -5,6 +5,7 @@ import path from "node:path";
 import { getDatabase } from "../db/database.js";
 import { mutateDocumentTemplate } from "../services/template-mutator.service.js";
 import { logPipelineArtifact } from "../services/pipeline-log.js";
+import { clearProposalFiles } from "../services/proposal-generator.service.js";
 import { toMarkdown } from "@firecrawl/anydoc";
 import type { CompanyRow } from "./companies.js";
 
@@ -29,6 +30,7 @@ router.post("/template/generate", async (req: Request, res: Response): Promise<v
       return;
     }
 
+    clearProposalFiles(id, templateId);
     // Execute in-memory AST mutations
     const result = await mutateDocumentTemplate(id, templateId);
 

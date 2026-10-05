@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Router, Request, Response } from "express";
 import { getDatabase, getStorageDir } from "../db/database.js";
-import { resetCompanyById } from "../db/seed.js";
+import { findSeed, resetCompanyById } from "../db/seed.js";
 
 const router = Router();
 
@@ -67,6 +67,8 @@ export function formatCompanyResponse(row: CompanyRow) {
     phone: row.phone,
     data: parsedData,
     pricing_spec: row.pricing_spec,
+    // Dev-only Stage 5 prefill; read from test_seeds.json, never stored.
+    sample_lead_text: findSeed(row.company_id)?.sample_lead_text || "",
     working_state: parsedWorkingState,
     briefing_locked: Boolean(row.briefing_locked),
     document_metadata: documentMetadata,
@@ -224,7 +226,6 @@ router.put("/:id/profile", (req: Request, res: Response): void => {
       company_details,
       ideal_customer,
       offer,
-      pricing_engine_spec,
       pricing_spec,
       data,
     } = req.body;
@@ -250,20 +251,8 @@ router.put("/:id/profile", (req: Request, res: Response): void => {
       parsedData.offer = { ...(parsedData.offer || {}), ...offer };
     }
 
-    // Determine final pricing spec string
-    let finalPricingSpec = existing.pricing_spec;
-    if (typeof pricing_spec === "string") {
-      finalPricingSpec = pricing_spec;
-    } else if (pricing_engine_spec?.pricing_context) {
-      finalPricingSpec = pricing_engine_spec.pricing_context;
-    } else if (typeof pricing_engine_spec === "string") {
-      finalPricingSpec = pricing_engine_spec;
-    }
-
-    parsedData.pricing_engine_spec = {
-      ...(parsedData.pricing_engine_spec || {}),
-      pricing_context: finalPricingSpec,
-    };
+    // pricing_spec column is the only home of the pricing text (dev seed lives in test_seeds.json)
+    const finalPricingSpec = typeof pricing_spec === "string" ? pricing_spec : existing.pricing_spec;
 
     const companyName = parsedData.company_basics?.company_name || existing.company_name;
     const industry = parsedData.company_details?.industry || existing.industry;

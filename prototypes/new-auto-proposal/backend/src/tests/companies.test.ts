@@ -7,6 +7,7 @@ import { initDatabase, closeDatabase, getDatabase } from "../db/database.js";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { DatabaseSync } from "node:sqlite";
 
 test("Companies: reset re-seeds the mock default", async (t) => {
   // Use isolated temporary SQLite database for tests
@@ -48,6 +49,9 @@ test("Companies: reset re-seeds the mock default", async (t) => {
     const getRes = await request(app).get("/api/companies/co1_seo");
     assert.equal(getRes.status, 200);
     assert.ok(getRes.body.company.pricing_spec.includes("Local is $1000/mo"));
+    // Dev-only seeds come from test_seeds.json: the pricing text lands in pricing_spec,
+    // the sample lead is attached to the response (never stored).
+    assert.ok(getRes.body.company.sample_lead_text.includes("Bloom & Co"));
 
     // Shared profile reset must preserve template variables
     const postResetVars = await request(app).get("/api/companies/co1_seo/templates/default-co1_seo/variables");
@@ -55,4 +59,35 @@ test("Companies: reset re-seeds the mock default", async (t) => {
     assert.equal(postResetVars.body.variables.length, 1);
   });
 
+});
+
+test("Database: a pre-`fixed` company_variables table is rebuilt in place, rows kept", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "auto-proposal-migrate-"));
+  const dbPath = path.join(dir, "old.sqlite");
+  closeDatabase();
+  initDatabase(dbPath);
+  seedTemplateFixtures();
+  closeDatabase();
+  const old = new DatabaseSync(dbPath);
+  old.exec(`
+    DROP TABLE company_variables;
+    CREATE TABLE company_variables (
+      id TEXT PRIMARY KEY, company_id TEXT NOT NULL, template_id TEXT, variable_name TEXT NOT NULL, natural_name TEXT NOT NULL,
+      category TEXT NOT NULL CHECK (category IN ('customer_input', 'pricing', 'paragraph', 'table_loop', 'comparison_matrix', 'compound_table')),
+      data_type TEXT NOT NULL CHECK (data_type IN ('string', 'number', 'currency', 'enum', 'date', 'paragraph', 'table')),
+      is_custom INTEGER DEFAULT 0, is_deleted INTEGER DEFAULT 0, sort_order INTEGER DEFAULT 0, descriptor_json TEXT NOT NULL,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE INDEX idx_company_variables_lookup ON company_variables (company_id, category, is_deleted);
+    INSERT INTO company_variables VALUES ('v1', 'co1_seo', 'default-co1_seo', 'x', 'X', 'customer_input', 'string', 0, 0, 0, '{}', 't', 't');
+  `);
+  old.close();
+  closeDatabase();
+  const db = initDatabase(dbPath);
+  db.prepare("INSERT INTO company_variables VALUES ('v2', 'co1_seo', 'default-co1_seo', 'd', 'D', 'fixed', 'date', 0, 0, 1, '{}', 't', 't')").run();
+  assert.equal((db.prepare("SELECT count(*) AS n FROM company_variables").get() as { n: number }).n, 2);
+  assert.equal((db.prepare("SELECT template_id FROM company_variables WHERE id = 'v1'").get() as any).template_id, "default-co1_seo");
+  assert.throws(() => db.prepare("UPDATE company_variables SET template_id = 'missing' WHERE id = 'v1'").run(), /belonging/);
+  assert.deepEqual(db.prepare("PRAGMA foreign_key_check").all(), []);
+  closeDatabase();
+  try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* handle may linger on Windows */ }
 });

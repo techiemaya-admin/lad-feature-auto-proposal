@@ -7,7 +7,7 @@ import os from "node:os";
 import { Document } from "docxmlater";
 import { toMarkdown } from "@firecrawl/anydoc";
 import { applyTemplate } from "../services/template-mutator.service.js";
-import { buildProposalPayload, evaluate, formatLike, parseSampleNumber, sampleCheck, validate } from "../services/pricing-calculator.js";
+import { BLANK, buildProposalPayload, evaluate, formatLike, parseSampleNumber, sampleCheck, validate } from "../services/pricing-calculator.js";
 import { fromWire, toWire, type PricingRules, type Stage2Context, type Value } from "../services/pricing-rules.types.js";
 
 /**
@@ -59,6 +59,7 @@ test("co1 §4: cap boundaries, absent discount row, non-TX lead", () => {
 
   const monthly = run("co1_seo", { location_count: 2, client_state: "TX" });
   assert.equal(monthly.present.annual_discount_amount, false); // row absent, not $0.00
+  assert.equal(buildProposalPayload(rulesOf("co1_seo"), monthly, stage2Of("co1_seo")).annual_discount_amount, ""); // skipped, not broken
   assert.equal(monthly.values.subtotal_amount, 36000);
   assert.equal(monthly.values.total_investment_amount, 38970);
 
@@ -67,6 +68,7 @@ test("co1 §4: cap boundaries, absent discount row, non-TX lead", () => {
   assert.equal(ca.present.tax_amount, false);
   assert.equal(ca.values.total_investment_amount, 32400);
   assert.deepEqual(ca.needs_review, []); // a guarded lookup miss is not a review
+  assert.equal(ca.present.total_investment_amount, true); // a skipped tax line leaves the total printed
 });
 
 test("co2 benchmark: 42 seats, Standard, 5 devices, OH → $2,734.80/mo + $3,150.00 setup", () => {
@@ -106,6 +108,12 @@ test("co2 §4: inclusive band edges, non-stacking bands, seat floor, untaxed set
   assert.equal(noState.values.has_tax, false);
   assert.equal(noState.present.tax_amount, false);
   assert.match(noState.needs_review.map((r) => r.reason).join(), /Client state/);
+  // a broken value blanks everything computed from it, through has_tax too — never a total that silently drops tax
+  const noStatePayload = buildProposalPayload(rulesOf("co2_msp"), noState, stage2Of("co2_msp"));
+  assert.equal(noState.present.total_monthly_recurring, false);
+  assert.equal(noStatePayload.total_monthly_recurring, BLANK);
+  assert.equal(noStatePayload.has_tax, false);
+  assert.equal(noStatePayload.seat_subtotal, "$2,520.00"); // the rest still prints
 
   // choice inputs are matched loosely and canonicalised to the table's spelling
   assert.equal(run("co2_msp", { seat_count: 42, selected_tier: " standard ", client_state: "OH" }).values.selected_tier, "Standard");
@@ -188,9 +196,66 @@ test("validate: domain-level errors with paths", () => {
   assert.match(messages(errs((r) => { (r.variables.find((v) => v.name === "tax_amount") as any).condition_flag = "tax_rate"; })), /condition_flag.*tax_rate.*not a condition/);
   assert.match(messages(errs((r) => { r.variables.push({ ...r.variables[0], name: "location_count" }); })), /duplicate.*location_count/i);
   assert.match(messages(errs((r) => { r.variables.push({ ...r.variables[0], name: "Bad Name" }); })), /identifier/);
+  // seen live on co2: the region compared against the jurisdiction-name column rather than the code column
+  // its own answers come from, so no row ever matched. ("Ohio" as the sample region is caught by sampleCheck
+  // instead of validate now — see "a region the seller's table does not list" below.)
+  assert.match(messages(errs((r) => { (r.variables.find((v) => v.name === "tax_rate") as any).where[0].column = "state_name"; })), /client_state.*answered from taxes\.state.*compared against taxes\.state_name/);
+  // seen live on co3: a rush add-on priced at 20% of base sat in the add-ons table beside fixed fees, so the
+  // loop's amount was add(col:amount, col:percent_of_base) and the proposal printed "$0.20" for a $1,900 line.
+  assert.match(messages(errs((r) => { (r.variables.find((v) => v.name === "tax_amount") as any).op = "add"; })), /tax_amount.*"add" mixes money and percent/);
+  // seen live on co3: a review rule naming a package by its label goes silently dead when the deck renames that row
+  const byName = (r: PricingRules) => r.review_rules.push({ when: [{ var: "project_template_name", op: "eq", value: "Custom Web App" }], reason: "scoping" });
+  assert.deepEqual(errs(byName, "co3_dev"), []);
+  assert.match(messages(errs((r) => { byName(r); r.tables.find((t) => t.id === "templates")!.rows[3].name = "Custom App"; }, "co3_dev")), /project_template_name is compared to "Custom Web App", which is not one of its options/);
+  // scaling ops mix units by design — money × percent is exactly how every tax and discount line is built
+  assert.deepEqual(errs((r) => { (r.variables.find((v) => v.name === "tax_amount") as any).op = "mul"; }), []);
+  // seen live on co2: names and dates defined as "text" inputs — Stage 5 owns those, the sheet must not ask for them
+  assert.match(messages(errs((r) => { r.variables.push({ name: "proposal_date", label: "Date", in_document: true, unit: "text", condition_flag: "", kind: "input", input_type: "text" as any, required: true }); })), /proposal_date.*input_type "text"/);
   // an aggregate over all rows needs no key column (the model leaves it "" — seen live on every first attempt)
   assert.deepEqual(errs((r) => { (r.variables.find((v) => v.name === "tax_match_count") as any).key_column = ""; }), []);
   assert.match(messages(errs((r) => { (r.variables.find((v) => v.name === "addon_items") as any).key_column = ""; }, "co3_dev")), /addon_items.*key column/);
+  // a silent lead gets the default straight from code, so it must be a listed option / a number / never a state
+  assert.match(messages(errs((r) => { (r.variables.find((v) => v.name === "selected_tier") as any).default = "Platinum"; }, "co2_msp")), /selected_tier.*"Platinum".*Essential/);
+  assert.deepEqual(errs((r) => { (r.variables.find((v) => v.name === "selected_tier") as any).default = "standard"; }, "co2_msp"), []);
+  assert.match(messages(errs((r) => { (r.variables.find((v) => v.name === "client_state") as any).default = "TX"; })), /client_state.*never assumed/);
+  // an input a tax lookup reads is never assumed either, whatever its type
+  assert.match(messages(errs((r) => {
+    const s = r.variables.find((v) => v.name === "client_state") as any;
+    s.input_type = "choice"; s.options = ["TX", "OH"]; s.default = "TX";
+  })), /client_state: tax is worked out from this/);
+});
+
+test("a lookup miss: review by default, the seller's fallback when set", () => {
+  const rules = rulesOf("co1_seo");
+  const rate = rules.variables.find((v) => v.name === "tax_rate") as any;
+  rate.condition_flag = ""; // unguarded, so a miss actually reaches the lookup
+  const ca = { location_count: 2, client_state: "CA", annual_prepay: true };
+
+  const stopped = evaluate(rules, ca);
+  assert.equal(stopped.present.tax_rate, false);
+  assert.match(stopped.needs_review.map((r) => r.reason).join("\n"), /Tax rate: no row/);
+
+  rate.fallback = 0.2; // the seller's own policy: everyone the table does not list pays 20%
+  const covered = evaluate(rules, ca);
+  assert.equal(covered.values.tax_rate, 0.2);
+  assert.deepEqual(covered.needs_review, []);
+  assert.deepEqual(validate(rules, stage2Of("co1_seo")), []);
+  assert.equal((fromWire(toWire(rules)).variables.find((v) => v.name === "tax_rate") as any).fallback, 0.2);
+
+  rate.fallback = "twenty percent"; // a percent column takes a number
+  assert.match(validate(rules, stage2Of("co1_seo")).map((e) => e.message).join("\n"), /tax_rate.*fallback/);
+});
+
+test("a region the seller's table does not list still matches no row — and a mis-spelt sample is caught", () => {
+  const rules = rulesOf("co1_seo");
+  // open by design: a California lead for a TX-only seller is untaxed, not a clarification email
+  assert.equal(evaluate(rules, { location_count: 2, client_state: "California" }).values.has_tax, false);
+  // the seller's own vocabulary wins when the lead uses a different case
+  assert.equal(evaluate(rules, { location_count: 2, client_state: "tx" }).values.client_state, "TX");
+  // "Texas" where the table says "TX" no longer errors in validate; the sample check reports it
+  rules.sample_inputs.client_state = "Texas";
+  const bad = sampleCheck(rules, evaluate(rules, rules.sample_inputs), stage2Of("co1_seo"));
+  assert.equal(bad.find((c) => c.name === "tax_amount")?.ok, false);
 });
 
 test("formatLike renders a value in the sample's own notation", () => {
@@ -206,6 +271,10 @@ test("formatLike renders a value in the sample's own notation", () => {
   assert.equal(formatLike("25–49 seat band", "50+ seat band"), "50+ seat band");
   assert.equal(formatLike("Yes", true), "Yes");
   assert.equal(formatLike("$3,000/mo", null), "");
+  assert.equal(formatLike("two", 2), "two"); // the quotation spelled the count as a word
+  assert.equal(formatLike("Two", 3), "Three");
+  assert.equal(formatLike("two", 15), "15");
+  assert.equal(parseSampleNumber("two"), 2);
   assert.equal(parseSampleNumber("$36,000.00"), 36000);
   assert.equal(parseSampleNumber("8.25%"), 0.0825);
   assert.equal(parseSampleNumber("42"), 42);

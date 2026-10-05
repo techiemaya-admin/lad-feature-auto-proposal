@@ -29,6 +29,29 @@ export function getStorageDir(): string {
   return defaultDir;
 }
 
+const COMPANY_VARIABLES_DDL = `
+    CREATE TABLE IF NOT EXISTS company_variables (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      template_id TEXT,
+      variable_name TEXT NOT NULL,
+      natural_name TEXT NOT NULL,
+      category TEXT NOT NULL CHECK (category IN ('customer_input', 'fixed', 'pricing', 'paragraph', 'table_loop', 'comparison_matrix', 'compound_table')),
+      data_type TEXT NOT NULL CHECK (data_type IN ('string', 'number', 'currency', 'enum', 'date', 'paragraph', 'table')),
+      is_custom INTEGER DEFAULT 0,
+      is_deleted INTEGER DEFAULT 0,
+      sort_order INTEGER DEFAULT 0,
+      descriptor_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (company_id) REFERENCES company_sessions(company_id) ON DELETE CASCADE,
+      FOREIGN KEY (template_id) REFERENCES proposal_templates(template_id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_company_variables_lookup
+    ON company_variables (company_id, category, is_deleted);
+`;
+
 export function initDatabase(dbPath?: string): DatabaseSync {
   let finalPath: string;
 
@@ -93,26 +116,7 @@ export function initDatabase(dbPath?: string): DatabaseSync {
         ON DELETE CASCADE
     );
 
-    CREATE TABLE IF NOT EXISTS company_variables (
-      id TEXT PRIMARY KEY,
-      company_id TEXT NOT NULL,
-      template_id TEXT,
-      variable_name TEXT NOT NULL,
-      natural_name TEXT NOT NULL,
-      category TEXT NOT NULL CHECK (category IN ('customer_input', 'pricing', 'paragraph', 'table_loop', 'comparison_matrix', 'compound_table')),
-      data_type TEXT NOT NULL CHECK (data_type IN ('string', 'number', 'currency', 'enum', 'paragraph', 'table')),
-      is_custom INTEGER DEFAULT 0,
-      is_deleted INTEGER DEFAULT 0,
-      sort_order INTEGER DEFAULT 0,
-      descriptor_json TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      FOREIGN KEY (company_id) REFERENCES company_sessions(company_id) ON DELETE CASCADE,
-      FOREIGN KEY (template_id) REFERENCES proposal_templates(template_id) ON DELETE CASCADE
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_company_variables_lookup 
-    ON company_variables (company_id, category, is_deleted);
+    ${COMPANY_VARIABLES_DDL}
 
     CREATE TABLE IF NOT EXISTS app_settings (
       key TEXT PRIMARY KEY,
@@ -158,6 +162,25 @@ export function initDatabase(dbPath?: string): DatabaseSync {
     db.exec("ALTER TABLE company_sessions ADD COLUMN briefing_locked INTEGER DEFAULT 0;");
   }
 
+  // SQLite cannot alter a CHECK: databases created before the `fixed` category (or the older `date` data_type) get the table rebuilt in place.
+  const variablesDdl = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'company_variables'").get() as { sql: string } | undefined;
+  if (variablesDdl && !variablesDdl.sql.includes("'fixed'")) {
+    // Standard SQLite rebuild recipe: FK checks off (must be outside the transaction) so the copy never trips on them.
+    const oldColumns = db.prepare("PRAGMA table_info(company_variables)").all() as Array<{ name: string }>;
+    const copyColumns = oldColumns.map(c => c.name).join(", ");
+    db.exec(`
+      PRAGMA foreign_keys = OFF;
+      BEGIN;
+      DROP INDEX IF EXISTS idx_company_variables_lookup;
+      ALTER TABLE company_variables RENAME TO company_variables_old;
+      ${COMPANY_VARIABLES_DDL}
+      INSERT INTO company_variables (${copyColumns}) SELECT ${copyColumns} FROM company_variables_old;
+      DROP TABLE company_variables_old;
+      COMMIT;
+      PRAGMA foreign_keys = ON;
+    `);
+  }
+
   // Auto-seed if table is empty
   const countStmt = db.prepare("SELECT count(*) as count FROM company_sessions");
   const row = countStmt.get() as { count: number };
@@ -166,6 +189,13 @@ export function initDatabase(dbPath?: string): DatabaseSync {
   }
 
   migrateTemplates(db, getStorageDir(), Boolean(row && row.count > 0));
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_variables_template_lookup ON company_variables(company_id, template_id, category, is_deleted);
+    CREATE TRIGGER IF NOT EXISTS variable_template_insert BEFORE INSERT ON company_variables
+    WHEN NEW.template_id IS NULL OR NOT EXISTS (SELECT 1 FROM proposal_templates WHERE company_id = NEW.company_id AND template_id = NEW.template_id)
+    BEGIN SELECT RAISE(ABORT, 'Variable requires a template belonging to its company'); END;
+    CREATE TRIGGER IF NOT EXISTS variable_template_update BEFORE UPDATE OF company_id, template_id ON company_variables
+    WHEN NEW.template_id IS NULL OR NOT EXISTS (SELECT 1 FROM proposal_templates WHERE company_id = NEW.company_id AND template_id = NEW.template_id)
+    BEGIN SELECT RAISE(ABORT, 'Variable requires a template belonging to its company'); END;`);
   const templateColumns = db.prepare("PRAGMA table_info(proposal_templates)").all() as Array<{ name: string }>;
   if (!templateColumns.some(c => c.name === "description")) {
     db.exec("ALTER TABLE proposal_templates ADD COLUMN description TEXT NOT NULL DEFAULT ''");

@@ -1,0 +1,20 @@
+{
+  "note": "Dev-only seeds for the prototype. pricing_spec prefills the Stage 1 prompt box; sample_lead_text prefills the Stage 5 lead textarea (verbatim from verification_guide.md). Neither is imported by the main backend — companies_dataset.json holds only imported data.",
+  "companies": [
+    {
+      "company_id": "co1_seo",
+      "pricing_spec": "We have 3 packages. Local is $1000/mo, for one location - GBP cleanup, on page stuff, one blog post a month. Growth is $3000/mo, up to 3 locations, more content (4 posts/mo), citations. Authority is $8000/mo, unlimited locations, dedicated strategist, weekly content - mostly our franchise clients end up here. For Austin/Texas clients we add sales tax, around 8.25%, bookkeeper has the exact number. Also do 10% off if someone pays annually upfront instead of monthly, always forget to put that down but we do offer it.",
+      "sample_lead_text": "Hi, saw your message about local SEO. We're Bloom & Co, a dental group — we actually have two clinic locations now in the Austin area and neither shows up on Google when people search near either one. What would it cost to fix that? Also, would rather just pay once a year if that gets us a better rate than monthly."
+    },
+    {
+      "company_id": "co2_msp",
+      "pricing_spec": "Pricing is per seat per month based on support tier. Essential $45/seat/mo - basic helpdesk, patching, monitoring, business hours only. Standard $65/seat/mo - faster SLA, backup management, after hours emergency line. Premium $85/seat/mo - vCIO quarterly review, 24/7 support, priority response under 1hr. Once a client crosses 25 total seats it's $5/seat off whatever tier rate, and past 50 seats it's $10/seat off instead (not stacked, just whichever band they're in). Devices beyond a 1:1 ratio with seats - servers, shared workstations, kiosks - billed separately at $12/device/mo regardless of tier. One time onboarding fee of $75 per seat. 10 seat minimum commit (billed for 10 even if fewer, though we don't really take on anyone smaller than that anyway). Tax is flat 6% Ohio rate for home state clients, applied to the recurring monthly total, not the setup fee.",
+      "sample_lead_text": "We're Whitfield & Associates, a law firm — 42 employees total, split across two office locations. No real IT support right now beyond one guy who helps when something breaks. We'd want the tier with faster response and backups, not the bare minimum, but we don't need the round-the-clock stuff. We also run 5 servers in-house beyond everyone's regular laptop. We're based in Ohio if that matters for pricing."
+    },
+    {
+      "company_id": "co3_dev",
+      "pricing_spec": "Fixed templates. Landing Page $2,500, single page, one revision round, ~2 weeks - phases Design then Build/Launch. Business Website $6,000, up to 8 pages, phases Discovery/Design/Build/Launch. E-commerce $9,500, up to 100 products, Shopify or custom cart, phases Discovery/Design/Build/QA/Launch. Custom Web App starts at $22,000 - always needs a scoping call so that's a starting price only, not final. Payment split is usually 50% deposit / 50% at delivery, sometimes thirds for Business Website and E-commerce if the client wants that. Add-ons: CMS integration +$800, copywriting +$600, basic SEO setup +$450, extra revision round +$300, rush delivery (~30% faster) +20% of base price. 2+ add-ons bundled = 10% off the add-on subtotal, started that last year. Tax - honestly not sure, ask accounting, don't think we charge sales tax on services in our state but not 100% on that.",
+      "sample_lead_text": "Hi! We're Rosewood Home Goods, we sell home decor and want to finally start selling online — probably around 60 products to start. We don't have anyone who can write product descriptions well, so it'd be great if you could handle that too, and if you could also just make sure the basic SEO stuff is set up since we have zero idea how to do that ourselves. No rush on timeline, just want it done properly."
+    }
+  ]
+}

@@ -17,8 +17,8 @@ Respond with ONLY a single JSON object — no markdown fences, no commentary —
   "variables": [
     {
       "variable_name": string, "natural_name": string,
-      "category": "customer_input" | "pricing" | "paragraph",
-      "data_type": "string" | "number" | "currency" | "enum" | "paragraph",
+      "category": "customer_input" | "fixed" | "pricing" | "paragraph",
+      "data_type": "string" | "number" | "currency" | "enum" | "date" | "paragraph",
       "sample_text": string, "description": string, "context_text": string, "condition_flag": string,
       "enum_options": string[] (optional),
       "paragraph_config": { "mode": "fixed" | "ai_generated", "purpose": string, "tone": string, "length_guideline": string } (optional)
@@ -32,7 +32,7 @@ Every field above without "(optional)" is required, use "" for not-applicable st
 `;
 
 /** One JSON-mode chat completion: prompt + spelled-out shape in, parsed JSON out. Every DeepSeek feature goes through here. */
-export async function generateJsonWithDeepSeek<T>(prompt: string, jsonShapeSuffix: string, model = "deepseek-flash"): Promise<T> {
+export async function generateJsonWithDeepSeek<T>(prompt: string, jsonShapeSuffix: string, model = "deepseek-flash", temperature = 0.1): Promise<T> {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
     throw new Error("DEEPSEEK_API_KEY environment variable is not set");
@@ -50,7 +50,7 @@ export async function generateJsonWithDeepSeek<T>(prompt: string, jsonShapeSuffi
       model,
       messages: [{ role: "user", content: prompt + jsonShapeSuffix }],
       response_format: { type: "json_object" },
-      temperature: 0.1,
+      temperature,
     }),
   });
 

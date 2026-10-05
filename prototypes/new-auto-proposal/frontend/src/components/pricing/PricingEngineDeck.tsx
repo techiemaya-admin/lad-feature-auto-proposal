@@ -6,7 +6,7 @@ import type { PricingRules, PricingRulesState, RuleVariable, ValidationError } f
 import type { CompanyVariable, CompoundTable } from "../../types/variable";
 import { RuleTableCard } from "./RuleTableCard";
 import { LedgerTray } from "./LedgerTray";
-import { formatValue, readable, readableConds } from "./readable";
+import { formatValue, readable, readableConds, readableDefault } from "./readable";
 
 /**
  * Stage 4. One card per compiled table, the lead inputs, and a calculation ledger that
@@ -32,7 +32,7 @@ interface PricingEngineDeckProps {
   isProceeding?: boolean;
 }
 
-const INPUT_TYPE_LABEL: Record<string, string> = { integer: "a number", choice: "one option", multi_choice: "several options", boolean: "yes / no", us_state: "US state" };
+const INPUT_TYPE_LABEL: Record<string, string> = { integer: "a number", choice: "one option", multi_choice: "several options", boolean: "yes / no", region: "a region" };
 
 export const PricingEngineDeck: React.FC<PricingEngineDeckProps> = ({
   companyId,
@@ -119,6 +119,7 @@ export const PricingEngineDeck: React.FC<PricingEngineDeckProps> = ({
   const order = state?.evaluation?.order ?? rules?.variables.map((v) => v.name) ?? [];
   const ledger = rules ? order.map((n) => rules.variables.find((v) => v.name === n)!).filter((v) => v && v.kind !== "input") : [];
   const inputs = rules?.variables.filter((v) => v.kind === "input") ?? [];
+  const assumptions = inputs.filter((v) => v.default !== undefined).length;
   const checks = state?.sample_check ?? [];
   const matched = checks.filter((c) => c.ok).length;
   const allGreen = checks.length > 0 && matched === checks.length;
@@ -221,6 +222,11 @@ export const PricingEngineDeck: React.FC<PricingEngineDeckProps> = ({
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
                 <User className="size-3" /> What we ask the lead
+                {assumptions > 0 && (
+                  <span className="normal-case tracking-normal text-amber-700 dark:text-amber-400" title="Filled in for a lead who does not say it — the chips below show what">
+                    · {assumptions} assumption{assumptions === 1 ? "" : "s"}
+                  </span>
+                )}
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {inputs.map((v) => (
@@ -235,6 +241,11 @@ export const PricingEngineDeck: React.FC<PricingEngineDeckProps> = ({
                     <span>{v.label || v.name}</span>
                     <span className={`text-[10px] ${selected === v.name ? "text-background/70" : "text-muted-foreground"}`}>{INPUT_TYPE_LABEL[v.input_type] ?? v.input_type}</span>
                     {v.required && <span className="size-1.5 rounded-full bg-blue-500" title="required" />}
+                    {v.default !== undefined && (
+                      <span className="text-[10px] px-1.5 py-px rounded bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30" title="Assumed when the lead does not say it">
+                        assumes {readableDefault(v)}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -347,7 +358,7 @@ export const PricingEngineDeck: React.FC<PricingEngineDeckProps> = ({
                   size="sm"
                   className="h-8 px-4 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-xs btn-tactile"
                 >
-                  <span>{isProceeding ? "Proceeding…" : "Proceed to Lead Simulation"}</span>
+                  <span>{isProceeding ? "Proceeding…" : "Proceed to Check & Generate Proposal"}</span>
                   <ChevronRight className="size-3.5 ml-1" />
                 </Button>
               </div>

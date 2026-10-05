@@ -28,7 +28,9 @@ import type {
  * whitespace-normalised + case-insensitive; a null cell means "unbounded" (+∞) in numeric compares;
  * a `condition_flag` on a variable is a skip guard (value zeroed, present=false, no review fired);
  * splits get the rounding remainder on the last row; missing required input / lookup miss / ÷0 /
- * matching review rule → needs_review, never a silent 0.
+ * matching review rule → needs_review, never a silent 0. The first three also mark the value `broken`,
+ * and so is everything computed from it (even through a condition): present=false, printed as BLANK.
+ * A skipped value is not broken — a hidden add-on still leaves its total printed.
  */
 
 const norm = (s: string) =>
@@ -164,6 +166,28 @@ const tableOf = (rules: PricingRules, id: string) =>
 const columnUnit = (t: RuleTable | undefined, key: string) =>
   t?.columns.find((c) => c.key === key)?.unit;
 
+/** The choices a choice / multi_choice input accepts: inline options or a table column. */
+export function inputOptions(
+  v: Extract<RuleVariable, { kind: "input" }>,
+  rules: PricingRules,
+): string[] {
+  if (v.options?.length) return v.options;
+  const t = v.options_table ? tableOf(rules, v.options_table) : undefined;
+  return t && v.options_column
+    ? t.rows.map((r) => String(r[v.options_column!] ?? ""))
+    : [];
+}
+
+/** What each table option is, aligned with inputOptions: its row's other text cells ("Standard" → "4-hour response, …"). */
+export function optionNotes(v: Extract<RuleVariable, { kind: "input" }>, rules: PricingRules): string[] {
+  const t = v.options?.length || !v.options_table ? undefined : tableOf(rules, v.options_table);
+  if (!t || !v.options_column) return [];
+  const text = t.columns.filter((c) => c.unit === "text" && c.key !== v.options_column).map((c) => c.key);
+  const name = (r: Record<string, unknown>) => String(r[v.options_column!] ?? "").toLowerCase();
+  // A cell that only restates the option ("Copywriting add-on" for "Copywriting") says nothing about it.
+  return t.rows.map((r) => text.map((k) => String(r[k] ?? "")).filter((x) => x && !x.toLowerCase().includes(name(r))).join("; "));
+}
+
 /** A lead's answer, coerced by input type; choices are canonicalised to the option's own spelling. */
 function coerceInput(
   v: Extract<RuleVariable, { kind: "input" }>,
@@ -171,14 +195,8 @@ function coerceInput(
   rules: PricingRules,
 ): Value | undefined {
   if (raw === undefined || raw === null || raw === "") return undefined;
-  const options = (): string[] => {
-    if (v.options?.length) return v.options;
-    const t = v.options_table ? tableOf(rules, v.options_table) : undefined;
-    return t && v.options_column
-      ? t.rows.map((r) => String(r[v.options_column!] ?? ""))
-      : [];
-  };
-  const canon = (s: string) => options().find((o) => norm(o) === norm(s));
+  const canon = (s: string) =>
+    inputOptions(v, rules).find((o) => norm(o) === norm(s));
   switch (v.input_type) {
     case "integer":
       return Math.round(num(raw));
@@ -186,10 +204,11 @@ function coerceInput(
       return typeof raw === "string"
         ? /^(true|yes|1)$/i.test(raw)
         : Boolean(raw);
-    case "us_state":
-      return String(raw).trim().toUpperCase();
+    case "region":
     case "choice":
-      return canon(String(raw)) ?? String(raw);
+      // A region is open: no match means the lead is somewhere the seller's table does not list,
+      // which is a real answer (often "not taxed here"), so their own words are kept.
+      return canon(String(raw).trim()) ?? String(raw).trim();
     case "multi_choice":
       return (Array.isArray(raw) ? raw : [raw]).map(
         (x) => canon(String(x)) ?? String(x),
@@ -203,9 +222,12 @@ export function evaluate(
 ): Evaluation {
   const values: Record<string, Value> = {};
   const present: Record<string, boolean> = {};
+  const broken: Record<string, boolean> = {};
   const needs_review: Evaluation["needs_review"] = [];
-  const review = (reason: string, source: string) =>
+  const review = (reason: string, source: string) => {
     needs_review.push({ reason, source });
+    broken[source] = true;
+  };
   const { order } = topoOrder(rules.variables);
   const byName = new Map(rules.variables.map((v) => [v.name, v]));
 
@@ -267,6 +289,7 @@ export function evaluate(
     const v = byName.get(name)!;
     let value: Value | undefined;
     let isPresent = true;
+    if (dependencies(v).some((d) => broken[d])) broken[name] = true;
 
     if (v.condition_flag && !values[v.condition_flag]) {
       values[name] = ZERO[v.unit];
@@ -289,13 +312,15 @@ export function evaluate(
       case "lookup": {
         const t = tableOf(rules, v.table);
         const row = t?.rows.find((r) => rowMatches(r, v.where));
-        if (!row) {
+        if (row) value = row[v.take];
+        else if (v.fallback !== undefined) value = v.fallback;
+        else {
           review(
             `${v.label || name}: no row in ${t?.label ?? v.table} matches`,
             name,
           );
           isPresent = false;
-        } else value = row[v.take];
+        }
         break;
       }
       case "formula":
@@ -355,13 +380,13 @@ export function evaluate(
     } else {
       values[name] = value;
     }
-    present[name] = isPresent;
+    present[name] = isPresent && !broken[name];
   }
 
   for (const r of rules.review_rules)
-    if (holds(r.when)) review(r.reason, "review_rules");
+    if (holds(r.when)) needs_review.push({ reason: r.reason, source: "review_rules" }); // flags, blanks nothing
 
-  return { values, present, needs_review, order };
+  return { values, present, broken, needs_review, order };
 }
 
 // ---------------------------------------------------------------------------
@@ -369,6 +394,14 @@ export function evaluate(
 // ---------------------------------------------------------------------------
 
 const SAMPLE_NUMBER = /^(.*?)(\d[\d,]*(?:\.(\d+))?)(.*)$/s;
+
+// Seen live: the quotation says "two clinic locations", so the sample is a word and the check
+// failed forever on "computed 2, quotation says two". Read and write small counts the same way.
+const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
+const numberWord = (sample: string): number | null => {
+  const i = NUMBER_WORDS.indexOf((sample ?? "").trim().toLowerCase());
+  return i < 0 ? null : i;
+};
 
 const fixed = (v: number, d: number, grouping: boolean) =>
   v.toLocaleString("en-US", {
@@ -386,6 +419,10 @@ export function formatLike(
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "string") return value;
   if (Array.isArray(value)) return "";
+  if (numberWord(sample) !== null && Number.isInteger(value) && value >= 0 && value < NUMBER_WORDS.length) {
+    const w = NUMBER_WORDS[value];
+    return /^[A-Z]/.test(sample.trim()) ? w[0].toUpperCase() + w.slice(1) : w;
+  }
   const m = SAMPLE_NUMBER.exec(sample ?? "");
   if (!m) return String(value);
   const [, pre, numStr, frac = "", post] = m;
@@ -398,10 +435,10 @@ export function formatLike(
   return `${pre}${fixed(v, decimals, numStr.includes(","))}${post}`;
 }
 
-/** Inverse of formatLike for the sample check: "$36,000.00" → 36000, "8.25%" → 0.0825, "Growth" → null. */
+/** Inverse of formatLike for the sample check: "$36,000.00" → 36000, "8.25%" → 0.0825, "two" → 2, "Growth" → null. */
 export function parseSampleNumber(sample: string): number | null {
   const m = SAMPLE_NUMBER.exec(sample ?? "");
-  if (!m) return null;
+  if (!m) return numberWord(sample);
   const n = Number(m[2].replace(/,/g, ""));
   if (Number.isNaN(n)) return null;
   return m[4].trimStart().startsWith("%") ? n / 100 : n;
@@ -497,9 +534,13 @@ export function sampleCheck(
   return out;
 }
 
+/** Printed where a broken value would go: visible in the PDF, searchable in Word, never $0.00. */
+export const BLANK = "[to confirm]";
+
 /**
  * What Stage 5 hands to easy-template-x: document variables in the quotation's notation (""
- * when hidden), loops as formatted row arrays, every condition as a boolean, plus the tier matrix.
+ * when hidden, BLANK when broken), loops as formatted row arrays, every condition as a boolean
+ * (a broken one is false), plus the tier matrix.
  */
 export function buildProposalPayload(
   rules: PricingRules,
@@ -509,19 +550,19 @@ export function buildProposalPayload(
 ): Record<string, string | boolean | Row[]> {
   const payload: Record<string, string | boolean | Row[]> = {};
   const s2 = new Map(stage2.variables.map((v) => [v.variable_name, v]));
-  const { values, present } = evaluation;
+  const { values, present, broken } = evaluation;
 
   for (const v of rules.variables) {
     const value = values[v.name];
     if (v.kind === "condition") {
-      payload[v.name] = value === true;
+      payload[v.name] = value === true && !broken[v.name];
     } else if (v.kind === "rows") {
       const t = tableOf(rules, v.table);
       payload[v.name] = (Array.isArray(value) ? (value as Row[]) : []).map(
         (row) => {
           const out: Row = {};
           for (const [tag, m] of Object.entries(v.map))
-            out[tag] = formatUnit(
+            out[tag] = broken[v.name] && typeof m !== "string" ? BLANK : formatUnit(
               typeof m === "string" ? (columnUnit(t, m) ?? "text") : "money",
               row[tag] ?? null,
             );
@@ -530,7 +571,9 @@ export function buildProposalPayload(
       );
     } else if (v.in_document) {
       const sample = s2.get(v.name)?.sample_value;
-      payload[v.name] = !present[v.name]
+      payload[v.name] = broken[v.name]
+        ? BLANK
+        : !present[v.name]
         ? ""
         : sample !== undefined
           ? formatLike(sample, value)
@@ -557,7 +600,9 @@ const UNITS = new Set([
   "boolean",
   "rows",
 ]);
+const NUMERIC_UNITS = new Set(["money", "percent", "integer"]);
 const OPS = new Set(["eq", "neq", "gte", "lte", "gt", "lt", "in"]);
+const INPUT_TYPES = new Set(["integer", "choice", "multi_choice", "boolean", "region"]);
 const FORMULA_OPS = new Set(["add", "sub", "mul", "div", "min", "max"]);
 
 /**
@@ -649,11 +694,28 @@ export function validate(
       if ("var" in c && c.var !== undefined) ref(`${cp}.var`, v, c.var);
       if ("column" in c && tableId)
         column(`${cp}.column`, v, tableId, c.column, "filter");
-      if (c.value_var) ref(`${cp}.value_var`, v, c.value_var);
-      else if (c.op === "in" && !Array.isArray(c.values))
+      if (c.value_var) {
+        ref(`${cp}.value_var`, v, c.value_var);
+        // Seen live: a region input compared against a column holding a different spelling of the same
+        // place ("TX" vs "Texas"), so no row ever matches. An input that declares where its answers come
+        // from is comparable by construction; it just has to be pointed at that same column.
+        const src = vars.get(c.value_var);
+        if (src?.kind === "input" && src.input_type === "region" && "column" in c && src.options_table && (src.options_table !== tableId || src.options_column !== c.column))
+          err(`${cp}.column`, `${v.name}: "${c.value_var}" is answered from ${src.options_table}.${src.options_column} but compared against ${tableId}.${c.column} — compare the column its answers come from`);
+      } else if (c.op === "in" && !Array.isArray(c.values))
         err(`${cp}.values`, `${v.name}: "in" needs a values list`);
       else if (c.op !== "in" && c.value === undefined)
         err(`${cp}.value`, `${v.name}: comparison needs a value or value_var`);
+      else if ("var" in c) {
+        // Seen live on co3: the $22,000 scoping review compared selected_tier to "Custom Web App" by name, so
+        // renaming that row on the deck would switch the safety rule off with no error. A literal compared to a
+        // choice must be one of its options — the deck save then fails loudly instead.
+        const src = vars.get(c.var);
+        const opts = src?.kind === "input" && (src.input_type === "choice" || src.input_type === "region") ? inputOptions(src, rules) : [];
+        const bad = (c.op === "in" ? c.values ?? [] : [c.value]).filter((x) => opts.length && !opts.some((o) => norm(o) === norm(String(x))));
+        if (bad.length)
+          err(`${cp}.value`, `${v.name}: ${c.var} is compared to ${bad.map((x) => JSON.stringify(x)).join(", ")}, which is not one of its options (${opts.join(", ")}) — this test can never be true`);
+      }
     });
   const formula = (
     p: string,
@@ -671,22 +733,40 @@ export function validate(
       );
     else if (n < 1)
       err(`${p}.args`, `${v.name}: "${f.op}" needs at least one argument`);
+    const units = new Map<string, string>();
     (f.args ?? []).forEach((a, j) => {
-      if (typeof a === "number") return;
+      if (typeof a === "number") return; // a bare number carries no unit, so it fits anywhere
       if (a.startsWith("col:")) {
         if (!allowCol)
           err(
             `${p}.args[${j}]`,
             `${v.name}: "col:" references are only allowed inside a rows map`,
           );
-        else column(`${p}.args[${j}]`, v, allowCol, a.slice(4), "map");
+        else {
+          column(`${p}.args[${j}]`, v, allowCol, a.slice(4), "map");
+          const cu = columnUnit(tables.get(allowCol), a.slice(4));
+          if (cu) units.set(`the row's ${a.slice(4)}`, cu);
+        }
         return;
       }
       ref(`${p}.args[${j}]`, v, a);
       const u = vars.get(a)?.unit;
       if (u === "text" || u === "rows")
         err(`${p}.args[${j}]`, `${v.name}: "${a}" is ${u}, not a number`);
+      else if (u) units.set(a, u);
     });
+    // Adding money to a percentage is not a number, it is a category error, and it computes a plausible
+    // figure that nothing else catches. Seen live on co3: a rush add-on priced at 20% of base sat in the
+    // add-ons table beside fixed fees, and the loop's amount was add(col:amount, col:percent_of_base) —
+    // so the proposal printed "$0.20" for a $1,900 line. Scaling ops (mul/div) mix units by design.
+    if (f.op === "add" || f.op === "sub" || f.op === "min" || f.op === "max") {
+      const kinds = [...new Set(units.values())];
+      if (kinds.length > 1)
+        err(
+          `${p}.args`,
+          `${v.name}: "${f.op}" mixes ${kinds.join(" and ")} — ${[...units].map(([n, u]) => `${n} is ${u}`).join(", ")}. Convert first (a percentage becomes money by multiplying what it is a percentage of), then add.`,
+        );
+    }
   };
 
   (rules.variables ?? []).forEach((v, i) => {
@@ -706,7 +786,16 @@ export function validate(
     }
     switch (v.kind) {
       case "input":
-        if (v.input_type === "choice" || v.input_type === "multi_choice") {
+        // Seen live: the model makes client_name / proposal dates "text" inputs. Those are Stage 5's (facts + calendar), never the sheet's.
+        if (!INPUT_TYPES.has(v.input_type))
+          err(
+            `${p}.input_type`,
+            `${v.name}: input_type "${v.input_type}" is not one of integer | choice | multi_choice | boolean | region — names, dates and free text are not lead inputs; remove the variable`,
+          );
+        // A region declares where its answers come from for the same reason a choice does: it is the only
+        // thing that makes the lead's words and the table's column comparable. It differs from a choice in
+        // what happens OFF the list — a region may match nothing (an untaxed buyer), a choice may not.
+        if (v.input_type === "choice" || v.input_type === "multi_choice" || v.input_type === "region") {
           if (v.options_table) {
             table(`${p}.options_table`, v, v.options_table);
             column(
@@ -722,6 +811,30 @@ export function validate(
               `${v.name}: a ${v.input_type} input needs options or an options_table + options_column`,
             );
         }
+        if (v.default !== undefined) {
+          // The default is fed to the calculator untouched by the model, so it must already be a clean answer.
+          const d = coerceInput(v, v.default, rules);
+          const opts = inputOptions(v, rules);
+          const listed = (x: unknown) => opts.some((o) => norm(o) === norm(String(x)));
+          // Never guess an answer that feeds tax: a wrong tax figure is a legal error in a document the
+          // client signs. Keyed on what the input DOES — any kind of read of a taxes table — not on where
+          // the seller happens to trade. A seller-set lookup `fallback` is the sanctioned way to cover a
+          // buyer the table does not list: that is the seller stating their own policy, not a guess.
+          const taxRead = (rules.variables ?? []).some((x) => "table" in x && tables.get(x.table)?.kind === "taxes" && (x.where ?? []).some((w) => w.value_var === v.name));
+          const bad =
+            taxRead ? true
+            : v.input_type === "integer" ? typeof v.default !== "number"
+            : v.input_type === "boolean" ? typeof v.default !== "boolean"
+            : v.input_type === "choice" || v.input_type === "region" ? !listed(d)
+            : !Array.isArray(d) || d.length === 0 || !d.every(listed);
+          if (bad)
+            err(
+              `${p}.default`,
+              taxRead
+                ? `${v.name}: tax is worked out from this — it is never assumed, the lead must say it (to cover a buyer your table does not list, set a fallback on the tax lookup instead)`
+                : `${v.name}: default ${JSON.stringify(v.default)} is not a valid ${v.input_type} answer${opts.length ? ` (one of ${opts.join(" | ")})` : ""}`,
+            );
+        }
         break;
       case "constant":
         break;
@@ -730,6 +843,8 @@ export function validate(
           conds(`${p}.where`, v, v.where, v.table);
           column(`${p}.take`, v, v.table, v.take, "take");
         }
+        if (v.fallback !== undefined && NUMERIC_UNITS.has(v.unit) && typeof v.fallback !== "number")
+          err(`${p}.fallback`, `${v.name}: the fallback used when no row matches must be a ${v.unit} value, not ${JSON.stringify(v.fallback)}`);
         break;
       case "formula":
         formula(p, v, v, undefined);

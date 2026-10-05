@@ -9,6 +9,7 @@ import { PromptDocCapsule } from "./PromptDocCapsule";
 import { VariableReviewDeck } from "./VariableReviewDeck";
 import { TemplateCheckpointCard } from "./TemplateCheckpointCard";
 import { PricingEngineDeck, type RulesStatus } from "./pricing/PricingEngineDeck";
+import { LeadSimulator } from "./LeadSimulator";
 
 interface CompanyProfileCardProps {
   company: Company;
@@ -245,6 +246,11 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
           onProceed={() => onProceedToLeadSimulation?.()}
           isProceeding={isProceeding}
         />
+      )}
+
+      {/* Stage 5: Check & Generate Proposal — a lead message in, a proposal out */}
+      {company.working_state?.stage === "lead_simulation" && pricingRules && (
+        <LeadSimulator company={company} rules={pricingRules} />
       )}
     </div>
   );

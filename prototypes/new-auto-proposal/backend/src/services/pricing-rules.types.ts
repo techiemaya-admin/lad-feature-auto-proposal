@@ -71,7 +71,9 @@ export type InputType =
   | "choice"
   | "multi_choice"
   | "boolean"
-  | "us_state";
+  /** A geography answer (state, county, country, zone). Open, never a closed list: a lead outside the
+   * seller's table must be allowed to match no row — that is the correct "not taxed here" outcome. */
+  | "region";
 
 interface VariableBase {
   name: string;
@@ -89,10 +91,21 @@ export type RuleVariable = VariableBase &
         options_table?: string;
         options_column?: string;
         options?: string[];
+        /** When the lead is silent: required → ask; default set → assume it; neither → leave blank. */
         required: boolean;
+        default?: Cell | string[];
+        /** One line telling the extractor how to read the lead's words for this field. */
+        assume_when?: string;
       }
     | { kind: "constant"; value: Cell }
-    | { kind: "lookup"; table: string; where: Where[]; take: string }
+    | {
+        kind: "lookup";
+        table: string;
+        where: Where[];
+        take: string;
+        /** No matching row: undefined → stop and flag for review; set → use this value instead. */
+        fallback?: Cell;
+      }
     | ({ kind: "formula" } & Formula)
     | { kind: "condition"; all: Cond[] }
     | {
@@ -141,6 +154,8 @@ export interface PricingRules {
 export interface Evaluation {
   values: Record<string, Value>;
   present: Record<string, boolean>;
+  /** Values a problem made unknowable (and everything computed from them): printed as "[to confirm]". */
+  broken: Record<string, boolean>;
   needs_review: { reason: string; source?: string }[];
   order: string[];
 }
@@ -156,6 +171,13 @@ export interface SampleCheckEntry {
   ok: boolean;
   note?: string;
 }
+
+/**
+ * Stage 2's "Fixed & auto-filled" box is a screen label: inside the pipeline a `fixed` variable is handled
+ * exactly like a `customer_input` (old extractions keep dates under customer_input). Every customer-input
+ * check goes through here so the two never drift apart.
+ */
+export const isCustomerOrFixed = (v: { category: string }): boolean => v.category === "customer_input" || v.category === "fixed";
 
 export interface Stage2Variable {
   variable_name: string;
@@ -229,10 +251,14 @@ export interface AiVariable {
   options_column: string;
   options: string[];
   required: boolean;
+  default: string;
+  default_values: string[];
+  assume_when: string;
   value: string;
   table: string;
   where: AiWhere[];
   take: string;
+  fallback: string;
   op: string;
   args: string[];
   all: AiCond[];
@@ -358,12 +384,15 @@ export function fromWire(w: AiPricingRules): PricingRules {
         ...(v.where?.length ? { where: where() } : {}),
       });
       switch (v.kind) {
-        case "input":
+        case "input": {
+          const def = fromWireValue({ value: v.default, values: v.default_values });
           return {
             ...base,
             kind: "input",
             input_type: v.input_type as InputType,
             required: Boolean(v.required),
+            ...(def === "" ? {} : { default: def as Cell | string[] }),
+            ...(isBlank(v.assume_when) ? {} : { assume_when: v.assume_when }),
             ...(isBlank(v.options_table)
               ? {}
               : { options_table: v.options_table }),
@@ -372,6 +401,7 @@ export function fromWire(w: AiPricingRules): PricingRules {
               : { options_column: v.options_column }),
             ...(v.options?.length ? { options: v.options } : {}),
           };
+        }
         case "constant":
           return {
             ...base,
@@ -385,6 +415,9 @@ export function fromWire(w: AiPricingRules): PricingRules {
             table: v.table ?? "",
             where: where(),
             take: v.take ?? "",
+            ...(isBlank(v.fallback)
+              ? {}
+              : { fallback: parseCell(v.fallback, base.unit) }),
           };
         case "formula":
           return {
@@ -463,10 +496,14 @@ const EMPTY_VAR: Omit<
   options_column: "",
   options: [],
   required: false,
+  default: "",
+  default_values: [],
+  assume_when: "",
   value: "",
   table: "",
   where: [],
   take: "",
+  fallback: "",
   op: "",
   args: [],
   all: [],
@@ -512,6 +549,9 @@ export function toWire(r: PricingRules): AiPricingRules {
             options_column: v.options_column ?? "",
             options: v.options ?? [],
             required: v.required,
+            default: Array.isArray(v.default) ? "" : cellText(v.default ?? null),
+            default_values: Array.isArray(v.default) ? v.default : [],
+            assume_when: v.assume_when ?? "",
           });
           break;
         case "constant":
@@ -522,6 +562,7 @@ export function toWire(r: PricingRules): AiPricingRules {
             table: v.table,
             where: v.where.map(toWireCond),
             take: v.take,
+            fallback: v.fallback === undefined ? "" : cellText(v.fallback),
           });
           break;
         case "formula":

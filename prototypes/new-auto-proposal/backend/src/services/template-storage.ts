@@ -2,7 +2,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { getStorageDir } from "../db/database.js";
 import { loadTemplate, saveWorkflowState, deleteTemplate, resetTemplateState } from "../repositories/templates.repository.js";
-import { loadDataset } from "../db/seed.js";
+import { findSeed } from "../db/seed.js";
 
 export function templateDirectory(companyId: string, templateId: string): string {
   for (const id of [companyId, templateId]) {
@@ -17,13 +17,15 @@ export function invalidateTemplate(companyId: string, templateId: string): void 
   const state = JSON.parse(row.working_state_json || "{}");
   Object.assign(state, { stage: "variable_review", template_generated: false, template_stats: null, pricing_rules: null });
   saveWorkflowState(companyId, templateId, state);
-  const file = path.join(templateDirectory(companyId, templateId), "template.docx");
-  if (fs.existsSync(file)) fs.unlinkSync(file);
+  for (const name of ["template.docx", "proposal.docx", "proposal.pdf"]) {
+    const file = path.join(templateDirectory(companyId, templateId), name);
+    if (fs.existsSync(file)) fs.unlinkSync(file);
+  }
 }
 
 export function removeProposalTemplate(companyId: string, templateId: string): void {
   const directory = templateDirectory(companyId, templateId);
-  for (const name of ["original_quotation.docx", "template.docx"]) {
+  for (const name of ["original_quotation.docx", "template.docx", "proposal.docx", "proposal.pdf"]) {
     const file = path.join(directory, name);
     if (fs.existsSync(file)) fs.unlinkSync(file);
   }
@@ -31,7 +33,7 @@ export function removeProposalTemplate(companyId: string, templateId: string): v
 }
 
 export function resetProposalTemplate(companyId: string, templateId: string): void {
-  const spec = loadDataset().companies.find(c => c.company_id === companyId)?.pricing_engine_spec.pricing_context ?? "";
+  const spec = findSeed(companyId)?.pricing_spec ?? "";
   invalidateTemplate(companyId, templateId);
   resetTemplateState(companyId, templateId, spec);
 }

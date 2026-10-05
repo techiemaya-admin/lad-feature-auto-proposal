@@ -1,5 +1,6 @@
 import type { Company, CompanySummary } from "../types/company";
 import type { Evaluation, PricingRules, PricingRulesState, ValidationError, Value } from "../types/pricing";
+import type { ClarificationEmail, LeadFacts, ProposalResult } from "../types/proposal";
 
 const API_BASE = "/api";
 
@@ -314,6 +315,28 @@ export function calculatePricing(companyId: string, inputs: Record<string, Value
 
 export async function proceedToLeadSimulation(companyId: string, templateId: string): Promise<Company> {
   return (await rulesRequest<{ company: Company }>(`${companyId}/templates/${templateId}/rules/proceed`, "proceed", { method: "POST" })).company;
+}
+
+// ---------------------------------------------------------------------------
+// Stage 5: lead simulator (same error unwrapping as the rules routes)
+// ---------------------------------------------------------------------------
+
+export function extractLead(companyId: string, leadText: string, templateId: string): Promise<LeadFacts> {
+  return rulesRequest(`${companyId}/templates/${templateId}/lead/extract`, "read the lead", json({ lead_text: leadText }));
+}
+
+export function draftClarification(companyId: string, leadText: string, inputs: Record<string, Value>, missing: string[], assumed: string[], templateId: string): Promise<ClarificationEmail> {
+  return rulesRequest(`${companyId}/templates/${templateId}/lead/clarify`, "draft the clarification email", json({ lead_text: leadText, inputs, missing, assumed }));
+}
+
+/** The simulator playing the lead: `leadText` is the whole thread, ending with our ask. */
+export function draftLeadReply(companyId: string, leadText: string, templateId: string): Promise<ClarificationEmail> {
+  return rulesRequest(`${companyId}/templates/${templateId}/lead/reply`, "draft the lead's reply", json({ lead_text: leadText }));
+}
+
+/** Facts in, documents out — the thread is drafter context only, never re-extracted; `assumed` names the defaults extract filled. */
+export function generateProposal(companyId: string, inputs: Record<string, Value>, leadText: string, assumed: string[], templateId: string): Promise<ProposalResult> {
+  return rulesRequest(`${companyId}/templates/${templateId}/proposal/generate`, "generate the proposal", json({ inputs, lead_text: leadText, assumed }));
 }
 
 // ---------------------------------------------------------------------------

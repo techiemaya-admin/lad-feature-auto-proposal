@@ -30,14 +30,15 @@ export type FormulaOp = "add" | "sub" | "mul" | "div" | "min" | "max";
 /** One flat operation. add/mul/min/max are n-ary (≥1); sub/div take exactly 2. "col:<key>" allowed inside rows.map. */
 export interface Formula { op: FormulaOp; args: (string | number)[] }
 
-export type InputType = "integer" | "choice" | "multi_choice" | "boolean" | "us_state";
+export type InputType = "integer" | "choice" | "multi_choice" | "boolean" | "region";
 
 interface VariableBase { name: string; label: string; in_document: boolean; unit: Unit; /** "" = none; when the flag is false the variable is skipped. */ condition_flag: string }
 
 export type RuleVariable = VariableBase & (
-  | { kind: "input"; input_type: InputType; options_table?: string; options_column?: string; options?: string[]; required: boolean }
+  /** When the lead is silent: required → ask; default set → assume it; neither → leave blank. assume_when = a one-line reading hint. */
+  | { kind: "input"; input_type: InputType; options_table?: string; options_column?: string; options?: string[]; required: boolean; default?: Cell | string[]; assume_when?: string }
   | { kind: "constant"; value: Cell }
-  | { kind: "lookup"; table: string; where: Where[]; take: string }
+  | { kind: "lookup"; table: string; where: Where[]; take: string; /** No matching row: undefined → stop for review; set → use this value. */ fallback?: Cell }
   | ({ kind: "formula" } & Formula)
   | { kind: "condition"; all: Cond[] }
   | { kind: "aggregate"; fn: "sum" | "count"; table: string; rows: "selected" | "all"; selected_var?: string; key_column: string; column?: string; where?: Where[] }
@@ -63,6 +64,8 @@ export interface PricingRules {
 export interface Evaluation {
   values: Record<string, Value>;
   present: Record<string, boolean>;
+  /** Values a problem made unknowable (and everything computed from them): printed as "[to confirm]". */
+  broken: Record<string, boolean>;
   needs_review: { reason: string; source?: string }[];
   order: string[];
 }

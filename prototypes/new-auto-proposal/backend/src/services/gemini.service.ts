@@ -21,8 +21,8 @@ export interface ParagraphConfig {
 export interface ExtractedVariable {
   variable_name: string;
   natural_name: string;
-  category: "customer_input" | "pricing" | "paragraph";
-  data_type: "string" | "number" | "currency" | "enum" | "paragraph";
+  category: "customer_input" | "fixed" | "pricing" | "paragraph";
+  data_type: "string" | "number" | "currency" | "enum" | "date" | "paragraph";
   /** Verbatim text copied from the quotation. Multi-line for paragraph blocks. */
   sample_text: string;
   description: string;
@@ -70,12 +70,12 @@ export const extractionResponseSchema: ResponseSchema = {
           category: {
             type: SchemaType.STRING,
             format: "enum",
-            enum: ["customer_input", "pricing", "paragraph"],
+            enum: ["customer_input", "fixed", "pricing", "paragraph"],
           },
           data_type: {
             type: SchemaType.STRING,
             format: "enum",
-            enum: ["string", "number", "currency", "enum", "paragraph"],
+            enum: ["string", "number", "currency", "enum", "date", "paragraph"],
           },
           sample_text: { type: SchemaType.STRING },
           description: { type: SchemaType.STRING },
@@ -157,44 +157,46 @@ Name: "${params.companyName}"  Location: "${b?.location || ""}"  Email: "${b?.em
 1. sample_text must be copied character-for-character from the quotation: same punctuation, currency symbols, dashes (— vs -), minus signs (−), "/mo" suffixes. The engine does an exact search; if the text is not verbatim the variable is silently lost.
    * Copy the WORDS only, never markdown: no "**", "*", "_" emphasis markers, no "- " / "• " bullet markers, no "\_" escapes. Bold and italics are formatting in the Word file, not characters.
 
-2. Never extract the agency's own name, team name, address, phone, email, the "Next Steps" paragraph, or the closing legal disclaimer. Only extract things about the CLIENT, the chosen package, prices, dates, and client-specific prose.
+2. Never extract the agency's own name, team name, address, phone, email, the standard closing call-to-action, or the closing legal disclaimer. Only extract things about the CLIENT, the chosen package, prices, dates, and client-specific prose.
 
 3. category:
-   - "customer_input": facts the client supplies — client company name, dates, headcount/seat count, number of locations, number of products, servers, etc.
+   - "customer_input": facts only the client can tell us — client company name, headcount, number of sites, rooms, units or hours, etc.
+   - "fixed": values the client is never asked — the agency sets them or the engine computes them: proposal and validity dates, validity days, payment terms, a contract length the agency fixes.
+     * Proposal dates and validity dates ("March 3, 2027", "Valid until April 2, 2027") get data_type "date"; the engine computes them.
    - "pricing": every money amount, rate, percentage, and the selected tier/package name.
-     * The chosen tier gets variable_name "selected_tier", data_type "enum", enum_options = all tiers offered. Its sample_text is just the tier name (e.g. "Growth"). Do not create tier-specific names like "growth_monthly_rate" — use role names like "selected_tier_rate".
-   - "paragraph": prose written for THIS client — the intro describing their situation, why the recommended tier fits, their payment preference, the upgrade path, an add-on menu with ✓/○ selections, a "what's included" bullet list, tax or minimum-commitment notes that depend on their numbers. If a salesperson would rewrite it for the next lead, it is a paragraph variable. Set data_type "paragraph" and paragraph_config { mode: "ai_generated", purpose, tone, length_guideline }.
+     * The chosen tier gets variable_name "selected_tier", data_type "enum", enum_options = all tiers offered. Its sample_text is just the tier name (e.g. "Premium"). Do not create tier-specific names like "premium_monthly_rate" — use role names like "selected_tier_rate".
+   - "paragraph": prose written for THIS client — the intro describing their situation, why the recommended tier fits, their payment preference, the upgrade path, a menu of optional extras marked selected/unselected, a "what's included" bullet list, tax or minimum-commitment notes that depend on their numbers. If a salesperson would rewrite it for the next lead, it is a paragraph variable. Set data_type "paragraph" and paragraph_config { mode: "ai_generated", purpose, tone, length_guideline }.
      * For a block of several lines or bullets, sample_text is the WHOLE block: one line per paragraph/bullet, each copied exactly, joined with newlines.
-     * Numbers, amounts and counts inside prose are STILL their own customer_input / pricing variables (the paragraph is drafted from them; the drafter never does arithmetic). A sentence whose only client-specific content is such values — "Equivalent to $2,922.75/month, billed as a single annual payment." — is NOT a paragraph variable: extract the values and leave the wording static.
+     * Numbers, amounts and counts inside prose are STILL their own customer_input / fixed / pricing variables (the paragraph is drafted from them; the drafter never does arithmetic). A sentence whose only client-specific content is such values — "That works out to $415.00 per visit, invoiced monthly." — is NOT a paragraph variable: extract the values and leave the wording static.
      * Static boilerplate that reads identically for any client is NOT a variable.
 
-4. condition_flag: set it on the amount variable of any table row that may not apply to every client — sales tax ("has_tax"), prepay/bundle/volume discounts ("has_annual_discount", "has_bundle_discount", "has_volume_adjustment"), optional fees ("has_extra_devices"). The engine wraps that whole row so it disappears when the flag is false. Otherwise "".
+4. condition_flag: set it on the amount variable of any table row that may not apply to every client — a tax line, a discount, an optional fee or surcharge. Name it "has_<what the row is>", e.g. "has_tax", "has_weekend_surcharge". The engine wraps that whole row so it disappears when the flag is false. Otherwise "".
 
-5. Labels that contain arithmetic, e.g. "Seat subtotal (42 seats × $60.00)" or "Growth Package — 12 months × $3,000/mo": do NOT extract the label. Extract each number inside it as its own variable ("42" → seat_count, "$60.00" → adjusted_seat_rate, "12" → contract_months). Each value is extracted ONCE and the engine replaces every occurrence, so the label becomes "Seat subtotal ({seat_count} seats × {adjusted_seat_rate})" automatically.
-   * When a cell reads "$65.00 / seat / mo", sample_text is "$65.00", not the whole cell.
-   * Money ALWAYS keeps its currency symbol in sample_text ("$2,520.00", never "2,520.00"); percentages keep "%" ("8.25%").
+5. Labels that contain arithmetic, e.g. "Room subtotal (14 rooms × $35.00)" or "Premium Plan — 6 months × $1,200/mo": do NOT extract the label. Extract each number inside it as its own variable ("14" → room_count, "$35.00" → room_rate, "6" → contract_months). Each value is extracted ONCE and the engine replaces every occurrence, so the label becomes "Room subtotal ({room_count} rooms × {room_rate})" automatically.
+   * When a cell reads "$35.00 / room / visit", sample_text is "$35.00", not the whole cell.
+   * Money ALWAYS keeps its currency symbol in sample_text ("$490.00", never "490.00"); percentages keep "%" ("20%").
    * A leading minus/dash ("−$5.00") is NOT part of the value: sample_text is "$5.00".
 
-6. context_text: almost always "". An empty context means "replace this text everywhere it appears", which is what you want for the client name, the tier name, seat counts, rates that are reused in labels, etc. "selected_tier" MUST have context_text "".
+6. context_text: almost always "". An empty context means "replace this text everywhere it appears", which is what you want for the client name, the tier name, counts, rates that are reused in labels, etc. "selected_tier" MUST have context_text "".
    Fill it ONLY when the identical text also appears somewhere else with a DIFFERENT meaning. Two cases:
-   * A value that collides with another variable: "$60.00" is both the adjusted seat rate and the managed-devices subtotal → the managed-devices one gets context_text "Managed devices beyond 1:1"; the seat-rate one stays "".
-   * A bare small number that also occurs in ordinary sentences: "5" (servers) also appears in "within 5 business days" → context_text "Managed devices beyond 1:1".
+   * A value that collides with another variable: "$35.00" is both the room rate and the supplies fee → the supplies-fee one gets context_text "Cleaning supplies"; the room-rate one stays "".
+   * A bare small number that also occurs in ordinary sentences: "3" (windows) also appears in "within 3 working days" → context_text "Window cleaning".
    Give the row label or a few words from the same table row / sentence. Never invent context for values that appear only once.
 
 7. loop_tables: tables whose data rows are repeated line items of the same shape — project milestones, payment schedules, itemised add-on lines. Give:
    * header_texts = the exact header cell texts of the table, left to right.
    * loop_tag ("milestones", "payment_milestones", "addon_items").
    * column_tags = one snake_case tag per column, left to right.
-   * row_labels = the exact FIRST-cell text of every row that repeats (e.g. ["1","2","3","4","5"] or ["Copywriting add-on","Basic SEO Setup add-on"]). Base-fee, subtotal, discount and total rows in the same table are NOT repeating rows — leave them out and they stay as-is.
+   * row_labels = the exact FIRST-cell text of every row that repeats (e.g. ["1","2","3","4","5"] or ["Oven clean","Fridge clean"]). Base-fee, subtotal, discount and total rows in the same table are NOT repeating rows — leave them out and they stay as-is.
    * Amounts inside loop rows are covered by the loop's column_tags — do not also extract them as variables.
    * A tier comparison matrix (columns = tiers, rows = features) is NOT a loop table. Do not extract its cells; the selected tier's rate is already covered by "selected_tier_rate".
 
-8. Never extract the same text twice. One variable per distinct value. Never extract a lone symbol or checkmark ("✓", "○", "—") — a selected/unselected add-on menu is ONE paragraph variable (rule 3), not per-line checkbox variables.
+8. Never extract the same text twice. One variable per distinct value. Never extract a lone symbol or checkmark ("✓", "○", "—") — a selected/unselected menu of extras is ONE paragraph variable (rule 3), not per-line checkbox variables.
 `;
 }
 
 /** One structured-output call: prompt in, schema-shaped JSON out. Every Gemini feature goes through here. */
-export async function generateJsonWithGemini<T>(prompt: string, schema: ResponseSchema, modelName = "gemini-2.5-flash"): Promise<T> {
+export async function generateJsonWithGemini<T>(prompt: string, schema: ResponseSchema, modelName = "gemini-2.5-flash", temperature = 0.1): Promise<T> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY environment variable is not set");
@@ -205,7 +207,7 @@ export async function generateJsonWithGemini<T>(prompt: string, schema: Response
     generationConfig: {
       responseMimeType: "application/json",
       responseSchema: schema,
-      temperature: 0.1,
+      temperature,
     },
   });
 
