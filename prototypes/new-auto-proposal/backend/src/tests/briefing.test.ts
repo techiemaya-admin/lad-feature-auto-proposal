@@ -1,3 +1,4 @@
+import { seedTemplateFixtures } from "./template-fixtures.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import request from "supertest";
@@ -21,6 +22,7 @@ test("Briefing & Quotation Ingestion Suite", async (t) => {
   process.env.STORAGE_DIR = testStorageDir;
 
   initDatabase(testDbPath);
+  seedTemplateFixtures();
   const app = createApp();
 
   const candidateMockDirs = [

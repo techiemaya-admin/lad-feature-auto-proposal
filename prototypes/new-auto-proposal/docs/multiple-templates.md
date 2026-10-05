@@ -1,5 +1,9 @@
 # Multiple templates: feature and implementation guide
 
+## October 2026 workflow update
+
+The entry flow and creation contract have changed. See [ICP template library: workflow and implementation](icp-template-library.md) for the complete October update, including AI-generated briefs, descriptions, the card library, custom creation, the seven-template cap, fresh-database behavior and the save-button fix. The September implementation snapshot below remains a reference for the underlying pipeline; its dropdown, name-only creation and automatic fresh default-template behavior are superseded.
+
 Reviewed against the working-tree implementation on **20 September 2026**.
 
 This document explains the multiple-template feature in `prototypes/new-auto-proposal`: its purpose, user behavior, database and file changes, migration, routes, services, frontend integration, tests, and current limitations. Paths below are relative to the prototype unless stated otherwise. Links point to the implementation, not external documentation.

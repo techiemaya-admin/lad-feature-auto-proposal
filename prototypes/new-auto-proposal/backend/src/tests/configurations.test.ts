@@ -1,3 +1,4 @@
+import { seedTemplateFixtures } from "./template-fixtures.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -13,6 +14,7 @@ test("company configurations: defaults, save, isolation across companies, surviv
   process.env.DB_PATH = dbPath;
   process.env.STORAGE_DIR = path.join(dir, "storage");
   initDatabase(dbPath);
+  seedTemplateFixtures();
   try {
     const app = createApp();
 

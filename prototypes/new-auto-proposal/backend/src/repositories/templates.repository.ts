@@ -5,6 +5,7 @@ export interface TemplateRow {
   template_id: string;
   company_id: string;
   name: string;
+  description: string;
   pricing_spec: string;
   quotation_filename: string | null;
   quotation_filesize: number | null;
@@ -31,9 +32,9 @@ export function loadWorkflow(companyId: string, templateId: string): (CompanyRow
   return company && template ? { ...company, ...template } : undefined;
 }
 
-export function insertTemplate(companyId: string, templateId: string, name: string): void {
+export function insertTemplate(companyId: string, templateId: string, name: string, description = "", pricingSpec = ""): void {
   const now = new Date().toISOString();
-  getDatabase().prepare("INSERT INTO proposal_templates (template_id, company_id, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(templateId, companyId, name, now, now);
+  getDatabase().prepare("INSERT INTO proposal_templates (template_id, company_id, name, description, pricing_spec, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(templateId, companyId, name, description, pricingSpec, now, now);
 }
 
 export function renameTemplate(companyId: string, templateId: string, name: string): void {

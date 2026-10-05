@@ -30,9 +30,9 @@ export function createApp(): Express {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
+  app.use("/api/companies/:companyId/templates", templatesRouter);
   const workflowPath = "/api/companies/:companyId/templates/:templateId";
   app.use(workflowPath, requireTemplate, serializeTemplateWrites, briefingRouter, variablesRouter, templateRouter, rulesRouter, logsRouter);
-  app.use("/api/companies/:companyId/templates", templatesRouter);
   app.use("/api/companies", configurationsRouter);
   app.use("/api/companies", companiesRouter);
   app.use("/api/settings", settingsRouter);

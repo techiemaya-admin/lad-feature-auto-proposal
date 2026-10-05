@@ -19,8 +19,8 @@ test("templates isolate documents, variables, state, resets, deletion and surviv
   const root = "/api/companies/co1_seo/templates";
   try {
     assert.equal((await request(app).post(root).send({ name: " " })).status, 400);
-    const a = await request(app).post(root).send({ name: "Managed IT" });
-    const b = await request(app).post(root).send({ name: "Security audit" });
+    const a = await request(app).post(root).send({ name: "Managed IT", description: "IT support", pricing_spec: "IT pricing" });
+    const b = await request(app).post(root).send({ name: "Security audit", description: "Security", pricing_spec: "Audit pricing" });
     assert.equal(a.status, 201); assert.equal(b.status, 201);
     const aid = a.body.company.template_id, bid = b.body.company.template_id;
     const ap = `${root}/${aid}`, bp = `${root}/${bid}`;

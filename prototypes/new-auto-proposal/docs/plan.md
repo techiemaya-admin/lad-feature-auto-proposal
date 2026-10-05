@@ -1,5 +1,9 @@
 # Auto-Proposal Prototype — Architectural Plan & Blueprint
 
+## October 2026 workflow update
+
+A company-scoped ICP template library now precedes the document pipeline. It generates and persists three starting briefs using the configured AI, adds template descriptions, starts fresh databases without default templates and enforces a seven-template creation limit. See [ICP template library](icp-template-library.md) for the API, migration, concurrency, file inventory and limitations. The AI prompt now requests one-sentence descriptions of at most 160 characters (ideally 15-22 words); server validation still allows 1000 characters. Visual card clamping and the fuller welcome panel do not change persistence or API contracts. Earlier startup and template-creation descriptions below must be read with this update.
+
 ## 1. Executive Summary & Problem Context
 
 Sales teams running AI outbound/inbound campaigns generate high volumes of inbound leads. When a lead requests a quote or pricing, automation breaks down: an account manager or sales rep must manually interpret unstructured messages, calculate rates from mental models or spreadsheets, copy numbers into a Word template, and email it back.

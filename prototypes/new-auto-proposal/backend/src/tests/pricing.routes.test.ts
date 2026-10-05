@@ -1,3 +1,4 @@
+import { seedTemplateFixtures } from "./template-fixtures.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import request from "supertest";
@@ -26,6 +27,7 @@ test("Pricing rules routes", async (t) => {
   process.env.STORAGE_DIR = path.join(testDir, "storage");
   fs.mkdirSync(process.env.STORAGE_DIR, { recursive: true });
   initDatabase(process.env.DB_PATH);
+  seedTemplateFixtures();
   const app = createApp();
   const cwd = process.cwd();
   process.chdir(path.resolve(__dirname, "../..")); // resolveQuotationPath's Mock Data fallback

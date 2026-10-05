@@ -1,5 +1,9 @@
 # Auto-Proposal Prototype — UI/UX & Interaction Design Specification (`DESIGN.md`)
 
+## October 2026 workflow update
+
+The application now starts in the company-scoped template library. Empty libraries show a centered welcome panel with overlapping document illustrations, the selected company name, explanatory text and a larger **Import ICP data** button; import displays three pulsing page cards, followed by clickable saved briefs. Custom creation, deletion, the seven-template limit and **All templates** navigation precede the existing linear canvas. See [ICP template library](icp-template-library.md) for current UI behavior and implementation. Cards now use tighter spacing, 16px titles and 13px descriptions clamped to four lines; full saved descriptions are retained and available through a native hover tooltip. Earlier direct-to-briefing entry descriptions below are superseded.
+
 ## 1. Design Vision & Philosophy
 
 The Rush Away Auto-Proposal onboarding workflow is an **agentic configuration workspace**. Rather than forcing the agency owner to endure a multi-step enterprise setup wizard with heavy forms, dense tables, and disconnected tabs, this experience is designed as an **intuitive, conversational briefing**:

@@ -1,3 +1,4 @@
+import { seedTemplateFixtures } from "./template-fixtures.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -171,6 +172,7 @@ test("mutateDocumentTemplate reads descriptors from SQLite and writes template.d
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mutator-db-"));
   process.env.STORAGE_DIR = path.join(dir, "storage");
   initDatabase(path.join(dir, "test.sqlite"));
+  seedTemplateFixtures();
   const cwd = process.cwd();
   try {
     const db = getDatabase();

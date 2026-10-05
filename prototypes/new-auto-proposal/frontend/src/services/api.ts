@@ -389,7 +389,7 @@ export async function fetchLogArtifact(companyId: string, file: string, template
   return res.text();
 }
 
-export interface ProposalTemplateSummary { template_id: string; name: string; updated_at: string }
+export interface ProposalTemplateSummary { template_id: string; name: string; description: string; pricing_spec: string; updated_at: string }
 async function templateRequest(companyId: string, suffix = "", init?: RequestInit) {
   const res = await fetch(`${API_BASE}/companies/${encodeURIComponent(companyId)}/templates${suffix}`, init);
   const data = await res.json();
@@ -402,8 +402,8 @@ export async function listTemplates(companyId: string): Promise<ProposalTemplate
 export async function fetchProposalTemplate(companyId: string, templateId: string): Promise<Company> {
   return (await templateRequest(companyId, `/${encodeURIComponent(templateId)}`)).company;
 }
-export async function createProposalTemplate(companyId: string, name: string): Promise<Company> {
-  return (await templateRequest(companyId, "", json({ name }))).company;
+export async function createProposalTemplate(companyId: string, name: string, description: string, pricing_spec: string): Promise<Company> {
+  return (await templateRequest(companyId, "", json({ name, description, pricing_spec }))).company;
 }
 export async function renameProposalTemplate(companyId: string, templateId: string, name: string): Promise<Company> {
   return (await templateRequest(companyId, `/${encodeURIComponent(templateId)}`, { ...json({ name }), method: "PATCH" })).company;
@@ -413,4 +413,8 @@ export async function deleteProposalTemplate(companyId: string, templateId: stri
 }
 export async function resetProposalTemplate(companyId: string, templateId: string): Promise<Company> {
   return (await templateRequest(companyId, `/${encodeURIComponent(templateId)}/reset`, { method: "POST" })).company;
+}
+
+export async function importIcpTemplates(companyId: string): Promise<ProposalTemplateSummary[]> {
+  return (await templateRequest(companyId, "/import-icp", { method: "POST" })).templates;
 }

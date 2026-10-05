@@ -1,3 +1,4 @@
+import { seedTemplateFixtures } from "./template-fixtures.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import request from "supertest";
@@ -15,6 +16,7 @@ test("Companies: reset re-seeds the mock default", async (t) => {
   process.env.STORAGE_DIR = testDbDir;
 
   initDatabase(testDbPath);
+  seedTemplateFixtures();
   const app = createApp();
 
   t.after(() => {

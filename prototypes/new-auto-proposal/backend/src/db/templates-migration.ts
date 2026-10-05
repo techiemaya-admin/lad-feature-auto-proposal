@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 /** Preserve the single-workflow prototype once; never re-copy stale company state. */
-export function migrateTemplates(db: DatabaseSync, storageDir: string): void {
+export function migrateTemplates(db: DatabaseSync, storageDir: string, migrateExisting = true): void {
   db.exec("CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY)");
   if (db.prepare("SELECT name FROM schema_migrations WHERE name = ?").get("multiple_templates_v1")) return;
   db.exec("BEGIN IMMEDIATE");
@@ -12,7 +12,7 @@ export function migrateTemplates(db: DatabaseSync, storageDir: string): void {
     if (!columns.some(c => c.name === "template_id")) {
       db.exec("ALTER TABLE company_variables ADD COLUMN template_id TEXT REFERENCES proposal_templates(template_id) ON DELETE CASCADE");
     }
-    const companies = db.prepare("SELECT * FROM company_sessions").all();
+    const companies = migrateExisting ? db.prepare("SELECT * FROM company_sessions").all() : [];
     for (const company of companies) {
       const id = String(company.company_id);
       if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error("Cannot migrate invalid company identifier");

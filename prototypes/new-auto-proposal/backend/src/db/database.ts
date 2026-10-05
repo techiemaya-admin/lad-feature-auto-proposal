@@ -165,7 +165,11 @@ export function initDatabase(dbPath?: string): DatabaseSync {
     seedAllCompanies(db);
   }
 
-  migrateTemplates(db, getStorageDir());
+  migrateTemplates(db, getStorageDir(), Boolean(row && row.count > 0));
+  const templateColumns = db.prepare("PRAGMA table_info(proposal_templates)").all() as Array<{ name: string }>;
+  if (!templateColumns.some(c => c.name === "description")) {
+    db.exec("ALTER TABLE proposal_templates ADD COLUMN description TEXT NOT NULL DEFAULT ''");
+  }
   db.exec(`CREATE VIEW IF NOT EXISTS template_workflows AS
     SELECT c.company_name, c.industry, c.location, c.email, c.website, c.phone, c.data_json, t.*
     FROM proposal_templates t JOIN company_sessions c ON c.company_id = t.company_id`);
