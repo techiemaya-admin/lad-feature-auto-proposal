@@ -14,7 +14,7 @@ Goal: a date is a sheet value like money. The model writes its formula (`proposa
 - Covers every date in a template, including kinds the mock quotations don't have yet. Lead-given dates ("we want to start Nov 1") are **out of scope**: dates are never lead inputs.
 - Date maths = calendar days and simple months. No business days, no date comparisons, no date differences as sheet values.
 - **date-fns** (new dependency, no transitive deps, ships its own types) does all date work: maths, reading, printing. No Temporal, no chrono-node. A date value is its ISO string `"2026-10-02"`, read with `parseISO` (never `new Date(iso)`: that is UTC midnight, the previous day west of UTC).
-- The **extraction model returns each date's format** as a date-fns pattern (`MMMM d, yyyy`, `dd/MM/yyyy`, `MMMM do, yyyy`, `EEEE, MMMM d, yyyy`, `dd/MM/yy`, or month-only `MMMM yyyy`), saved on the Stage 2 variable as `date_format` and editable in Variable Review (plain text field, no preview). An ambiguous numeric date (`07/09/2026`) defaults to **day-first** (`dd/MM/yyyy`).
+- The **extraction model returns each date's format** as a date-fns pattern (`MMMM d, yyyy`, `dd/MM/yyyy`, `MMMM do, yyyy`, `EEEE, MMMM d, yyyy`, `dd/MM/yy`, or month-only `MMMM yyyy`), saved on the Stage 2 variable as `date_format` and editable in Variable Review (text field with a live today's-date preview). An ambiguous numeric date (`07/09/2026`) defaults to **day-first** (`dd/MM/yyyy`).
 - Code verifies every format: the sample must read with it and print back identically. A missing or failing format falls back to `MMMM d, yyyy`, and Variable Review warns on that date.
 - This changes guardrail 2 (`AGENTS.md`, text-only extraction contract): `date_format` is the one field the model derives rather than copies. Wording shown to the user before applying.
 - `today` is a **reserved sheet name** supplied by code (§3).
@@ -78,7 +78,7 @@ The calculator, the compiler, Stage 2 and the lead extractor all need it; keepin
 - Extraction prompt (`gemini.service.ts:165` and the DeepSeek equivalent): "for a `date`, give its date-fns format (`MMMM d, yyyy`); when day and month order is unclear, use day-first (`dd/MM/yyyy`)". A date's `sample_text` is the date alone; a duration next to it ("(14 days)") is its own `number` variable, placed with `context_text` as `validity_days` is today (`template-mutator.service.ts:210`). Live extraction already splits it for co1 and co2; the line is a nudge.
 - `routes/variables.ts`: `date_format` is saved into the descriptor JSON in the existing extract insert (`:149`). No derive step, no DB migration. Custom-added dates and old rows have none and use the default.
 - The variables GET adds a computed `date_format_ok` per date variable (worked out on read, so never stale).
-- `VariableReviewDeck.tsx`: a format text field beside the sample for date variables, saved through the existing `patchDescriptor` (`VariableReviewDeck.tsx:288`); a warning on the date when `date_format_ok` is false.
+- `VariableReviewDeck.tsx`: a format text field beside the sample for date variables, saved through the existing `patchDescriptor` (`VariableReviewDeck.tsx:288`); a warning on the date when `date_format_ok` is false. The field previews today's date in what is typed so far (empty = the default format), with the same D / Y guard as the backend instead of letting date-fns throw.
 
 ## 7. Stage 4 UI (`frontend/src/components/pricing/`)
 
