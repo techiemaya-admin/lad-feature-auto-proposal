@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react"
 import TemplateWorkspace from "./App"
 import {
+  saveRoutingEmail,
+  assignMockEmail,
+  fetchMockEmail,
+  routeMockEmail,
+  type EmailRoutingResult,
   fetchCompanies,
   listTemplates,
   createProposalTemplate,
@@ -29,6 +34,9 @@ export default function TemplatesApp() {
   const [companies, setCompanies] = useState<
     Array<{ company_id: string; company_name: string }>
   >([])
+  const [email, setEmail] = useState("")
+  const [routing, setRouting] = useState<EmailRoutingResult | null>(null)
+  const [routingBusy, setRoutingBusy] = useState(false)
   const [companyId, setCompanyId] = useState("")
   const [templates, setTemplates] = useState<ProposalTemplateSummary[]>([])
   const [templateId, setTemplateId] = useState("")
@@ -65,10 +73,14 @@ export default function TemplatesApp() {
     if (!companyId) return
     let alive = true
     setLoading(true)
-    listTemplates(companyId)
-      .then((rows) => {
+    setEmail("")
+    setRouting(null)
+    Promise.all([listTemplates(companyId), fetchMockEmail(companyId)])
+      .then(([rows, emailText]) => {
         if (alive) {
           setTemplates(rows)
+          setEmail(emailText.email)
+          setRouting(emailText)
           setLoading(false)
         }
       })
@@ -117,6 +129,29 @@ export default function TemplatesApp() {
       setGenerating(false)
     }
   }
+  const emailDirty = email.trim() !== (routing?.email ?? "");
+  async function saveEmail() {
+    setBusy(true); setError("");
+    try { const saved = await saveRoutingEmail(companyId, email, routing!.version); setRouting(saved); setEmail(saved.email); }
+    catch (e) { setError(e instanceof Error ? e.message : "Could not save email"); }
+    finally { setBusy(false); }
+  }
+  async function routeEmail() {
+    setBusy(true); setRoutingBusy(true); setError("")
+    try {
+      if (emailDirty) { const saved = await saveRoutingEmail(companyId, email, routing!.version); setRouting(saved); setEmail(saved.email); }
+      setRouting(await routeMockEmail(companyId));
+    }
+    catch (e) { setError(e instanceof Error ? e.message : "Routing failed") }
+    finally { setBusy(false); setRoutingBusy(false) }
+  }
+  async function reassign(id: string) {
+    if (!id) return;
+    setBusy(true); setError("");
+    try { setRouting(await assignMockEmail(companyId, id)) }
+    catch (e) { setError(e instanceof Error ? e.message : "Assignment failed") }
+    finally { setBusy(false) }
+  }
   async function create() {
     setBusy(true)
     setError("")
@@ -147,6 +182,7 @@ export default function TemplatesApp() {
     setError("")
     try {
       await deleteProposalTemplate(companyId, row.template_id)
+      setRouting(await fetchMockEmail(companyId))
       setTemplates(await listTemplates(companyId))
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not delete template")
@@ -163,8 +199,8 @@ export default function TemplatesApp() {
       return
     setTemplateId("")
     setLoading(true)
-    listTemplates(companyId)
-      .then(setTemplates)
+    Promise.all([listTemplates(companyId), fetchMockEmail(companyId)])
+      .then(([rows, saved]) => { setTemplates(rows); setRouting(saved); setEmail(saved.email) })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
   }
@@ -176,7 +212,7 @@ export default function TemplatesApp() {
         templateId={templateId}
         onCompanyChange={switchCompany}
         templateControls={
-          <div className="flex items-center gap-3 py-1">
+          <div className="space-y-3"><div className="flex items-center gap-3 py-1">
             <Button variant="ghost" size="sm" onClick={back}>
               <ArrowLeft className="mr-2 size-4" />
               All templates
@@ -184,6 +220,8 @@ export default function TemplatesApp() {
             <span className="truncate text-sm text-muted-foreground">
               {templates.find((t) => t.template_id === templateId)?.name}
             </span>
+          </div>
+          {routing?.template_id === templateId && <Card className="p-4 gap-2"><h2 className="text-sm font-semibold">Assigned lead email</h2><p className="text-sm leading-6 whitespace-pre-wrap text-muted-foreground">{routing.email}</p><p className="text-xs text-muted-foreground">{routing.reason}</p></Card>}
           </div>
         }
       />
@@ -315,6 +353,21 @@ export default function TemplatesApp() {
           </section>
         ) : (
           <section aria-label="Template library">
+            <Card className="mb-8 gap-4 rounded-2xl p-6">
+              <div><p className="text-xs font-medium text-muted-foreground mb-1">Lead email</p><h2 className="text-lg font-semibold">Route this lead to a template</h2></div>
+              <Textarea aria-label="Lead email" value={email} onChange={e => setEmail(e.target.value)} disabled={busy} maxLength={12000} className="min-h-40 text-sm leading-6" placeholder="Paste the email you received..." />
+              <p className="text-xs text-muted-foreground">Starts with a sample email. Replace it with your own; saving a changed message clears the previous assignment. {email.length}/12000 characters.</p>
+              {emailDirty && <Button variant="outline" disabled={busy || !email.trim() || !routing} onClick={() => void saveEmail()}>Save email</Button>}
+              <div><Button disabled={busy || !email.trim() || !routing} onClick={() => void routeEmail()}><Sparkles className="size-4" />{routingBusy ? "Matching email..." : routing?.template_id ? "Re-route email" : "Route email"}</Button></div>
+              {routingBusy && <p role="status" className="text-sm text-muted-foreground motion-safe:animate-pulse">Comparing this email with your saved templates...</p>}
+              <label className="text-sm space-y-2"><span className="block text-muted-foreground">Assign or move manually</span><select aria-label="Assign email to template" className="w-full rounded-md border bg-background p-2" disabled={busy || emailDirty} value={routing?.template_id ?? ""} onChange={e => void reassign(e.target.value)}><option value="" disabled>Select a template</option>{templates.map(t => <option key={t.template_id} value={t.template_id}>{t.name}</option>)}</select></label>
+              {routing && !emailDirty && <div role="status" className="rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-2">
+                <p className="font-medium text-sm">{routing.template_id ? `Assigned to ${templates.find(t => t.template_id === routing.template_id)?.name ?? "template"}` : routing.source === "unassigned" ? "Not assigned" : "Needs review ? no clear match"}</p>
+                <p className="text-sm text-muted-foreground">{routing.reason || "Route this email automatically or select a template above."}</p>
+                {routing.routed_at && <p className="text-xs text-muted-foreground">Saved {new Date(routing.routed_at).toLocaleString()} ? {routing.source === "manual" ? "Manual assignment" : "AI routing"}</p>}
+                {routing.template_id && <Button variant="outline" onClick={() => setTemplateId(routing.template_id!)}>Open assigned template<ArrowUpRight className="size-4" /></Button>}
+              </div>}
+            </Card>
             <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
               <div>
                 <p className="mb-2 text-xs font-medium text-muted-foreground">
@@ -422,7 +475,7 @@ export default function TemplatesApp() {
               {templates.map((row) => (
                 <Card
                   key={row.template_id}
-                  className="group relative overflow-hidden rounded-2xl py-0 shadow-sm transition-all hover:border-primary/30 hover:shadow-md"
+                  className={`group relative overflow-hidden rounded-2xl py-0 shadow-sm transition-all hover:border-primary/30 hover:shadow-md ${!emailDirty && routing?.template_id === row.template_id ? "border-primary ring-2 ring-primary/20" : ""}`}
                 >
                   <button
                     disabled={busy}

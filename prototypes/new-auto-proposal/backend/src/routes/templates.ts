@@ -1,3 +1,4 @@
+import { updateRoutingEmail, savedMockEmail, assignMockEmail, routeMockEmail } from "../services/email-routing.service.js";
 import { Router, type Request, type Response } from "express";
 import { importTemplateIdeas, saveIdeas, validateIdea, TemplateIdeaError } from "../services/template-ideas.service.js";
 import { listTemplates, loadWorkflow, renameTemplate, companyExists } from "../repositories/templates.repository.js";
@@ -12,6 +13,22 @@ router.use((req, res, next) => {
     return;
   }
   next();
+});
+router.get("/mock-email", (req: Request, res: Response) => {
+  const routing = savedMockEmail(req.params.companyId);
+  res.json({ success: true, email: routing.email, routing });
+});
+router.put("/mock-email", (req: Request, res: Response) => {
+  try { res.json({ success: true, routing: updateRoutingEmail(req.params.companyId, req.body?.email, req.body?.version) }); }
+  catch (error) { res.status(error instanceof TemplateIdeaError ? error.status : 500).json({ success: false, error: error instanceof Error ? error.message : "Could not save email" }); }
+});
+router.put("/route-email", (req: Request, res: Response) => {
+  try { res.json({ success: true, routing: assignMockEmail(req.params.companyId, req.body?.template_id) }); }
+  catch (error) { res.status(error instanceof TemplateIdeaError ? error.status : 500).json({ success: false, error: error instanceof Error ? error.message : "Assignment failed" }); }
+});
+router.post("/route-email", async (req: Request, res: Response) => {
+  try { res.json({ success: true, routing: await routeMockEmail(req.params.companyId) }); }
+  catch (error) { res.status(error instanceof TemplateIdeaError ? error.status : 500).json({ success: false, error: error instanceof Error ? error.message : "Routing failed" }); }
 });
 router.get("/", (req: Request, res: Response) => {
   res.json({ success: true, templates: listTemplates(req.params.companyId).map(({ template_id, name, description, pricing_spec, updated_at }) => ({ template_id, name, description, pricing_spec, updated_at })) });

@@ -441,3 +441,19 @@ export async function resetProposalTemplate(companyId: string, templateId: strin
 export async function importIcpTemplates(companyId: string): Promise<ProposalTemplateSummary[]> {
   return (await templateRequest(companyId, "/import-icp", { method: "POST" })).templates;
 }
+
+export interface EmailRoutingResult { version: number; template_id: string | null; reason: string; email: string; email_id: string; source: string; routed_at: string | null }
+export async function fetchMockEmail(companyId: string): Promise<EmailRoutingResult> {
+  return (await templateRequest(companyId, "/mock-email")).routing;
+}
+export async function routeMockEmail(companyId: string): Promise<EmailRoutingResult> {
+  return (await templateRequest(companyId, "/route-email", { method: "POST" })).routing;
+}
+
+export async function assignMockEmail(companyId: string, templateId: string): Promise<EmailRoutingResult> {
+  return (await templateRequest(companyId, "/route-email", { ...json({ template_id: templateId }), method: "PUT" })).routing;
+}
+
+export async function saveRoutingEmail(companyId: string, email: string, version: number): Promise<EmailRoutingResult> {
+  return (await templateRequest(companyId, "/mock-email", { ...json({ email, version }), method: "PUT" })).routing;
+}

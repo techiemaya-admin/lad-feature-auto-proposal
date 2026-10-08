@@ -203,6 +203,25 @@ export function initDatabase(dbPath?: string): DatabaseSync {
   db.exec(`CREATE VIEW IF NOT EXISTS template_workflows AS
     SELECT c.company_name, c.industry, c.location, c.email, c.website, c.phone, c.data_json, t.*
     FROM proposal_templates t JOIN company_sessions c ON c.company_id = t.company_id`);
+  db.exec(`CREATE TABLE IF NOT EXISTS mock_email_routes (
+    company_id TEXT PRIMARY KEY REFERENCES company_sessions(company_id) ON DELETE CASCADE,
+    email_id TEXT NOT NULL UNIQUE,
+    email TEXT NOT NULL,
+    template_id TEXT REFERENCES proposal_templates(template_id) ON DELETE SET NULL,
+    reason TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT 'unassigned',
+    routed_at TEXT,
+    version INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE TRIGGER IF NOT EXISTS mock_email_owner_insert BEFORE INSERT ON mock_email_routes
+  WHEN NEW.template_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM proposal_templates WHERE template_id = NEW.template_id AND company_id = NEW.company_id)
+  BEGIN SELECT RAISE(ABORT, 'Email template must belong to its company'); END;
+  CREATE TRIGGER IF NOT EXISTS mock_email_owner_update BEFORE UPDATE OF template_id, company_id ON mock_email_routes
+  WHEN NEW.template_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM proposal_templates WHERE template_id = NEW.template_id AND company_id = NEW.company_id)
+  BEGIN SELECT RAISE(ABORT, 'Email template must belong to its company'); END;
+  CREATE TRIGGER IF NOT EXISTS mock_email_template_deleted BEFORE DELETE ON proposal_templates
+  BEGIN UPDATE mock_email_routes SET template_id = NULL, reason = 'Assigned template was deleted. Route this email again.',
+    source = 'unassigned', routed_at = NULL, version = version + 1 WHERE template_id = OLD.template_id; END;`);
   instance = db;
   return db;
 }

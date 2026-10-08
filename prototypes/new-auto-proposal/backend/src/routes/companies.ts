@@ -3,6 +3,7 @@ import path from "node:path";
 import { Router, Request, Response } from "express";
 import { getDatabase, getStorageDir } from "../db/database.js";
 import { findSeed, resetCompanyById } from "../db/seed.js";
+import { assignedEmail } from "../repositories/email-routing.repository.js";
 
 const router = Router();
 
@@ -67,8 +68,9 @@ export function formatCompanyResponse(row: CompanyRow) {
     phone: row.phone,
     data: parsedData,
     pricing_spec: row.pricing_spec,
-    // Dev-only Stage 5 prefill; read from test_seeds.json, never stored.
-    sample_lead_text: findSeed(row.company_id)?.sample_lead_text || "",
+    // The selected template's routed email takes precedence over the demo seed.
+    sample_lead_text: (row.template_id ? assignedEmail(row.company_id, row.template_id) : undefined)
+      ?? findSeed(row.company_id)?.sample_lead_text ?? "",
     working_state: parsedWorkingState,
     briefing_locked: Boolean(row.briefing_locked),
     document_metadata: documentMetadata,
