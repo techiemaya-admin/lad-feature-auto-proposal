@@ -157,9 +157,9 @@ export const LeadSimulator: React.FC<LeadSimulatorProps> = ({ company, rules }) 
   };
 
   const done = result?.success === true;
-  // Q1 soft stale: Stage 4 edits replace the `rules` object via onRulesChange; the old proposal stays
-  // on screen flagged "rules changed — regenerate". No wipe, no rewind. Reference equality holds only
-  // because App replaces rules on real updates — compare compiled_at if the banner ever flickers.
+  // PROD-GAP: staleness is reference equality, which holds only because App replaces rules on real
+  // updates — compare compiled_at if the banner ever flickers. Q1 soft stale: the old proposal stays
+  // on screen flagged "rules changed — regenerate". No wipe, no rewind.
   const stale = done && generatedFor !== null && generatedFor !== rules;
 
   const pdfUrl = result?.success ? result.files.pdf : null;

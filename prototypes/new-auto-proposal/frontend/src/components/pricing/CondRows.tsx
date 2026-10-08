@@ -33,8 +33,8 @@ export interface CondRowsProps<T extends Where | Cond> {
 
 export function CondRows<T extends Where | Cond>({ rules, items, left, tableId, hideTextRows, onChange }: CondRowsProps<T>) {
   const allVars = rules.variables;
-  // One-line unit filter for review rules: text/rows variables are not comparable LHS. Prototype opinion:
-  // the backend accepts text comparisons, so a rule on a text variable shows a placeholder in this picker.
+  // PROD-GAP: this filter is stricter than the backend (text comparisons are legal there), so a rule
+  // on a text variable shows a placeholder in this picker. One-line unit filter for review rules.
   const lhsVars = hideTextRows ? allVars.filter((v) => v.unit !== "text" && v.unit !== "rows") : allVars;
   const leftOptions =
     left === "column"
