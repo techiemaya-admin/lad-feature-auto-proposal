@@ -1,8 +1,9 @@
 {
   "variables": [
     { "variable_name": "client_name", "category": "customer_input", "sample_text": "Rosewood Home Goods" },
-    { "variable_name": "proposal_date", "category": "customer_input", "sample_text": "September 7, 2026" },
-    { "variable_name": "proposal_valid_until", "category": "customer_input", "sample_text": "September 21, 2026 (14 days)" },
+    { "variable_name": "proposal_date", "category": "customer_input", "data_type": "date", "date_format": "MMMM d, yyyy", "sample_text": "September 7, 2026" },
+    { "variable_name": "proposal_valid_until", "category": "customer_input", "data_type": "date", "date_format": "MMMM d, yyyy", "sample_text": "September 21, 2026" },
+    { "variable_name": "validity_days", "category": "fixed", "data_type": "number", "sample_text": "14" },
     { "variable_name": "project_template_name", "category": "pricing", "sample_text": "E-Commerce Build" },
     { "variable_name": "template_scope_summary", "category": "pricing", "sample_text": "up to 100 products" },
     { "variable_name": "typical_delivery_timeline", "category": "pricing", "sample_text": "4–6 weeks" },

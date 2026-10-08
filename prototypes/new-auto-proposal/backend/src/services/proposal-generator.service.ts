@@ -9,59 +9,16 @@ import { templateDirectory } from "./template-storage.js";
 import type { CompanyRow } from "../routes/companies.js";
 import { logPipelineArtifact } from "./pipeline-log.js";
 import { buildProposalPayload, evaluate } from "./pricing-calculator.js";
-import { isCustomerOrFixed, type Evaluation, type PricingRules, type Stage2Context, type Stage2Variable, type Value } from "./pricing-rules.types.js";
+import { isDateVariable, localToday } from "./dates.js";
+import { isCustomerOrFixed, type Evaluation, type PricingRules, type Stage2Context, type Value } from "./pricing-rules.types.js";
 import { hydrateProposalTemplate, type TierMatrix } from "./template-mutator.service.js";
 import { draftNarrative, type NarrativeResult } from "./narrative-drafter.service.js";
 
 /**
- * Stage 5: lead facts → evaluate → payload → dates (code) → narrative (model, placeholders only) →
+ * Stage 5: lead facts + today → evaluate (dates included) → payload → narrative (model, placeholders only) →
  * proposal.docx (easy-template-x) → proposal.pdf (LibreOffice). Nothing is persisted: the two files
  * overwrite storage/<id>/proposal.* on every run. Plan: docs/plans/06-lead-simulator.md §1.3–1.5.
  */
-
-// ---------------------------------------------------------------------------
-// Dates — computed, never extracted.
-// ---------------------------------------------------------------------------
-
-const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-// "September 7, 2026 (14 days)" → month, day, year, suffix. ponytail: US month-name-first only; the three mock
-// quotations all use it. Add a day-first branch when a template needs "7 September 2026".
-const SAMPLE_DATE = /^([A-Z][a-z]+)\.?\s+(\d{1,2}),?\s+(\d{4})(.*)$/s;
-
-/** The sample's date as UTC midnight plus whatever trails it ("" or " (14 days)"). */
-export function parseSampleDate(sample: string): { utc: number; suffix: string } | null {
-  const m = SAMPLE_DATE.exec(sample.trim());
-  if (!m) return null;
-  const month = MONTHS.findIndex((n) => n.toLowerCase().startsWith(m[1].toLowerCase().slice(0, 3)));
-  if (month < 0) return null;
-  return { utc: Date.UTC(Number(m[3]), month, Number(m[2])), suffix: m[4] };
-}
-
-/** data_type "date", or (ponytail: fallback for extractions older than the date type) a string whose sample parses as one. */
-export const isDateVariable = (v: Stage2Variable): boolean =>
-  isCustomerOrFixed(v) &&
-  (v.data_type === "date" || ((!v.data_type || v.data_type === "string") && parseSampleDate(v.sample_value) !== null));
-
-/**
- * Earliest sample date → today; every other date keeps its offset from that anchor (calendar days).
- * Output keeps the sample's spelling and any suffix verbatim. ponytail: a "(14 days)" suffix is copied,
- * not recomputed — parse it when a template's validity window differs from its sample's.
- */
-export function fillDates(variables: Stage2Variable[], today = new Date()): Record<string, string> {
-  const dated = variables
-    .filter(isDateVariable)
-    .map((v) => ({ name: v.variable_name, parsed: parseSampleDate(v.sample_value) }))
-    .filter((d): d is { name: string; parsed: NonNullable<ReturnType<typeof parseSampleDate>> } => d.parsed !== null);
-  if (dated.length === 0) return {};
-  const anchor = Math.min(...dated.map((d) => d.parsed.utc));
-  const todayUtc = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
-  const out: Record<string, string> = {};
-  for (const d of dated) {
-    const t = new Date(todayUtc + (d.parsed.utc - anchor));
-    out[d.name] = `${MONTHS[t.getUTCMonth()]} ${t.getUTCDate()}, ${t.getUTCFullYear()}${d.parsed.suffix}`;
-  }
-  return out;
-}
 
 // ---------------------------------------------------------------------------
 // Files
@@ -130,7 +87,8 @@ export interface GenerateInput {
   assumed?: string[];
   /** Drafter context only — never re-extracted. */
   leadText: string;
-  today?: Date;
+  /** ISO date; the server's local date when omitted. Test seam, so no test depends on the clock. */
+  today?: string;
 }
 
 /** Always a document: `evaluation.needs_review` non-empty makes it a draft for the human to fix, not a refusal. */
@@ -148,14 +106,13 @@ export async function generateProposal(input: GenerateInput): Promise<GenerateRe
   const companyId = company.company_id;
   const templateId = company.template_id ?? `default-${companyId}`;
 
-  // Dates are computed here and also offered to the sheet, in case a compile made a date an input anyway.
-  const dates = fillDates(stage2.variables, input.today);
-  const evaluation = evaluate(rules, { ...dates, ...inputs });
+  // Dates come out of the sheet like money: it builds them from `today`, which the lead never supplies.
+  const evaluation = evaluate(rules, { ...inputs, today: input.today ?? localToday() });
 
   const payload: Record<string, unknown> = buildProposalPayload(rules, evaluation, stage2, input.tierMatrix);
 
-  // Customer inputs come straight from the facts and dates from the calendar — over whatever the sheet
-  // computed for them (a live compile once defined client_name and the dates as inputs). Numeric facts the
+  // Customer inputs come straight from the facts — over whatever the sheet computed for them (a live compile
+  // once defined client_name as an input); dates are the sheet's own. Numeric facts the
   // sheet formats (seat counts) and seller-owned constants (validity days) keep the sheet's rendering.
   for (const v of stage2.variables) {
     if (!isCustomerOrFixed(v) || isDateVariable(v)) continue;
@@ -168,7 +125,6 @@ export async function generateProposal(input: GenerateInput): Promise<GenerateRe
       payload[v.variable_name] = String(raw);
     }
   }
-  Object.assign(payload, dates);
 
   const narrative = await draftNarrative({ ...input, payload });
   for (const [name, n] of Object.entries(narrative)) payload[name] = n.text;

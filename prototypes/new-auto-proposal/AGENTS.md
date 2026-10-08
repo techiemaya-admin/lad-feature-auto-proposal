@@ -25,6 +25,7 @@ Self-contained proof of concept for zero-configuration proposal generation: a re
 
 ### 2. Text-only extraction contract
 - The extraction model returns verbatim text and nothing else: `sample_text`, `category`, `condition_flag`, `enum_options`, rare `context_text`, and loop tables by `header_texts` + `row_labels`. The engine (`template-mutator.service.ts`) owns every locator and derives each mutation from the variable itself.
+- One exception: for a `date`, the model also returns `date_format`, a date-fns pattern it derives rather than copies. Code trusts it only when the sample reads with it and prints back exactly; otherwise `MMMM d, yyyy` is used and Variable Review warns.
 - Every field the engine reads is `required` in the response schema — optional fields get skipped regardless of prompt wording.
 - Provider and model live in the `app_settings` table (`ai-settings.service.ts`) and are stamped into each `logs/<company>/*-variables-raw.json` as `ai`. Default `deepseek-flash`; `gemini-flash-lite` drops money amounts.
 - Mutation mechanics — loop collapse, tier matrix, paragraph sub-spans, ordering: [docs/plan.md](docs/plan.md) §4.2–4.3.
@@ -37,7 +38,7 @@ Self-contained proof of concept for zero-configuration proposal generation: a re
 
 ### 4. Stage 5 never lets the model touch a number
 - The lead extractor only reads: `null` = not said, `assumptions[]` for its readings of the lead's own words. `evaluate` + `buildProposalPayload` produce every value.
-- Dates are computed (`fillDates`), seller-owned values (validity days, payment terms) are compiled as constants, and a silent lead input follows its Stage 4 setting — Ask / Assume / Blank.
+- Dates are sheet values: the compiler builds each from the reserved `today` with `add_days` / `add_months`, and code does the maths. Seller-owned values (validity days, payment terms) are compiled as constants, and a silent lead input follows its Stage 4 setting — Ask / Assume / Blank.
 - Nothing reaches a lead on its own: a human reviews every proposal and sends it. `needs_review` flags what that human must check; the document is still built, with only the values a problem touches left blank to fill by hand: a broken value (and everything computed from it) prints `[to confirm]`; a review rule blanks nothing. Empty `needs_review` = ready; otherwise a red Draft box lists the reasons.
 - The narrative drafter writes `{tag}` placeholders; code substitutes them from the payload.
 - Contracts, the Ask/Assume/Blank rules and the clarification reply loop: [docs/plans/06-lead-simulator.md](docs/plans/06-lead-simulator.md).

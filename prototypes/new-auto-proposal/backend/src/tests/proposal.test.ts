@@ -11,13 +11,15 @@ import { createApp } from "../app.js";
 import { initDatabase, closeDatabase, getDatabase } from "../db/database.js";
 import { setRulesModelCall } from "../services/pricing-compiler.service.js";
 import { toWire, type PricingRules, type Stage2Context } from "../services/pricing-rules.types.js";
-import { fillDates, setPdfConverter } from "../services/proposal-generator.service.js";
+import { setPdfConverter } from "../services/proposal-generator.service.js";
+import { localToday, writeDate } from "../services/dates.js";
+import { addDays, format, parseISO } from "date-fns";
 import { substitutePlaceholders, setNarrativeModelCall } from "../services/narrative-drafter.service.js";
 import { leadFields, setLeadModelCall } from "../services/lead-extractor.service.js";
 import { buildClarifyPrompt, setClarifyModelCall } from "../services/clarification-drafter.service.js";
 
 /**
- * Stage 5 offline: the pure pieces (dates, placeholder substitution, per-company fact schema) and the
+ * Stage 5 offline: the pure pieces (placeholder substitution, per-company fact schema) and the
  * routes end to end on co1 with every model call and the PDF converter stubbed.
  */
 
@@ -27,23 +29,8 @@ const mockDataDir = path.resolve(__dirname, "../../../Mock Data");
 const rulesOf = (id: string): PricingRules => JSON.parse(fs.readFileSync(path.join(fixturesDir, `${id}.rules.json`), "utf8"));
 const stage2Of = (id: string): Stage2Context => {
   const fx = JSON.parse(fs.readFileSync(path.join(fixturesDir, `${id}.variables.json`), "utf8"));
-  return { variables: fx.variables.map((v: any) => ({ variable_name: v.variable_name, category: v.category, sample_value: v.sample_text, enum_options: v.enum_options })), loop_tables: [] };
+  return { variables: fx.variables.map((v: any) => ({ variable_name: v.variable_name, category: v.category, data_type: v.data_type, date_format: v.date_format, sample_value: v.sample_text, enum_options: v.enum_options })), loop_tables: [] };
 };
-
-test("fillDates: earliest sample date becomes today, the others keep their offset, format and suffix", () => {
-  const vars = [
-    { variable_name: "client_name", category: "customer_input", sample_value: "Bloom & Co" },
-    { variable_name: "proposal_date", category: "customer_input", data_type: "date", sample_value: "September 7, 2026" },
-    { variable_name: "proposal_valid_until", category: "customer_input", data_type: "string", sample_value: "September 21, 2026 (14 days)" },
-    { variable_name: "contract_months", category: "pricing", data_type: "number", sample_value: "12" },
-  ];
-  assert.deepEqual(fillDates(vars, new Date(2026, 8, 18)), { proposal_date: "September 18, 2026", proposal_valid_until: "October 2, 2026 (14 days)" });
-  assert.deepEqual(fillDates(vars, new Date(2026, 11, 25)), { proposal_date: "December 25, 2026", proposal_valid_until: "January 8, 2027 (14 days)" });
-  assert.deepEqual(fillDates([vars[0], vars[3]]), {});
-  // The Fixed box is where new extractions put dates; old companies keep them under customer_input (above).
-  const fixed = vars.map((v) => (v.variable_name.startsWith("proposal_") ? { ...v, category: "fixed" } : v));
-  assert.deepEqual(fillDates(fixed, new Date(2026, 8, 18)), { proposal_date: "September 18, 2026", proposal_valid_until: "October 2, 2026 (14 days)" });
-});
 
 test("substitutePlaceholders: known tags are filled, unknown tags stripped and reported", () => {
   const r = substitutePlaceholders("Growth at {selected_tier_rate} for {contract_months} months, {mystery} total {total_investment_amount}.", {
@@ -121,8 +108,8 @@ test("Proposal routes", async (t) => {
      VALUES (?, 'co1_seo', 'default-co1_seo', ?, ?, ?, ?, 0, 0, ?, ?, ?, ?)`
   );
   fx.variables.forEach((v: any, i: number) =>
-    insert.run(`v${i}`, v.variable_name, v.variable_name, v.category, v.category === "pricing" ? "currency" : "string", i,
-      JSON.stringify({ sample_value: v.sample_text, enum_options: v.enum_options, visibility_rule: v.condition_flag ? { condition_flag: v.condition_flag } : undefined,
+    insert.run(`v${i}`, v.variable_name, v.variable_name, v.category, v.data_type ?? (v.category === "pricing" ? "currency" : "string"), i,
+      JSON.stringify({ sample_value: v.sample_text, date_format: v.date_format, enum_options: v.enum_options, visibility_rule: v.condition_flag ? { condition_flag: v.condition_flag } : undefined,
         paragraph_config: v.category === "paragraph" ? { mode: "ai_generated", purpose: `purpose of ${v.variable_name}`, tone: "warm" } : undefined }), now, now));
   assert.equal((await request(app).post("/api/companies/co1_seo/templates/default-co1_seo/template/generate")).status, 200);
   setRulesModelCall(async () => toWire(rulesOf("co1_seo")));
@@ -233,13 +220,17 @@ test("Proposal routes", async (t) => {
       return Object.fromEntries(names.map((n) => [n, `${n}: {selected_tier} at {selected_tier_rate} for {contract_months} months, {not_a_tag} total {total_investment_amount}.`]));
     });
     setPdfConverter(async () => Buffer.from("%PDF-1.4 stub"));
+    const today = localToday();
     const res = await request(app).post("/api/companies/co1_seo/templates/default-co1_seo/proposal/generate").send({ inputs: facts, lead_text: lead });
     assert.equal(res.status, 200, res.text);
     assert.equal(res.body.success, true);
     assert.equal(res.body.payload.total_investment_amount, "$35,073.00");
     assert.equal(res.body.payload.client_name, "Bloom & Co");
-    assert.match(res.body.payload.proposal_date, /^[A-Z][a-z]+ \d{1,2}, \d{4}$/);
-    assert.match(res.body.payload.proposal_valid_until, / \(14 days\)$/);
+    // The sheet dates the proposal on the server's today and the valid-until validity_days on, in the sample's style.
+    const validUntil = format(addDays(parseISO(today), 14), "MMMM d, yyyy");
+    assert.equal(res.body.payload.proposal_date, writeDate(today, "MMMM d, yyyy"));
+    assert.equal(res.body.payload.proposal_valid_until, validUntil);
+    assert.equal(res.body.payload.validity_days, "14");
     const para = res.body.narrative.client_current_situation_narrative;
     assert.equal(para.text, "client_current_situation_narrative: Growth at $3,000/mo for 12 months, total $35,073.00.");
     assert.deepEqual(para.unknown_tags, ["not_a_tag"]);
@@ -253,6 +244,7 @@ test("Proposal routes", async (t) => {
     const md = await toMarkdown(docxPath);
     assert.ok(md.includes("$35,073.00"), md);
     assert.ok(md.includes("Bloom & Co"), md);
+    assert.ok(md.includes(`${validUntil} (14 days)`), md); // the date and its day count are two tags in one cell
     assert.ok(!/[{}]/.test(md), md.match(/.{0,40}[{}].{0,40}/g)?.join("\n"));
 
     const dl = await request(app).get(res.body.files.docx);

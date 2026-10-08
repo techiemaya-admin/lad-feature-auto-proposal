@@ -1,12 +1,14 @@
 import { loadWorkflow } from "../repositories/templates.repository.js";
 import { SchemaType, type ResponseSchema } from "@google/generative-ai";
+import { differenceInCalendarDays, differenceInCalendarMonths, parseISO } from "date-fns";
 import { getDatabase } from "../db/database.js";
 import type { CompanyRow } from "../routes/companies.js";
 import type { VariableRow } from "../routes/variables.js";
 import { generateJson } from "./ai-extraction.service.js";
 import { getAISettings } from "./ai-settings.service.js";
 import { logPipelineArtifact } from "./pipeline-log.js";
-import { evaluate, sampleCheck, validate } from "./pricing-calculator.js";
+import { dateFormatOf, hasDay, isDateVariable, sampleDate } from "./dates.js";
+import { evaluate, sampleCheck, sampleToday, validate } from "./pricing-calculator.js";
 import { fromWire, isCustomerOrFixed, toWire, type AiPricingRules, type PricingRules, type PricingRulesState, type Stage2Context } from "./pricing-rules.types.js";
 import type { MutationLogEntry } from "./template-mutator.service.js";
 
@@ -45,6 +47,7 @@ export function loadStage2Context(companyId: string, templateId = `default-${com
         variable_name: row.variable_name, natural_name: row.natural_name, category: row.category, data_type: row.data_type,
         sample_value: typeof d.sample_value === "string" ? d.sample_value : "",
         condition_flag: d.visibility_rule?.condition_flag || undefined, enum_options: d.enum_options, paragraph_mode: d.paragraph_config?.mode,
+        date_format: d.date_format || undefined,
       });
     }
   }
@@ -67,12 +70,35 @@ export function buildCompileInput(company: CompanyRow, stage2: Stage2Context): C
 
 export interface PreviousAttempt { wire: AiPricingRules; errors: string[] }
 
+const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"}`;
+
+/**
+ * One line per document date with its gap from the earliest date, worked out here so the model only links
+ * gaps to numbers. "N months" shows beside the days only when the day of the month matches; a month-only
+ * date ("December 2026") gets months alone, so the model reaches for add_months.
+ */
+export function dateLines(stage2: Stage2Context): string[] {
+  const dates = stage2.variables.filter(isDateVariable).map((v) => ({ v, iso: sampleDate(v), day: hasDay(dateFormatOf(v)) }));
+  const anchor = dates.filter((d) => d.iso && d.day).sort((a, b) => a.iso!.localeCompare(b.iso!))[0];
+  return dates.map(({ v, iso, day }) => {
+    const head = `- ${v.variable_name} | ${v.natural_name ?? ""} | sample: ${JSON.stringify(v.sample_value)}`;
+    if (!iso) return `${head} (not a readable date — define it anyway, from today)`;
+    if (!anchor) return head;
+    if (v === anchor.v) return `${head} (the earliest date)`;
+    const [from, to] = [parseISO(anchor.iso!), parseISO(iso)];
+    const months = differenceInCalendarMonths(to, from);
+    if (!day) return `${head} (${plural(months, "month")} after ${anchor.v.variable_name})`;
+    const sameDay = months !== 0 && to.getDate() === from.getDate();
+    return `${head} (${plural(differenceInCalendarDays(to, from), "day")}${sameDay ? ` / ${plural(months, "month")}` : ""} after ${anchor.v.variable_name})`;
+  });
+}
+
 export function buildCompilePrompt(input: CompileInput, previous?: PreviousAttempt): string {
   const s2 = input.stage2;
   const line = (v: Stage2Context["variables"][number]) =>
     `- ${v.variable_name} | ${v.natural_name ?? ""} | ${v.data_type ?? ""} | sample: ${JSON.stringify(v.sample_value)}${v.condition_flag ? ` | flag: ${v.condition_flag}` : ""}${v.enum_options?.length ? ` | options: ${v.enum_options.join(" / ")}` : ""}`;
   const pricing = s2.variables.filter((v) => v.category === "pricing");
-  const inputs = s2.variables.filter(isCustomerOrFixed);
+  const inputs = s2.variables.filter((v) => isCustomerOrFixed(v) && !isDateVariable(v));
   const flags = [...new Set(s2.variables.map((v) => v.condition_flag).filter(Boolean))] as string[];
   const flagOwners = (f: string) => s2.variables.filter((v) => v.condition_flag === f).map((v) => `${v.variable_name} (${v.category})`).join(", ");
 
@@ -105,8 +131,11 @@ Name: "${input.companyName}"  Based in: "${input.homeLocation || "unknown"}"
 ==================== CELLS YOU MUST DEFINE (in_document: true, exactly these names) ====================
 ${pricing.map(line).join("\n") || "(none)"}
 
-Customer inputs already in the document (define as kind "input" with in_document: true ONLY the ones the maths needs, e.g. seat counts; a value the agency sets rather than the lead — validity days, payment terms — is kind "constant" with in_document: true and the sample value; names, dates and free text are NOT yours):
+Customer inputs already in the document (define as kind "input" with in_document: true ONLY the ones the maths needs, e.g. seat counts; a value the agency sets rather than the lead — validity days, payment terms — is kind "constant" with in_document: true and the sample value; names and free text are NOT yours):
 ${inputs.map(line).join("\n") || "(none)"}
+
+Dates to define (unit "date", in_document: true; build each from the reserved name \`today\` or another date with add_days / add_months — the gaps are already worked out):
+${dateLines(s2).join("\n") || "(none)"}
 
 Flags to define as kind "condition" (name exactly as listed; each must be TRUE for the sample lead):
 ${flags.map((f) => `- ${f} — controls ${flagOwners(f)}`).join("\n") || "(none)"}
@@ -119,8 +148,10 @@ ${input.covered.join(", ") || "(none)"}
 
 ==================== RULES ====================
 1. Every variable is ONE flat operation: kind input | constant | lookup | formula | condition | aggregate | rows. To nest, add a helper variable with in_document: false (lead inputs like room_count, constants like minimum_visit_count, intermediates like billable_hours). Helpers are invisible to the document.
-2. Units: money | percent | integer | text | boolean | rows. Percent values are FRACTIONS (12.5% → "0.125"). Money has no symbol. An empty cell in an integer column means "unbounded" (no cap).
+2. Units: money | percent | integer | text | boolean | date | rows. A date is never a table cell, a lead input, or part of number maths or a comparison. Percent values are FRACTIONS (12.5% → "0.125"). Money has no symbol. An empty cell in an integer column means "unbounded" (no cap).
 3. formula: op add | mul | min | max take 1+ args; sub | div take exactly 2. args are variable names or numeric literals (as strings). Never put text variables in a formula.
+   add_days | add_months take exactly 2 args, a date (or \`today\`) and a whole number (an integer variable or literal), and give a date.
+   \`today\` is reserved (never define it); the proposal date is add_days(today, 0). Link each gap to the number variable the document prints for it (validity_days), or add a constant helper with in_document: false when it prints none (delivery_days = 30).
 4. lookup: first row of the table, in table order, where ALL where-conditions hold; take = the column to read. Put cheapest / smallest tier first so caps resolve upward. where uses column op value_var|value; ops eq neq gte lte gt lt in.
    No row matched is a real outcome, and you choose what it means: leave "fallback" as "" and the quote STOPS for a human to handle (the safe default — use it whenever a missing row means the sheet genuinely cannot price this lead), or set "fallback" to the value that applies to everyone the table does not list. Set a fallback only when the notes say what that value is; never invent one. When one lookup on a table gets a fallback its siblings on the same table usually need one too, or the document prints a rate beside a blank name.
 5. Who picks a tier? Decide from the notes, per tier table:
@@ -189,13 +220,13 @@ Respond with ONLY a single JSON object — no markdown fences, no commentary —
                 "columns": [ { "key": string, "label": string, "unit": "money" | "percent" | "integer" | "text" | "boolean" } ],
                 "rows": [ { "cells": [ { "column": string, "text": string } ] } ] } ],
   "variables": [ {
-      "name": string, "label": string, "in_document": boolean, "unit": "money" | "percent" | "integer" | "text" | "boolean" | "rows", "condition_flag": string,
+      "name": string, "label": string, "in_document": boolean, "unit": "money" | "percent" | "integer" | "text" | "boolean" | "date" | "rows", "condition_flag": string,
       "kind": "input" | "constant" | "lookup" | "formula" | "condition" | "aggregate" | "rows",
       "input_type": "integer" | "choice" | "multi_choice" | "boolean" | "region" | "", "options_table": string, "options_column": string, "options": string[], "required": boolean,
       "default": string, "default_values": string[], "assume_when": string,
       "value": string,
       "table": string, "where": [ { "column": string, "var": "", "op": string, "value_var": string, "value": string, "values": string[] } ], "take": string, "fallback": string,
-      "op": "add" | "sub" | "mul" | "div" | "min" | "max" | "", "args": string[],
+      "op": "add" | "sub" | "mul" | "div" | "min" | "max" | "add_days" | "add_months" | "", "args": string[],
       "all": [ { "var": string, "column": "", "op": string, "value_var": string, "value": string, "values": string[] } ],
       "fn": "sum" | "count" | "", "rows": "selected" | "all" | "", "selected_var": string, "key_column": string, "column": string,
       "map": [ { "loop_column": string, "column": string, "op": string, "args": string[] } ]
@@ -218,7 +249,7 @@ const callModel: ModelCall = (prompt) => (modelCall ?? ((p) => generateJson<AiPr
 export function buildRulesState(rules: PricingRules, stage2: Stage2Context, compiledAt = new Date().toISOString()): PricingRulesState {
   const validation_errors = validate(rules, stage2);
   if (validation_errors.length) return { rules, compiled_at: compiledAt, validation_errors, sample_check: [], evaluation: null };
-  const evaluation = evaluate(rules, rules.sample_inputs);
+  const evaluation = evaluate(rules, { ...rules.sample_inputs, today: sampleToday(rules, stage2) ?? null });
   return { rules, compiled_at: compiledAt, validation_errors, sample_check: sampleCheck(rules, evaluation, stage2), evaluation };
 }
 

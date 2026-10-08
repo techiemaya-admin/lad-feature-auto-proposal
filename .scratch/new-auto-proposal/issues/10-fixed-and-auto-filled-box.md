@@ -17,7 +17,7 @@ This is a **UX change, not a pipeline change.** Inside the system a `fixed` vari
 - **Dates keep `data_type: "date"`** inside the new box, so the calendar fill keeps working for them.
 - **Old companies:** stored rows keep dates under `customer_input` and keep working; reset or re-extract to re-sort them. No data conversion. Old log runs are history and need no action.
 - **Bug fixed on the way:** the variables route's data-type allow-list omits `"date"`, so a date chip can't be created through the API.
-- **Out of scope:** the valid-until date following the Stage 4 validity days — ticket 11.
+- **Out of scope:** the valid-until date following the Stage 4 validity days — see `prototypes/new-auto-proposal/docs/plans/07-date-type.md`.
 
 ## Where it lives
 DB `CHECK` constraint + the existing table-rebuild migration in `db/database.ts` (switch its trigger to look for `'fixed'`) · `CATEGORIES` / `DATA_TYPES` in `routes/variables.ts` · extraction schema enums + category rules in `gemini.service.ts` and `deepseek.service.ts` · `isDateVariable` and the payload loop in `proposal-generator.service.ts` · the fallback field loop in `lead-extractor.service.ts` · the inputs list in `pricing-compiler.service.ts` · frontend `types/variable.ts`, `VariableReviewDeck.tsx` (boxes + move menu), `AddCustomChipModal.tsx`. Run `graft grep "customer_input"` before editing for the exhaustive list.

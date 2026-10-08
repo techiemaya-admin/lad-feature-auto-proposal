@@ -5,12 +5,12 @@ import { getAISettings } from "./ai-settings.service.js";
 import { logPipelineArtifact } from "./pipeline-log.js";
 import { inputOptions, optionNotes } from "./pricing-calculator.js";
 import { isCustomerOrFixed, type InputType, type PricingRules, type Stage2Context, type Value } from "./pricing-rules.types.js";
-import { isDateVariable } from "./proposal-generator.service.js";
+import { isDateVariable } from "./dates.js";
 
 /**
  * Stage 5 step 1: an inbound lead message → the facts the calculator needs. The field list is built per
  * company from the rules' `input` variables plus the Stage 2 customer inputs the rules do not define at all
- * (client name); dates are never asked — code fills them. A silent lead follows the input's own setting:
+ * (client name); dates are never asked — the sheet builds them from today. A silent lead follows the input's own setting:
  * required → asked, default → assumed by code (never by the model), neither → blank.
  * Plan: docs/plans/06-lead-simulator.md §1.1.
  */
@@ -34,7 +34,6 @@ export function leadFields(rules: PricingRules, stage2: Stage2Context): LeadFiel
   for (const v of rules.variables) {
     if (v.kind !== "input") continue;
     const s2 = stage2.variables.find((x) => x.variable_name === v.name);
-    if (s2 && isDateVariable(s2)) continue; // the calendar fills dates, even when a compile asked for them
     const notes = optionNotes(v, rules);
     fields.push({
       name: v.name, label: s2?.natural_name || v.label, input_type: v.input_type, options: inputOptions(v, rules), required: v.required,

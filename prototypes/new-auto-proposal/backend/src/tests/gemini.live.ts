@@ -66,6 +66,10 @@ test("Gemini extraction contract (live)", { skip: !process.env.GEMINI_API_KEY ||
         assert.equal(vars.find((v) => normalize(v.descriptor.sample_value).includes(c.agency.toLowerCase())), undefined, "agency name extracted");
         assert.ok(vars.find((v) => v.descriptor.sample_value.includes(c.client)), "client name not extracted");
         assert.ok(vars.some((v) => v.category === "paragraph" && v.descriptor.paragraph_config?.mode === "ai_generated"), "no ai_generated narrative extracted");
+        // The one derived field: every date's format must read its sample and print it back (Variable Review warns otherwise).
+        const dates = vars.filter((v) => v.data_type === "date");
+        assert.ok(dates.length >= 2, "proposal and valid-until dates extracted as dates");
+        assert.deepEqual(dates.filter((v) => !v.date_format_ok).map((v) => `${v.variable_name}: ${JSON.stringify(v.descriptor.sample_value)} as ${JSON.stringify(v.descriptor.date_format)}`), []);
         for (const v of vars.filter((v) => v.descriptor.visibility_rule)) {
           assert.match(v.descriptor.visibility_rule.condition_flag, /^has_/, `${v.variable_name} condition_flag`);
         }
@@ -101,8 +105,8 @@ async function seedThroughStage3(app: ReturnType<typeof createApp>, id: string):
      VALUES (?, ?, ?, ?, ?, ?, 0, 0, ?, ?, datetime('now'), datetime('now'))`);
   fx.variables.forEach((v: any, i: number) => {
     const r = raw.variables?.find((x: any) => x.variable_name === v.variable_name);
-    insert.run(`${id}_v${i}`, id, v.variable_name, r?.natural_name || v.variable_name, v.category, r?.data_type || (v.category === "pricing" ? "currency" : "string"), i,
-      JSON.stringify({ sample_value: v.sample_text, enum_options: v.enum_options, visibility_rule: v.condition_flag ? { condition_flag: v.condition_flag } : undefined, paragraph_config: r?.paragraph_config }));
+    insert.run(`${id}_v${i}`, id, v.variable_name, r?.natural_name || v.variable_name, v.category, v.data_type || r?.data_type || (v.category === "pricing" ? "currency" : "string"), i,
+      JSON.stringify({ sample_value: v.sample_text, date_format: v.date_format, enum_options: v.enum_options, visibility_rule: v.condition_flag ? { condition_flag: v.condition_flag } : undefined, paragraph_config: r?.paragraph_config }));
   });
   (fx.loop_tables ?? []).forEach((t: any, i: number) =>
     insert.run(`${id}_t${i}`, id, t.loop_tag, t.loop_tag, "table_loop", "table", 100 + i,

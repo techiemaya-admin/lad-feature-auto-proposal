@@ -13,8 +13,10 @@ export type Unit =
   | "integer"
   | "text"
   | "boolean"
+  /** An ISO date ("2026-10-02"), printed in its Stage 2 date_format. Never a table cell or a lead input. */
+  | "date"
   | "rows";
-export type CellUnit = Exclude<Unit, "rows">;
+export type CellUnit = Exclude<Unit, "rows" | "date">;
 export type CompareOp = "eq" | "neq" | "gte" | "lte" | "gt" | "lt" | "in";
 /** null in an integer column = unbounded (a cap of ∞). */
 export type Cell = string | number | boolean | null;
@@ -59,8 +61,11 @@ export interface Cond {
   values?: Cell[];
 }
 
-export type FormulaOp = "add" | "sub" | "mul" | "div" | "min" | "max";
-/** One flat operation. add/mul/min/max are n-ary (≥1); sub/div take exactly 2. "col:<key>" allowed inside rows.map. */
+export type FormulaOp = "add" | "sub" | "mul" | "div" | "min" | "max" | "add_days" | "add_months";
+/**
+ * One flat operation. add/mul/min/max are n-ary (≥1); sub/div take exactly 2. "col:<key>" allowed inside rows.map.
+ * add_days / add_months take (a date or the reserved `today`, a whole number) and give a date.
+ */
 export interface Formula {
   op: FormulaOp;
   args: (string | number)[];
@@ -188,6 +193,8 @@ export interface Stage2Variable {
   condition_flag?: string;
   enum_options?: string[];
   paragraph_mode?: string;
+  /** A date's date-fns format as the extraction model read it; trusted only once `checkFormat` passes. */
+  date_format?: string;
 }
 export interface Stage2Context {
   variables: Stage2Variable[];
@@ -289,7 +296,7 @@ export function parseCell(text: unknown, unit: string): Cell {
     return typeof text === "number" ? text : text ? 1 : 0;
   }
   const s = String(text ?? "").trim();
-  if (unit === "text") return s;
+  if (unit === "text" || unit === "date") return s;
   if (s === "") return null;
   if (unit === "boolean") return /^(true|yes|1)$/i.test(s);
   const isPercent = /%$/.test(s);

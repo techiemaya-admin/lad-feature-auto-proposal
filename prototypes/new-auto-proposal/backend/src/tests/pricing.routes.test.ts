@@ -59,8 +59,8 @@ test("Pricing rules routes", async (t) => {
        VALUES (?, 'co1_seo', 'default-co1_seo', ?, ?, ?, ?, 0, 0, ?, ?, ?, ?)`
     );
     fx.variables.forEach((v: any, i: number) =>
-      insert.run(`v${i}`, v.variable_name, v.variable_name, v.category, v.category === "pricing" ? "currency" : "string", i,
-        JSON.stringify({ sample_value: v.sample_text, enum_options: v.enum_options, visibility_rule: v.condition_flag ? { condition_flag: v.condition_flag } : undefined }), now, now));
+      insert.run(`v${i}`, v.variable_name, v.variable_name, v.category, v.data_type ?? (v.category === "pricing" ? "currency" : "string"), i,
+        JSON.stringify({ sample_value: v.sample_text, date_format: v.date_format, enum_options: v.enum_options, visibility_rule: v.condition_flag ? { condition_flag: v.condition_flag } : undefined }), now, now));
     const generate = await request(app).post("/api/companies/co1_seo/templates/default-co1_seo/template/generate");
     assert.equal(generate.status, 200, generate.text);
   };
@@ -69,6 +69,17 @@ test("Pricing rules routes", async (t) => {
 
   await seedThroughStage2();
   setRulesModelCall(async () => toWire(fixture()));
+
+  await t.test("variables GET checks each date's format against its sample on read, so an edit is never stale", async () => {
+    const dateOf = async () => (await request(app).get("/api/companies/co1_seo/templates/default-co1_seo/variables")).body.variables.find((v: any) => v.variable_name === "proposal_date");
+    const date = await dateOf();
+    assert.equal(date.date_format_ok, true);
+    assert.equal((await request(app).put("/api/companies/co1_seo/templates/default-co1_seo/variables").send({ variables: [{ id: date.id, descriptor: { ...date.descriptor, date_format: "MMMM D, YYYY" } }] })).status, 200);
+    assert.equal((await dateOf()).date_format_ok, false);
+    assert.equal((await request(app).put("/api/companies/co1_seo/templates/default-co1_seo/variables").send({ variables: [{ id: date.id, descriptor: date.descriptor }] })).status, 200);
+    // Editing a variable invalidates the template; rebuild before testing its pricing payload.
+    assert.equal((await request(app).post("/api/companies/co1_seo/templates/default-co1_seo/template/generate")).status, 200);
+  });
 
   await t.test("404 before compile, then compile persists an all-green state and moves the stage", async () => {
     assert.equal((await getRules()).status, 404);

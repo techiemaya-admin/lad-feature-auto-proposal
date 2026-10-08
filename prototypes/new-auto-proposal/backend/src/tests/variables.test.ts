@@ -139,7 +139,7 @@ test("Variables: custom-chip verification, edits, and cascade delete", async (t)
       variables: [{
         variable_name: `extracted_${++run}`, natural_name: "Extracted customer",
         category: "customer_input", data_type: "string", sample_text: "Bloom & Co Dental Group",
-        description: "Customer name", condition_flag: "", context_text: "", enum_options: [],
+        date_format: "", description: "Customer name", condition_flag: "", context_text: "", enum_options: [],
       }],
       loop_tables: [],
     }));

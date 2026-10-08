@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { getDatabase } from "../db/database.js";
+import { localToday } from "../services/dates.js";
 import { buildProposalPayload, evaluate } from "../services/pricing-calculator.js";
 import { buildRulesState, compilePricingRules, loadCompany, loadStage2Context } from "../services/pricing-compiler.service.js";
 import type { PricingRulesState } from "../services/pricing-rules.types.js";
@@ -81,7 +82,7 @@ router.post("/rules/calculate", (req: Request, res: Response): void => {
     const { workingState, state } = readState(company);
     if (!state) return void fail(res, 404, "Pricing rules have not been compiled yet");
     const stage2 = loadStage2Context(company.company_id, company.template_id);
-    const evaluation = evaluate(state.rules, req.body?.inputs ?? {});
+    const evaluation = evaluate(state.rules, { ...(req.body?.inputs ?? {}), today: localToday() });
     res.json({ success: true, evaluation, payload: buildProposalPayload(state.rules, evaluation, stage2, workingState.template_stats?.tier_matrix) });
   } catch (error) {
     fail(res, 500, error instanceof Error ? error.message : "Failed to calculate pricing");
