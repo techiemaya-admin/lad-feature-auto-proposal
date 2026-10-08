@@ -30,7 +30,7 @@ const withRuleIds = (list: ReviewRule[]): EditableReviewRule[] =>
 
 const normalizeRules = (rs: PricingRules): PricingRules => ({ ...rs, review_rules: withRuleIds(rs.review_rules ?? []) });
 
-/** Strip client-only `_id` + `when: []` drafts: a half-created rule never reaches the backend. */
+/** Strip client-only `_id` + `when: []` drafts: a half-created rule never reaches the backend. Prototype: completeness lives here only (the backend accepts blanks) — a second writer needs this check in validate(). */
 const stripForPayload = (rs: PricingRules): PricingRules => ({
   ...rs,
   review_rules: rs.review_rules
@@ -478,7 +478,7 @@ export const PricingEngineDeck: React.FC<PricingEngineDeckProps> = ({
                                 <input
                                   type="text"
                                   value={r.reason}
-                                  maxLength={200}
+                                  maxLength={200} // client-side only: the backend stores longer reasons — cap server-side in production
                                   onChange={(e) => editReviewRule(r._id, { ...r, reason: e.target.value })}
                                   placeholder="e.g. Franchise-scale — needs a call"
                                   className="h-7 w-full rounded-md border border-border/70 bg-background px-2 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20"

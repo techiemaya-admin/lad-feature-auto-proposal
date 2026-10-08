@@ -158,7 +158,8 @@ export const LeadSimulator: React.FC<LeadSimulatorProps> = ({ company, rules }) 
 
   const done = result?.success === true;
   // Q1 soft stale: Stage 4 edits replace the `rules` object via onRulesChange; the old proposal stays
-  // on screen flagged "rules changed — regenerate". No wipe, no rewind.
+  // on screen flagged "rules changed — regenerate". No wipe, no rewind. Reference equality holds only
+  // because App replaces rules on real updates — compare compiled_at if the banner ever flickers.
   const stale = done && generatedFor !== null && generatedFor !== rules;
 
   const pdfUrl = result?.success ? result.files.pdf : null;
