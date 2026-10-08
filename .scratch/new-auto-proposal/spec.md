@@ -1,5 +1,9 @@
 <!-- labels: ready-for-agent -->
 
+## Saved routing and merged proposal workflow
+
+Persist one editable email per company with an optional company-owned template assignment. AI routing considers every saved template, including unconfigured/custom briefs; users can also assign manually. Changed email saves clear assignments and stale versions are rejected. The selected template's saved email overrides demo text in Stage 5. Connect inbox remains simulated. Stage 5 routes/files/logs are template-scoped, and dates use the merged Stage 4 date type. See [the implementation and merge record](../../prototypes/new-auto-proposal/docs/icp-template-library.md#10-saved-email-routing-and-editing) for complete contracts and verification.
+
 ## October 2026: ICP template library
 
 The current onboarding contract starts with a company-specific library: import exactly three AI briefs into an empty library, persist name/description/pricing_spec immediately, open the existing pipeline from a card, allow user-supplied briefs and deletion, and enforce seven templates per company. Fresh databases start without templates; existing workflows are preserved. Custom creation now requires all three fields. The empty state uses a themed welcome panel and larger import button. Cards use compact spacing and display up to four description lines with full text on mouse hover. AI descriptions are prompted to stay within 160 characters in one sentence; the API and custom-input limit remains 1000 characters. See the [complete workflow and implementation guide](../../prototypes/new-auto-proposal/docs/icp-template-library.md) for API contracts, validation, tests and limitations. This supersedes older entry-flow and name-only creation requirements below.

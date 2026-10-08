@@ -1,5 +1,9 @@
 # Auto-Proposal Prototype — UI/UX & Interaction Design Specification (`DESIGN.md`)
 
+## Current combined workflow (8 October 2026)
+
+The library now persists a company's editable lead email and its AI/manual template assignment. **Route email** considers all company templates, and the assigned email prefills **Check & Generate Proposal**. The merged Stage 5 generates template-scoped Word/PDF proposals; the latest date changes add Stage 2 format previews and Stage 4 date formulas using `date-fns`. Profiles and dev pricing/sample emails now come from separate dataset and seed files. See [the complete routing and merge record](icp-template-library.md#10-saved-email-routing-and-editing) for APIs, persistence, file changes, migrations, tests and limitations. Earlier snapshot statements that Stage 5 is absent or pricing lives inside the profile dataset are superseded.
+
 ## October 2026 workflow update
 
 The application now starts in the company-scoped template library. Empty libraries show a centered welcome panel with overlapping document illustrations, the selected company name, explanatory text and a larger **Import ICP data** button; import displays three pulsing page cards, followed by clickable saved briefs. Custom creation, deletion, the seven-template limit and **All templates** navigation precede the existing linear canvas. See [ICP template library](icp-template-library.md) for current UI behavior and implementation. Cards now use tighter spacing, 16px titles and 13px descriptions clamped to four lines; full saved descriptions are retained and available through a native hover tooltip. Earlier direct-to-briefing entry descriptions below are superseded.

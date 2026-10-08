@@ -1,5 +1,9 @@
 # Auto-Proposal Prototype — Architectural Plan & Blueprint
 
+## Current combined workflow (8 October 2026)
+
+The library now persists a company's editable lead email and its AI/manual template assignment. **Route email** considers all company templates, and the assigned email prefills **Check & Generate Proposal**. The merged Stage 5 generates template-scoped Word/PDF proposals; the latest date changes add Stage 2 format previews and Stage 4 date formulas using `date-fns`. Profiles and dev pricing/sample emails now come from separate dataset and seed files. See [the complete routing and merge record](icp-template-library.md#10-saved-email-routing-and-editing) for APIs, persistence, file changes, migrations, tests and limitations. Earlier snapshot statements that Stage 5 is absent or pricing lives inside the profile dataset are superseded.
+
 ## October 2026 workflow update
 
 A company-scoped ICP template library now precedes the document pipeline. It generates and persists three starting briefs using the configured AI, adds template descriptions, starts fresh databases without default templates and enforces a seven-template creation limit. See [ICP template library](icp-template-library.md) for the API, migration, concurrency, file inventory and limitations. The AI prompt now requests one-sentence descriptions of at most 160 characters (ideally 15-22 words); server validation still allows 1000 characters. Visual card clamping and the fuller welcome panel do not change persistence or API contracts. Earlier startup and template-creation descriptions below must be read with this update.

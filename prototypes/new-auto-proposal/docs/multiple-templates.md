@@ -1,5 +1,9 @@
 # Multiple templates: feature and implementation guide
 
+## Current combined workflow (8 October 2026)
+
+The library now persists a company's editable lead email and its AI/manual template assignment. **Route email** considers all company templates, and the assigned email prefills **Check & Generate Proposal**. The merged Stage 5 generates template-scoped Word/PDF proposals; the latest date changes add Stage 2 format previews and Stage 4 date formulas using `date-fns`. Profiles and dev pricing/sample emails now come from separate dataset and seed files. See [the complete routing and merge record](icp-template-library.md#10-saved-email-routing-and-editing) for APIs, persistence, file changes, migrations, tests and limitations. Earlier snapshot statements that Stage 5 is absent or pricing lives inside the profile dataset are superseded.
+
 ## October 2026 workflow update
 
 The entry flow and creation contract have changed. See [ICP template library: workflow and implementation](icp-template-library.md) for the complete October update, including AI-generated briefs, descriptions, the card library, custom creation, the seven-template cap, fresh-database behavior and the save-button fix. The September implementation snapshot below remains a reference for the underlying pipeline; its dropdown, name-only creation and automatic fresh default-template behavior are superseded.
@@ -687,7 +691,7 @@ The briefing file argument now permits `File | null | undefined` explicitly befo
 | Delete | Remove known Word files and template row; cascade variables where FK exists. | Unchanged. |
 | Restart | Read persisted records/files; completed migration does not overwrite them. | Persisted independently. |
 
-The five-stage visual sequence remains. This feature does not implement the missing full Stage 5 lead-email extraction, narrative drafting, and downloadable personalized-proposal workflow. The existing hydration helper and calculation endpoint are building blocks, not proof that the complete simulator is available.
+The original multiple-template change retained the five-stage sequence. The subsequent demo merge implements Stage 5 lead extraction, clarification and personalized Word/PDF generation with template-scoped routes and files; see the current combined workflow notice above.
 
 ## 12. Complete change inventory
 
@@ -926,6 +930,6 @@ These details describe the implementation as reviewed, rather than promises of b
 - No cross-tab synchronization or browser-storage error fallback is implemented for remembered selection.
 - Downloads from different templates share the company-based suggested filename.
 - No end-to-end browser automation or live-provider verification was added, and the separate live test still requires URL updates.
-- The Stage 5 completion notice remains a saved-stage transition, not a completed personalized-proposal generation feature.
+- Stage 5 is now implemented through the demo merge; generated outputs are overwritten per template, not archived per lead.
 
 These boundaries matter when extending the prototype: new workflow operations should always carry both IDs, use the selected template's saved state and directory, preserve shared company settings, and add tests that exercise two templates rather than only the default.

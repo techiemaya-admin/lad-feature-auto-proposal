@@ -1,6 +1,6 @@
 # ICP template library: workflow and implementation
 
-Reviewed against the working tree on **5 October 2026**. Paths are relative to `prototypes/new-auto-proposal` unless stated otherwise.
+Reviewed against the working tree on **8 October 2026**. Paths are relative to `prototypes/new-auto-proposal` unless stated otherwise.
 
 This guide describes the ICP onboarding workflow added on top of the existing multiple-template feature, including the later custom-template submit-button fix. It supersedes the earlier dropdown-based entry flow described in [multiple-templates.md](multiple-templates.md). The underlying document, variable and pricing pipeline still applies.
 
@@ -65,7 +65,7 @@ Users choose a card to enter the existing workflow, or add a custom template wit
 
 - Each card has a separate, labeled delete button, outside the card's open button.
 - Deletion requires confirmation and uses the existing template deletion endpoint.
-- The existing deletion service removes original/generated document files and the template row; associated variables are removed through database ownership/cascade behavior. This change does not add log cleanup.
+- The deletion service removes `original_quotation.docx`, `template.docx`, `proposal.docx`, `proposal.pdf` and the template row; associated variables are removed through database ownership/cascade behavior. An assigned email is retained but becomes unassigned. Logs are not cleaned up by this action.
 - The responsive grid adjusts to the remaining cards: one column on small screens, two at the small breakpoint and three at the large breakpoint.
 - A count shows the number of templates out of seven. At seven, custom creation is disabled and an explanatory message appears.
 - The backend independently enforces capacity. Deletion frees a slot.
@@ -75,7 +75,7 @@ Users choose a card to enter the existing workflow, or add a custom template wit
 
 The implementation reuses `loadDataset()` from `backend/src/db/seed.ts` and selects the record whose `company_id` matches the route. Its source is [companies_dataset.json](../Mock%20Data/companies_dataset.json), not browser-entered JSON and not a modified copy of `company_sessions.data_json`.
 
-The full selected record is serialized into the prompt, including company basics, services, target customers, ideal customer, offers, buyer segments and pricing context. Other companies are not included. No dataset changes were needed.
+The full selected profile is serialized into the prompt, including company basics, services, target customers, ideal customer, offers and buyer segments. Following the demo merge, pricing text comes separately from `findSeed(companyId).pricing_spec` in [test_seeds.json](../Mock%20Data/test_seeds.json), and is appended as dev pricing context. Other companies are not included. The incoming demo branch removed pricing seeds from `companies_dataset.json`; it now holds imported profile data only.
 
 `generateJson()` in `ai-extraction.service.ts` selects the provider/model from persisted AI settings, just as the existing extraction pipeline does. There is no separate ICP model setting. Gemini receives a structured response schema; DeepSeek receives the equivalent JSON shape instruction through the shared generation adapter.
 
@@ -192,7 +192,7 @@ Expected failures:
 | `backend/src/tests/variables.test.ts` | Uses explicit template fixtures. |
 | `backend/src/tests/templates.test.ts` | Supplies description and pricing brief when creating templates through the API; retains isolation and legacy migration coverage. |
 
-Existing `App.tsx`, `PromptDocCapsule.tsx`, provider adapters, dataset loader and document pipeline supply the downstream behavior without requiring new changes for this workflow. No new dependency, environment variable or dataset edit was required. Pre-existing package-lock changes are unrelated.
+The initial ICP library reused the existing document pipeline without adding dependencies. Subsequent demo merges added Stage 5, split dev seeds from profile data, and added `date-fns` to both packages. The merge changes and routing-specific file inventory are recorded below. Pre-existing local platform-metadata changes in package-lock files remain separate from the incoming dependency updates.
 
 ### Follow-up: shorter descriptions and fuller welcome screen
 
@@ -249,10 +249,157 @@ No live AI response or browser visual/interaction run was performed during the r
 - Card descriptions have no edit UI. Name-only rename remains an API capability. Pricing briefs can be changed through the existing briefing workflow.
 - Explicit reset/import-settings actions in the existing workspace can replace the current pricing brief with mock defaults. Persistence is not immutable version history.
 - UI errors leave entered custom data in memory, but unsaved form edits are not persisted across reloads or navigation.
-- This feature adds no authentication, new deployment configuration or Stage 5 implementation.
+- No real inbox integration or authentication was added. Stage 5 is now implemented through the demo merge; PDF conversion uses its existing LibreOffice configuration (`SOFFICE_PATH`).
 
 ## 9. Documentation relationship
 
 This guide is the current reference for library entry, ICP import, brief creation, capacity and the submit-button fix. The original [multiple-template guide](multiple-templates.md) remains useful for the underlying template-scoped document pipeline; its earlier dropdown, name-only creation and default-template descriptions are historical where they conflict with this guide.
 
-The earlier `.scratch/icp-template-library-docs.patch` was a proposed, unapplied documentation draft. This guide and the current cross-references replace that draft; it should not be applied blindly on top of these updates.
+The earlier `.scratch/icp-template-library-docs.patch` and `.scratch/mock-email-routing-docs.patch` were proposed documentation drafts. This guide supersedes them; do not apply those drafts on top of the current documentation.
+
+## 10. Saved email routing and editing
+
+### Behavior and scope
+
+The library's **Lead email** panel starts with the selected company's sample lead message. It is displayed once the company has templates. All company-owned templates are candidates: AI-created, custom, brief-only, partially configured and fully configured. Routing chooses relevance, not readiness. Assigning an email does not complete template setup.
+
+**Route email** calls the configured AI with the saved email and each candidate's ID, name, description and pricing brief. The prompt asks for one exact candidate ID and a short explanation, or null if no offer fits or multiple offers fit equally well. Both the email and candidate contents are treated as untrusted data. The backend validates the ID against the candidate set and caps the nonblank explanation at 500 characters.
+
+A successful match is an actual SQLite assignment, not just an ephemeral suggestion. The UI displays **Assigned to**, its reason, time and AI/manual source, highlights the card, and offers **Open assigned template**. Inside that template, an **Assigned lead email** card shows the message. Reloading or restarting restores the assignment. **Assign or move manually** lets the user select a different template without AI. Re-routing may replace the previous assignment; a successful no-match result clears it and displays a needs-review state. A provider failure leaves the last successful assignment intact.
+
+Routing does not send an email, automatically generate a proposal or require the mock **Connect inbox** flag.
+
+### Editable message
+
+The textarea accepts a different received email, up to 12,000 characters. The default seed is only a starting point. **Save email** persists the replacement; **Route email** saves pending changes first and then routes the saved text. Manual assignment is disabled while edits are unsaved, and the old assignment result/card highlight is hidden so it is not presented as a match for new text.
+
+The server requires a nonblank string, validates the original length, trims surrounding whitespace and checks the supplied integer version. Saving changed text clears `template_id`, reason and routing time, marks the record unassigned and increments its version. Saving unchanged text preserves the assignment. A stale version returns 409 without overwriting the current message. Unsaved browser edits are not persisted automatically. There is no email history: saving replaces the one message held for that company.
+
+### Persistence model
+
+Startup creates `mock_email_routes` if absent; no manual migration command is needed.
+
+| Column | Meaning |
+| --- | --- |
+| `company_id` | Primary key and company FK; one current mock/editable email per company. |
+| `email_id` | Stable unique identifier, initially `mock-<companyId>`. |
+| `email` | Saved message body snapshot, editable by the user. |
+| `template_id` | Nullable FK to the assigned template. |
+| `reason` | AI explanation, manual-assignment text or deletion notice. |
+| `source` | Application values `unassigned`, `ai` or `manual`; stored as text. |
+| `routed_at` | Last successful AI/manual routing timestamp, or null. |
+| `version` | Integer incremented by assignment, changed email saves and assigned-template deletion. |
+
+The first `GET /mock-email` lazily inserts a row from `findSeed(companyId).sample_lead_text` using `INSERT OR IGNORE`. Subsequent reads retain the saved message, including user edits; seed-file changes do not automatically overwrite existing rows.
+
+Ownership triggers reject a template ID belonging to another company. Deleting a template clears its email assignment and timestamp, retains the email and adds a re-routing notice. Deleting the company cascades to its email row. Email deletion/history endpoints are not implemented.
+
+### Concurrency and errors
+
+AI routing captures the email version and candidate details before its asynchronous call. It rechecks the candidate list before saving and updates the email only if its captured version still matches. A deleted/changed candidate or a concurrent email edit/manual assignment causes 409, preventing an old AI result from overwriting new work. Manual assignment also uses the repository's conditional version update; there is no queue or persisted in-progress job.
+
+On a lost response, a completed assignment can be recovered by reloading. The UI is not automatically synchronized across browser tabs.
+
+### API contracts
+
+Base: `/api/companies/:companyId/templates`. These management paths are mounted before the generic `:templateId` workflow routes.
+
+| Method / path | Request | Response |
+| --- | --- | --- |
+| `GET /mock-email` | None | `{ success: true, email, routing }`; initializes the seed record if needed. |
+| `PUT /mock-email` | `{ email, version }` | `{ success: true, routing }`; saves changed text and clears its assignment. |
+| `POST /route-email` | None | `{ success: true, routing }`; AI routes the saved server-side email. |
+| `PUT /route-email` | `{ template_id }` | `{ success: true, routing }`; assigns manually within the company. |
+
+`routing` contains the persisted fields listed above. A null ID can mean never assigned, template deleted or a completed no-match result; `source`, `reason` and `routed_at` distinguish them. Invalid edits return 400; unknown company/template or missing email returns 404; empty candidate libraries and stale state return 409; invalid AI output/provider failure returns 502. Unexpected route failures return 500. No endpoint accepts a cross-company assignment.
+
+### Check & Generate Proposal prefill
+
+`formatCompanyResponse()` now obtains `sample_lead_text` in this order:
+
+1. The saved email assigned to the requested company **and template**.
+2. The company's sample lead from `test_seeds.json` if that template has no assignment.
+3. Empty text if neither exists.
+
+`assignedEmail()` performs the scoped repository read. `LeadSimulator.tsx` already initializes its textarea from this response, so opening the assigned template uses the edited/routed email without a separate frontend override. The common response formatter keeps this behavior consistent after workflow requests. Reassignment moves the prefill to the new template; unrelated templates retain their demo sample. Reopen/reload to observe changes made elsewhere; there is no push-based refresh. Editing the Stage 5 textarea itself does not write back to the routing record.
+
+### Mock inbox connection versus mock lead data
+
+**Connect inbox** still only persists the proposal-making company's profile address, a connection flag and timestamp in `company_configurations`. It does not authenticate to Gmail/Outlook, read a mailbox, send drafts or invoke routing. The three initial mock messages are Bloom & Co for Northstar, Whitfield & Associates for Fortress IT, and Rosewood Home Goods for Fieldstone. They come from `test_seeds.json`, independently of the inbox flag. No sender/recipient envelope, attachment ingestion or real inbox polling is implemented.
+
+### Routing implementation inventory
+
+| File | Added or changed behavior |
+| --- | --- |
+| `backend/src/services/email-routing.service.ts` | AI matching, response validation, seed initialization, manual assignment, email-edit validation and stale-result checks. Uses the same persisted provider/model settings as extraction. |
+| `backend/src/repositories/email-routing.repository.ts` | Reads/initializes email snapshots, conditionally saves assignments, replaces email text and reads an assigned message by company/template. |
+| `backend/src/db/database.ts` | Email table, company/template ownership triggers and deletion handling. |
+| `backend/src/routes/templates.ts` | Four email endpoints and error responses. |
+| `backend/src/routes/companies.ts` | Assigned-email-first Stage 5 prefill in the common workflow response. |
+| `frontend/src/services/api.ts` | Fetch/save/route/assign helpers and saved routing type including version. |
+| `frontend/src/TemplatesApp.tsx` | Editable panel, save/route/manual controls, saved result, highlighted card, restoration on navigation and assigned-email workspace card. |
+| `backend/src/tests/email-routing.test.ts` | Offline integration coverage for matching contracts, persistence, ownership, concurrency, editing and Stage 5 prefill. |
+
+## 11. Remote demo merge integration record
+
+These are local integration records, not a promise that the commits were pushed. The remote feature branch was explicitly pushed only through pre-merge `703bb6e` during this session. Both merges below were kept local as requested; check Git before assuming current remote state.
+
+### First merge: demo through `4dded53`
+
+- `703bb6e` preserved the completed ICP library, UI refinements, documentation and submit-button fix before integration.
+- `24823dc` merged the demo's Stage 5, fixed-variable review, pricing hardening and seed split.
+- Conflicts were resolved in `app.ts`, `db/database.ts`, `routes/briefing.ts`, `routes/template.ts`, `services/pricing-compiler.service.ts`, and the briefing/configuration/variable tests.
+- Incoming features were retained; code assuming a single company workflow was adapted to template ownership.
+
+**Stage 5 isolation:** `routes/proposal.ts` is mounted beneath `/api/companies/:companyId/templates/:templateId`. Lead extract/clarify/reply, proposal generation and download use the selected template's state, variables and rules. Frontend Stage 5 API helpers and `LeadSimulator.tsx` pass the template ID. Download links include it.
+
+`proposal-generator.service.ts` reads the selected template's `template.docx` and writes `proposal.docx` / `proposal.pdf` in `storage/<companyId>/<templateId>/`. Lead, clarification, narrative, proposal-payload and proposal-Markdown artifacts use template-specific logging. Earlier-stage changes and pricing edits clear only that template's stale proposals. Deletion removes its proposal files too. Shared company reset no longer accidentally clears a default template's proposal.
+
+**Schema reconciliation:** the incoming `fixed` category and `date` data type required rebuilding SQLite `company_variables`. The combined rebuild retains `template_id` and its foreign key, copies explicit existing columns rather than assuming the old shape, and recreates lookup indexes and ownership triggers afterward. Tests cover retained ownership, FK consistency and legacy single-workflow migration.
+
+**Pricing seeds:** incoming `db/seed.ts` adds `findSeed()` and `test_seeds.json`; profile JSON no longer mirrors dev pricing. Template reset reads the selected seed. ICP generation now appends that company's seed pricing alongside its profile. No other company's pricing is sent.
+
+**Repair logs and tests:** pricing compiler repair logs retain the incoming `fixing` and `kept` fields and the template scope, without duplicate log emission. Incoming redundant-test removals were preserved. Proposal tests were adapted to nested routes/files and given a second-template generation/deletion regression. Final first-merge checks passed 86 backend tests, backend typecheck and frontend build.
+
+### Second merge: demo through `1e09442`
+
+- `b4ced63` first preserved saved/editable email routing and assigned-email prefill.
+- `17f1565` merged the incoming date workflow updates.
+- Conflicts were resolved in `routes/rules.ts`, `routes/variables.ts`, `tests/pricing.routes.test.ts` and `tests/proposal.test.ts`.
+
+**Date features:** dates are now typed Stage 4 sheet values, calculated from the reserved `today` input using `add_days` / `add_months`. Stage 5 uses the server's local date, not the chat/client timezone. The old heuristic `fillDates` path was replaced by sheet evaluation. Stage 2 retains a `date_format` pattern and verifies that the sample can be parsed and formatted back exactly. Invalid patterns warn and fall back to `MMMM d, yyyy`. Variable Review offers a date-format editor and today's preview. Details are in [Dates as a Stage 4 type](plans/07-date-type.md).
+
+Both backend and frontend now depend on `date-fns`. The merge installed the incoming dependency updates. Template-scoped `loadStage2Context` was retained when adding today's calculation input, and date-format refresh calls pass `templateId` to `fetchVariables`.
+
+**Re-scan compatibility:** the shared saved-variable collection remains the extraction response, preserving custom variables immediately after re-scan. Incoming date-format metadata is supplied through that collection instead of restoring the older response that contained only newly extracted variables. The offline extraction stub now supplies the required `date_format` field.
+
+**Test integration:** incoming proposal/date tests use template-scoped URLs. The date-format edit test rebuilds the invalidated template before checking its tier-matrix pricing payload. A doubled template URL introduced during conflict resolution was corrected. The complete merged suite passed **92 tests**, backend typecheck and frontend production build. The build retains a nonblocking chunk-size warning.
+
+Incoming docs, fixtures and AGENTS changes were carried through with the demo commits. Captured raw model fixtures were not retuned to make tests pass. Unrelated local lockfile platform-metadata edits and unapplied scratch patches were excluded from merge commits; the lockfile edits were temporarily stashed and their preservation verified.
+
+## 12. Running and verifying the combined workflow
+
+Restart the backend after pulling these changes: table initialization creates the email-routing table and runs the variable schema migration. Install dependencies in both `backend` and `frontend` if working from a fresh checkout or an older install (`npm install` in each).
+
+If the frontend reports that `date-fns` cannot be resolved after dependency installation, stop the old Vite process and restart from `frontend` with:
+
+```powershell
+npm run dev -- --force
+```
+
+The package was confirmed installed and the production build passed when this error was reported; restarting forces Vite to rebuild its dependency cache. It is not a missing source file in `VariableReviewDeck.tsx`.
+
+Manual routing checks:
+
+1. Open a company with templates and review its prefilled email.
+2. Replace the body, save it, reload and confirm the edit remains.
+3. Route it; check the saved reason, highlighted card and assigned-template email panel.
+4. Open that template's configured **Check & Generate Proposal** stage and verify it prefills the edited email.
+5. Move the email manually; confirm the new template receives it and the previous template returns to its demo prefill.
+6. Confirm a different company does not see that assignment.
+7. Delete the assigned template; confirm the message is retained and can be routed again after templates are available.
+8. Save changed text during a separate in-flight route; the stale result should be rejected rather than restore the old assignment.
+
+The routing integration tests also exercise no-match results, invalid/foreign model IDs, provider failure preserving the previous assignment, required/oversized edit validation, stale edit versions, unchanged-text saves, one row per company and restart persistence. All AI tests are stubbed; no live matching accuracy, real mailbox delivery or end-to-end browser verification is claimed. The separate live test still needs its company-only URLs reconciled with template-scoped routes before it can be treated as verification of this branch.
+
+Current limitations: one saved email per company, no message history, no automatic incoming mail, and no per-lead proposal archive. Stage 5 output files are overwritten per template on each generation; routing persistence does not create separate proposal runs. A template can receive an email before setup is complete, but document generation still requires the configured workflow.
