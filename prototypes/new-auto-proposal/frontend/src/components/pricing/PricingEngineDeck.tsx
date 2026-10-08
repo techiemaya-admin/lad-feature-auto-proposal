@@ -1,17 +1,46 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Calculator, CheckCircle2, AlertCircle, AlertTriangle, RefreshCw, ChevronRight, Check, X, Plus, ShieldAlert, User } from "lucide-react";
+import { Calculator, CheckCircle2, AlertCircle, AlertTriangle, RefreshCw, ChevronRight, Check, X, Plus, ShieldAlert, User, Trash2 } from "lucide-react";
 import { Button } from "../ui/button";
 import { RulesValidationError, updatePricingRules } from "../../services/api";
-import type { PricingRules, PricingRulesState, RuleVariable, ValidationError } from "../../types/pricing";
+import type { Cond, PricingRules, PricingRulesState, ReviewRule, RuleVariable, ValidationError } from "../../types/pricing";
 import type { CompanyVariable, CompoundTable } from "../../types/variable";
 import { RuleTableCard } from "./RuleTableCard";
 import { LedgerTray } from "./LedgerTray";
+import { CondRows } from "./CondRows";
 import { formatValue, readable, readableConds, readableDefault } from "./readable";
 
 /**
  * Stage 4. One card per compiled table, the lead inputs, and a calculation ledger that
  * re-checks every document value against the sample quotation on each edit (300 ms debounce → PUT).
  */
+
+type EditableReviewRule = ReviewRule & { _id: string };
+
+const newRuleId = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+const withRuleIds = (list: ReviewRule[]): EditableReviewRule[] =>
+  list.map((r) =>
+    "_id" in (r as EditableReviewRule) && typeof (r as EditableReviewRule)._id === "string"
+      ? (r as EditableReviewRule)
+      : ({ ...r, _id: newRuleId() } as EditableReviewRule),
+  );
+
+const normalizeRules = (rs: PricingRules): PricingRules => ({ ...rs, review_rules: withRuleIds(rs.review_rules ?? []) });
+
+/** Strip client-only `_id` + `when: []` drafts: a half-created rule never reaches the backend. */
+const stripForPayload = (rs: PricingRules): PricingRules => ({
+  ...rs,
+  review_rules: rs.review_rules
+    .filter((r) => r.when.length > 0)
+    .map((r) => {
+      const { _id, ...rest } = r as EditableReviewRule;
+      void _id;
+      return rest as ReviewRule;
+    }),
+});
 
 export interface RulesStatus {
   status: "idle" | "compiling" | "error";
@@ -45,9 +74,10 @@ export const PricingEngineDeck: React.FC<PricingEngineDeckProps> = ({
   onProceed,
   isProceeding = false,
 }) => {
-  const [rules, setRules] = useState<PricingRules | null>(state?.rules ?? null);
+  const [rules, setRules] = useState<PricingRules | null>(() => (state?.rules ? normalizeRules(state.rules) : null));
   const [errors, setErrors] = useState<ValidationError[]>(state?.validation_errors ?? []);
   const [selected, setSelected] = useState<string | null>(null);
+  const [selectedRule, setSelectedRule] = useState<string | null>(null); // client-only _id, not index
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   // A local edit makes `rules` differ from `state.rules` until the debounced PUT's response comes back
   // through onStateChange. A parent change we did NOT cause (new compile, Dev Dock apply, reset) replaces
@@ -58,16 +88,18 @@ export const PricingEngineDeck: React.FC<PricingEngineDeckProps> = ({
   if (state?.rules !== syncedRules) {
     setSyncedRules(state?.rules);
     if (state?.rules !== lastSaved) {
-      setRules(state?.rules ?? null);
+      setRules(state?.rules ? normalizeRules(state.rules) : null);
       setErrors(state?.validation_errors ?? []);
     }
   }
 
   useEffect(() => {
     if (!rules || rules === state?.rules) return;
+    // Normalizing client-only `_id`s creates a new reference with identical content — not a real edit.
+    if (state?.rules && JSON.stringify(stripForPayload(rules)) === JSON.stringify(stripForPayload(state.rules))) return;
     const timer = setTimeout(async () => {
       try {
-        const next = await updatePricingRules(companyId, rules);
+        const next = await updatePricingRules(companyId, stripForPayload(rules));
         setLastSaved(rules);
         setErrors([]);
         onStateChange({ ...next, rules });
@@ -81,7 +113,11 @@ export const PricingEngineDeck: React.FC<PricingEngineDeckProps> = ({
   }, [rules, companyId]); // eslint-disable-line react-hooks/exhaustive-deps -- state.rules only matters at fire time
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setSelected(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setSelected(null);
+      setSelectedRule(null);
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
@@ -96,6 +132,22 @@ export const PricingEngineDeck: React.FC<PricingEngineDeckProps> = ({
     setSelected(name);
   };
 
+  const editReviewRule = (id: string, r: EditableReviewRule) =>
+    rules && setRules({ ...rules, review_rules: rules.review_rules.map((x) => ((x as EditableReviewRule)._id === id ? r : x)) });
+
+  const deleteReviewRule = (id: string) => {
+    if (!rules) return;
+    setRules({ ...rules, review_rules: rules.review_rules.filter((x) => (x as EditableReviewRule)._id !== id) });
+    setSelectedRule(null);
+  };
+
+  const addReviewRule = () => {
+    if (!rules) return;
+    const r: EditableReviewRule = { _id: newRuleId(), when: [], reason: "" };
+    setRules({ ...rules, review_rules: [...rules.review_rules, r] });
+    setSelectedRule(r._id); // auto-open the new rule's tray
+  };
+
   const samples = useMemo(() => {
     const m: Record<string, string> = {};
     for (const v of variables) if (v.descriptor?.sample_value !== undefined) m[v.variable_name] = v.descriptor.sample_value;
@@ -103,14 +155,37 @@ export const PricingEngineDeck: React.FC<PricingEngineDeckProps> = ({
     return m;
   }, [variables, compoundTables]);
   const checkByName = useMemo(() => new Map((state?.sample_check ?? []).map((c) => [c.name, c])), [state?.sample_check]);
-  const errorByPath = useMemo(() => {
+  const { errorByPath, reviewErrorByIndex } = useMemo(() => {
     const m = new Map<number, string[]>();
+    const rm = new Map<number, string[]>();
     for (const e of errors) {
       const i = /^variables\[(\d+)\]/.exec(e.path);
-      if (i) m.set(Number(i[1]), [...(m.get(Number(i[1])) ?? []), e.message]);
+      if (i) {
+        m.set(Number(i[1]), [...(m.get(Number(i[1])) ?? []), e.message]);
+        continue;
+      }
+      // Q6: review_rules[N] paths red-border + auto-expand row N, alongside the top band.
+      const r = /^review_rules\[(\d+)\]/.exec(e.path);
+      if (r) rm.set(Number(r[1]), [...(rm.get(Number(r[1])) ?? []), e.message]);
     }
-    return m;
+    return { errorByPath: m, reviewErrorByIndex: rm };
   }, [errors]);
+
+  // Auto-expand the first offending review row; keep the user's selection otherwise.
+  useEffect(() => {
+    if (reviewErrorByIndex.size === 0 || !rules) return;
+    const first = [...reviewErrorByIndex.keys()].sort((a, b) => a - b)[0];
+    const target = (rules.review_rules[first] as EditableReviewRule | undefined)?._id;
+    if (!target) return;
+    const t = setTimeout(() => {
+      setSelectedRule((cur) => {
+        if (!cur) return target;
+        const curIdx = rules.review_rules.findIndex((x) => (x as EditableReviewRule)._id === cur);
+        return reviewErrorByIndex.has(curIdx) ? cur : target;
+      });
+    }, 0);
+    return () => clearTimeout(t);
+  }, [reviewErrorByIndex, rules]);
 
   const isCompiling = status.status === "compiling";
   const values = state?.evaluation?.values ?? {};
@@ -123,6 +198,8 @@ export const PricingEngineDeck: React.FC<PricingEngineDeckProps> = ({
   const allGreen = checks.length > 0 && matched === checks.length;
   const selectedVar = rules?.variables.find((v) => v.name === selected) ?? null;
   const generalErrors = errors.filter((e) => !/^variables\[\d+\]/.test(e.path));
+  // Q2/Q3: a half-created rule blocks Proceed until conditions exist and the reason is filled.
+  const reviewBlocked = rules?.review_rules.some((r) => r.when.length === 0 || r.reason.trim() === "") ?? false;
 
   return (
     <div className="relative bg-card rounded-2xl border border-border/80 shadow-xs overflow-hidden transition-all duration-200 animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none">
@@ -324,27 +401,122 @@ export const PricingEngineDeck: React.FC<PricingEngineDeckProps> = ({
               )}
             </div>
 
-            {/* Review rules */}
-            {rules.review_rules.length > 0 && (
-              <div className="space-y-1.5">
+            {/* Review rules — fully editable, same expand-below-row UX as ledger variables */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
                   <ShieldAlert className="size-3" /> Held for review when
                 </div>
-                <ul className="space-y-1 text-xs">
-                  {rules.review_rules.map((r, i) => (
-                    <li key={i} className="flex gap-2">
-                      <span className="text-muted-foreground shrink-0">{readableConds(rules, r.when)}</span>
-                      <span className="text-foreground">→ {r.reason}</span>
-                    </li>
-                  ))}
-                </ul>
+                <button
+                  type="button"
+                  onClick={addReviewRule}
+                  className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <Plus className="size-3" /> Add rule
+                </button>
               </div>
-            )}
+
+              {rules.review_rules.length === 0 ? (
+                <p className="text-[11px] text-muted-foreground italic">
+                  No review rules yet — the AI found none. Add one if a scenario needs a human check before sending.
+                </p>
+              ) : (
+                <div className="rounded-xl border border-border/70 overflow-hidden divide-y divide-border/40">
+                  {(rules.review_rules as EditableReviewRule[]).map((r, i) => {
+                    const isSel = selectedRule === r._id;
+                    const noConditions = r.when.length === 0;
+                    const noReason = r.reason.trim() === "";
+                    const rowErrors = reviewErrorByIndex.get(i);
+                    return (
+                      <React.Fragment key={r._id}>
+                        {/* Row — click to toggle tray */}
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setSelectedRule(isSel ? null : r._id)}
+                          onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setSelectedRule(isSel ? null : r._id)}
+                          className={`flex items-start gap-2 px-3 py-2 cursor-pointer transition-colors text-xs
+                            ${isSel ? "bg-muted/60" : "hover:bg-muted/30"}
+                            ${noConditions ? "bg-amber-500/5" : ""}
+                            ${rowErrors ? "bg-destructive/5 ring-1 ring-inset ring-destructive/40" : ""}`}
+                        >
+                          {noConditions && <AlertTriangle className="size-3.5 shrink-0 text-amber-500 mt-0.5" />}
+                          <span className="text-muted-foreground shrink-0 min-w-0 truncate">
+                            {r.when.length
+                              ? readableConds(rules, r.when)
+                              : <span className="italic opacity-60">no conditions</span>}
+                          </span>
+                          <span className="text-foreground ml-1">
+                            → {r.reason || <span className="italic opacity-60">no reason</span>}
+                          </span>
+                        </div>
+
+                        {/* Inline tray — same expand-below pattern as LedgerTray */}
+                        {isSel && (
+                          <div className="animate-in fade-in slide-in-from-top-1 duration-200 motion-reduce:animate-none">
+                            <div className="bg-muted border-border/70 p-3.5 space-y-3">
+                              {noConditions && (
+                                <div className="flex items-center gap-2 text-[11px] text-amber-700 dark:text-amber-400">
+                                  <AlertTriangle className="size-3.5 shrink-0" />
+                                  No conditions — this rule will flag every proposal until you add at least one.
+                                </div>
+                              )}
+
+                              <div className="space-y-1">
+                                <div className="text-[11px] text-muted-foreground">When (all conditions must hold)</div>
+                                <CondRows
+                                  rules={rules}
+                                  items={r.when as Cond[]}
+                                  left="var"
+                                  hideTextRows
+                                  onChange={(when) => editReviewRule(r._id, { ...r, when: when as Cond[] })}
+                                />
+                              </div>
+
+                              <div className="space-y-1">
+                                <div className="text-[11px] text-muted-foreground">Reason shown to the reviewer</div>
+                                <input
+                                  type="text"
+                                  value={r.reason}
+                                  maxLength={200}
+                                  onChange={(e) => editReviewRule(r._id, { ...r, reason: e.target.value })}
+                                  placeholder="e.g. Franchise-scale — needs a call"
+                                  className="h-7 w-full rounded-md border border-border/70 bg-background px-2 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20"
+                                />
+                                {noReason && (
+                                  <p className="text-[11px] text-destructive">Reason required — shown to the reviewer in the Draft box.</p>
+                                )}
+                              </div>
+
+                              {rowErrors && (
+                                <div className="text-[11px] text-destructive">{rowErrors.join("; ")}</div>
+                              )}
+
+                              <div className="flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => deleteReviewRule(r._id)}
+                                  className="inline-flex items-center gap-1 text-[11px] text-destructive/70 hover:text-destructive transition-colors"
+                                >
+                                  <Trash2 className="size-3" /> Delete rule
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
             {/* Footer */}
             <div className="pt-3 flex items-center justify-between border-t border-border/40">
-              <span className={`text-[11px] ${allGreen ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
-                {checks.length ? `${matched} of ${checks.length} match the quotation` : errors.length ? `${errors.length} thing${errors.length === 1 ? "" : "s"} to fix` : ""}
+              <span className={`text-[11px] ${allGreen && !reviewBlocked ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
+                {reviewBlocked
+                  ? "Finish the review rules above to proceed"
+                  : checks.length ? `${matched} of ${checks.length} match the quotation` : errors.length ? `${errors.length} thing${errors.length === 1 ? "" : "s"} to fix` : ""}
               </span>
               <div className="flex items-center gap-2">
                 <Button variant="ghost" size="sm" onClick={onRegenerate} disabled={isCompiling} className="h-8 px-3 text-xs text-muted-foreground hover:text-foreground btn-tactile">
@@ -352,7 +524,7 @@ export const PricingEngineDeck: React.FC<PricingEngineDeckProps> = ({
                 </Button>
                 <Button
                   onClick={onProceed}
-                  disabled={isCompiling || isProceeding || errors.length > 0}
+                  disabled={isCompiling || isProceeding || errors.length > 0 || reviewBlocked}
                   size="sm"
                   className="h-8 px-4 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-xs btn-tactile"
                 >

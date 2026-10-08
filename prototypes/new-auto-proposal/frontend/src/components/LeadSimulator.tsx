@@ -37,6 +37,7 @@ export const LeadSimulator: React.FC<LeadSimulatorProps> = ({ company, rules }) 
   const [error, setError] = useState<{ message: string; retry: () => void } | null>(null);
   const [copied, setCopied] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [generatedFor, setGeneratedFor] = useState<PricingRulesState | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Sync the prefill on company switch / reset (Stage 1 pattern); a switch also drops the on-screen run.
@@ -49,6 +50,7 @@ export const LeadSimulator: React.FC<LeadSimulatorProps> = ({ company, rules }) 
     setThread([]);
     setReply("");
     setResult(null);
+    setGeneratedFor(null);
     setError(null);
   }
 
@@ -76,7 +78,9 @@ export const LeadSimulator: React.FC<LeadSimulatorProps> = ({ company, rules }) 
     setPhase("generating");
     setError(null);
     try {
-      setResult(await generateProposal(company.company_id, f.inputs, transcript(t), f.assumed));
+      const proposal = await generateProposal(company.company_id, f.inputs, transcript(t), f.assumed);
+      setResult(proposal);
+      setGeneratedFor(rules);
       setPhase("done");
     } catch (e) {
       setError({ message: e instanceof Error ? e.message : "Generating the proposal failed.", retry: () => runGenerate(f, t) });
@@ -153,6 +157,9 @@ export const LeadSimulator: React.FC<LeadSimulatorProps> = ({ company, rules }) 
   };
 
   const done = result?.success === true;
+  // Q1 soft stale: Stage 4 edits replace the `rules` object via onRulesChange; the old proposal stays
+  // on screen flagged "rules changed — regenerate". No wipe, no rewind.
+  const stale = done && generatedFor !== null && generatedFor !== rules;
 
   const pdfUrl = result?.success ? result.files.pdf : null;
 
@@ -178,6 +185,12 @@ export const LeadSimulator: React.FC<LeadSimulatorProps> = ({ company, rules }) 
         </div>
 
         {/* Lead message (Stage 1 fluid textarea) */}
+        {stale && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400">
+            <AlertTriangle className="size-3.5 shrink-0" />
+            <span>Pricing rules changed — regenerate to refresh this proposal. The result below is from the previous rules.</span>
+          </div>
+        )}
         <div className="rounded-2xl bg-card border border-border/80 shadow-xs p-4 transition-all focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/40">
           <textarea
             ref={textareaRef}

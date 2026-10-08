@@ -2,8 +2,9 @@ import React from "react";
 import { X, Plus, Trash2 } from "lucide-react";
 import { CustomDropdown } from "../ui/custom-dropdown";
 import type { Cell, Cond, Formula, PricingRules, RuleKind, RuleVariable, Unit, Where } from "../../types/pricing";
-import { OP_SYMBOL, UNIT_LABEL, cellInputText, parseCellInput, parseLiteral, readableFormula } from "./readable";
+import { UNIT_LABEL, cellInputText, parseCellInput, readableFormula } from "./readable";
 import { Commit as CommitBox } from "./RuleTableCard";
+import { CondRows } from "./CondRows";
 
 /** Docked editor for one ledger variable: kind, unit, guard, and the kind's operands. */
 
@@ -17,7 +18,6 @@ const KINDS: { value: RuleKind; label: string }[] = [
   { value: "input", label: "asked from the lead" },
 ];
 const UNITS = (Object.keys(UNIT_LABEL) as Unit[]).map((u) => ({ value: u, label: UNIT_LABEL[u] }));
-const OPS = Object.entries(OP_SYMBOL).map(([value, label]) => ({ value, label }));
 const FORMULA_OPS: { value: Formula["op"]; label: string }[] = [
   { value: "add", label: "add (+)" }, { value: "sub", label: "subtract (−)" }, { value: "mul", label: "multiply (×)" },
   { value: "div", label: "divide (÷)" }, { value: "min", label: "smaller of" }, { value: "max", label: "larger of" },
@@ -53,54 +53,6 @@ const box = "h-7 w-full rounded-md border border-border/70 bg-background px-2 te
 const Commit: React.FC<{ value: string; onCommit: (s: string) => void; placeholder?: string; mono?: boolean; className?: string }> = ({ mono, className = "", ...rest }) => (
   <CommitBox {...rest} className={`${box} ${mono ? "font-mono tabular-nums" : ""} ${className}`} />
 );
-
-interface CondRowsProps<T extends Where | Cond> {
-  rules: PricingRules;
-  items: T[];
-  /** "column" (table filter) or "var" (variable test). */
-  left: T extends Where ? "column" : "var";
-  tableId?: string;
-  onChange: (items: T[]) => void;
-}
-
-function CondRows<T extends Where | Cond>({ rules, items, left, tableId, onChange }: CondRowsProps<T>) {
-  const leftOptions =
-    left === "column"
-      ? (rules.tables.find((t) => t.id === tableId)?.columns ?? []).map((c) => ({ value: c.key, label: c.label }))
-      : rules.variables.map((v) => ({ value: v.name, label: v.label || v.name }));
-  const varOptions = [{ value: "", label: "a value…" }, ...rules.variables.map((v) => ({ value: v.name, label: v.label || v.name }))];
-  const update = (i: number, patch: Partial<Where & Cond>) => onChange(items.map((c, j) => (j === i ? ({ ...c, ...patch } as T) : c)));
-  const rhsText = (c: Where | Cond) => (c.op === "in" ? (c.values ?? []).map((x) => cellInputText("text", x)).join(", ") : cellInputText("text", c.value));
-  return (
-    <div className="space-y-1.5">
-      {items.map((c, i) => (
-        <div key={i} className="flex items-center gap-1.5">
-          <CustomDropdown size="xs" className="min-w-28" value={(c as Where).column ?? (c as Cond).var ?? ""} options={leftOptions} onChange={(v) => update(i, { [left]: v } as Partial<Where & Cond>)} />
-          <CustomDropdown size="xs" className="w-14" value={c.op} options={OPS} onChange={(v) => update(i, { op: v as Where["op"] })} />
-          <CustomDropdown size="xs" className="min-w-24" value={c.value_var ?? ""} options={varOptions} onChange={(v) => update(i, v ? { value_var: v, value: undefined, values: undefined } : { value_var: undefined, value: null })} />
-          {!c.value_var && (
-            <Commit
-              value={rhsText(c)}
-              placeholder={c.op === "in" ? "a, b, c" : "value"}
-              className="w-24"
-              onCommit={(s) => update(i, c.op === "in" ? { values: s.split(",").map((x) => parseLiteral(x)) } : { value: parseLiteral(s) })}
-            />
-          )}
-          <button type="button" onClick={() => onChange(items.filter((_, j) => j !== i))} className="size-6 rounded-md text-muted-foreground hover:text-destructive inline-flex items-center justify-center" title="Remove">
-            <X className="size-3" />
-          </button>
-        </div>
-      ))}
-      <button
-        type="button"
-        onClick={() => onChange([...items, { [left]: leftOptions[0]?.value ?? "", op: "eq", value: null } as unknown as T])}
-        className="inline-flex items-center gap-1 h-6 px-2 rounded-md text-[11px] border border-dashed border-border text-muted-foreground hover:text-foreground"
-      >
-        <Plus className="size-3" /> condition
-      </button>
-    </div>
-  );
-}
 
 const TableFields: React.FC<{
   rules: PricingRules;
