@@ -20,6 +20,8 @@ interface RoutingTestPanelProps {
   onReassign: (templateId: string) => void;
   onOpenTemplate: (templateId: string) => void;
   defaultOpen?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 const EMAIL_MAX = 12000;
@@ -37,8 +39,12 @@ export default function RoutingTestPanel({
   onReassign,
   onOpenTemplate,
   defaultOpen = false,
+  open: controlledOpen,
+  onOpenChange,
 }: RoutingTestPanelProps) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(defaultOpen);
+  const open = controlledOpen ?? uncontrolledOpen;
+  const setOpen = onOpenChange ?? setUncontrolledOpen;
   const assignedName = routing?.template_id
     ? (templates.find((t) => t.template_id === routing.template_id)?.name ??
       "template")
@@ -63,7 +69,7 @@ export default function RoutingTestPanel({
           type="button"
           aria-expanded={open}
           aria-controls="routing-test-body"
-          onClick={() => setOpen((v) => !v)}
+          onClick={() => setOpen(!open)}
           className="flex w-full items-center gap-3 p-5 text-left transition-colors hover:bg-muted/40 sm:px-6"
         >
           <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/60 text-muted-foreground">

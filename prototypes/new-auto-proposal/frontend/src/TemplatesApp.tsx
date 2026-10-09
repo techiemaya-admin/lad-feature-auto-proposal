@@ -55,6 +55,7 @@ export default function TemplatesApp() {
     useState<CompanyConfiguration | null>(null)
   const [inboxBusy, setInboxBusy] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [routingOpen, setRoutingOpen] = useState(false)
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [brief, setBrief] = useState("")
@@ -486,7 +487,9 @@ export default function TemplatesApp() {
                   key={row.template_id}
                   template={row}
                   highlighted={
-                    !emailDirty && routing?.template_id === row.template_id
+                    routingOpen &&
+                    !emailDirty &&
+                    routing?.template_id === row.template_id
                   }
                   disabled={busy}
                   onOpen={(id) => setTemplateId(id)}
@@ -508,6 +511,8 @@ export default function TemplatesApp() {
               busy={busy}
               emailDirty={emailDirty}
               templates={templates}
+              open={routingOpen}
+              onOpenChange={setRoutingOpen}
               onRoute={() => void routeEmail()}
               onReset={() => setEmail(routing?.email ?? "")}
               onReassign={(id) => void reassign(id)}
