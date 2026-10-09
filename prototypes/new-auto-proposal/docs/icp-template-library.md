@@ -261,17 +261,17 @@ The earlier `.scratch/icp-template-library-docs.patch` and `.scratch/mock-email-
 
 ### Behavior and scope
 
-The library's **Lead email** panel starts with the selected company's sample lead message. It is displayed once the company has templates. All company-owned templates are candidates: AI-created, custom, brief-only, partially configured and fully configured. Routing chooses relevance, not readiness. Assigning an email does not complete template setup.
+The library's collapsible **Check a lead email** panel (`frontend/src/components/RoutingTestPanel.tsx`) sits below the template grid and starts with the selected company's sample lead message. It is displayed once the company has templates. All company-owned templates are candidates: AI-created, custom, brief-only, partially configured and fully configured. Routing chooses relevance, not readiness. Assigning an email does not complete template setup.
 
-**Route email** calls the configured AI with the saved email and each candidate's ID, name, description and pricing brief. The prompt asks for one exact candidate ID and a short explanation, or null if no offer fits or multiple offers fit equally well. Both the email and candidate contents are treated as untrusted data. The backend validates the ID against the candidate set and caps the nonblank explanation at 500 characters.
+**Check** calls the configured AI with the saved email and each candidate's ID, name, description and pricing brief. The prompt asks for one exact candidate ID and a short explanation, or null if no offer fits or multiple offers fit equally well. Both the email and candidate contents are treated as untrusted data. The backend validates the ID against the candidate set and caps the nonblank explanation at 500 characters.
 
-A successful match is an actual SQLite assignment, not just an ephemeral suggestion. The UI displays **Assigned to**, its reason, time and AI/manual source, highlights the card, and offers **Open assigned template**. Inside that template, an **Assigned lead email** card shows the message. Reloading or restarting restores the assignment. **Assign or move manually** lets the user select a different template without AI. Re-routing may replace the previous assignment; a successful no-match result clears it and displays a needs-review state. A provider failure leaves the last successful assignment intact.
+A successful match is an actual SQLite assignment, not just an ephemeral suggestion. The UI displays **Goes to** (or **No match**), a truncated quote of the checked email, its reason, time and automatic/manual source, highlights the card, and offers **Open template**. The workspace shows no duplicate email card; the assigned email arrives via the Stage 5 prefill below. Reloading or restarting restores the assignment. A closed **Not right? Choose another…** disclosure lets the user select a different template without AI. Re-checking may replace the previous assignment; a successful no-match result clears it. A provider failure leaves the last successful assignment intact.
 
 Routing does not send an email, automatically generate a proposal or require the mock **Connect inbox** flag.
 
 ### Editable message
 
-The textarea accepts a different received email, up to 12,000 characters. The default seed is only a starting point. **Save email** persists the replacement; **Route email** saves pending changes first and then routes the saved text. Manual assignment is disabled while edits are unsaved, and the old assignment result/card highlight is hidden so it is not presented as a match for new text.
+The textarea accepts a different received email, up to 12,000 characters. The default seed is only a starting point. **Check** saves pending changes first and then routes the saved text; there is no separate save button. **Reset** discards an unsaved edit and restores the saved text. The manual override stays hidden until a saved answer exists, and editing hides the old answer and card highlight so they are not presented as a match for new text.
 
 The server requires a nonblank string, validates the original length, trims surrounding whitespace and checks the supplied integer version. Saving changed text clears `template_id`, reason and routing time, marks the record unassigned and increments its version. Saving unchanged text preserves the assignment. A stale version returns 409 without overwriting the current message. Unsaved browser edits are not persisted automatically. There is no email history: saving replaces the one message held for that company.
 
@@ -337,7 +337,8 @@ Base: `/api/companies/:companyId/templates`. These management paths are mounted 
 | `backend/src/routes/templates.ts` | Four email endpoints and error responses. |
 | `backend/src/routes/companies.ts` | Assigned-email-first Stage 5 prefill in the common workflow response. |
 | `frontend/src/services/api.ts` | Fetch/save/route/assign helpers and saved routing type including version. |
-| `frontend/src/TemplatesApp.tsx` | Editable panel, save/route/manual controls, saved result, highlighted card, restoration on navigation and assigned-email workspace card. |
+| `frontend/src/TemplatesApp.tsx` | Library layout, routing callbacks, highlighted card and restoration on navigation; workspace `templateControls` is breadcrumb-only. |
+| `frontend/src/components/RoutingTestPanel.tsx` | Collapsible check panel, check/reset controls, saved result with email quote, closed manual-override disclosure. |
 | `backend/src/tests/email-routing.test.ts` | Offline integration coverage for matching contracts, persistence, ownership, concurrency, editing and Stage 5 prefill. |
 
 ## 11. Remote demo merge integration record
