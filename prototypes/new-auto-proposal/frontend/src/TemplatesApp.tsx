@@ -20,7 +20,6 @@ import {
 import { Button } from "./components/ui/button"
 import { Input } from "./components/ui/input"
 import { Textarea } from "./components/ui/textarea"
-import { Card } from "./components/ui/card"
 import { useTheme } from "./components/theme-provider"
 import RoutingTestPanel from "./components/RoutingTestPanel"
 import CompanyInboxControl from "./components/CompanyInboxControl"
@@ -36,6 +35,7 @@ import {
   Workflow,
   Sun,
   Moon,
+  X,
 } from "lucide-react"
 
 export default function TemplatesApp() {
@@ -67,6 +67,19 @@ export default function TemplatesApp() {
   const [description, setDescription] = useState("")
   const [brief, setBrief] = useState("")
   const { theme, setTheme } = useTheme()
+  useEffect(() => {
+    if (!creating) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !busy) setCreating(false)
+    }
+    window.addEventListener("keydown", onKey)
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      window.removeEventListener("keydown", onKey)
+      document.body.style.overflow = previousOverflow
+    }
+  }, [creating, busy])
   useEffect(() => {
     let alive = true
     fetchCompanies()
@@ -461,73 +474,106 @@ export default function TemplatesApp() {
               </div>
             </div>
             {creating && (
-              <Card className="mb-8 rounded-2xl p-6">
-                <form
-                  className="space-y-4"
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    void create()
-                  }}
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs animate-in fade-in duration-150"
+                onClick={(e) => {
+                  if (e.target === e.currentTarget && !busy)
+                    setCreating(false)
+                }}
+              >
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="Create a custom template"
+                  className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl animate-in zoom-in-95 duration-150"
                 >
-                  <h2 className="font-semibold">Create a custom template</h2>
-                  <label className="block space-y-2 text-sm">
-                    <span>Name</span>
-                    <Input
-                      autoFocus
-                      required
-                      maxLength={100}
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      disabled={busy}
-                      placeholder="e.g. Managed IT for growing teams"
-                    />
-                  </label>
-                  <label className="block space-y-2 text-sm">
-                    <span>Description</span>
-                    <Textarea
-                      required
-                      maxLength={1000}
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      disabled={busy}
-                      placeholder="Who is this proposal for, and what does it offer?"
-                    />
-                  </label>
-                  <label className="block space-y-2 text-sm">
-                    <span>Pricing brief</span>
-                    <Textarea
-                      required
-                      maxLength={20000}
-                      className="min-h-36"
-                      value={brief}
-                      onChange={(e) => setBrief(e.target.value)}
-                      disabled={busy}
-                      placeholder="Describe your packages, rates, conditions and discounts?"
-                    />
-                  </label>
-                  <div className="flex gap-2">
-                    <Button
-                      type="submit"
-                      disabled={
-                        busy ||
-                        !name.trim() ||
-                        !description.trim() ||
-                        !brief.trim()
-                      }
-                    >
-                      {busy ? "Saving..." : "Save and open template"}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      disabled={busy}
-                      onClick={() => setCreating(false)}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </form>
-              </Card>
+                  <form
+                    className="space-y-4"
+                    onSubmit={(e) => {
+                      e.preventDefault()
+                      void create()
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h2 className="font-semibold">
+                          Create a custom template
+                        </h2>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          Name it, describe who it serves, and brief its
+                          pricing.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setCreating(false)}
+                        aria-label="Close"
+                        title="Close (Esc)"
+                        className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                      >
+                        <X className="size-4" />
+                      </button>
+                    </div>
+                    <label className="block space-y-2 text-sm flex flex-col">
+                      <span>Name</span>
+                      <Input
+                        autoFocus
+                        required
+                        maxLength={100}
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        disabled={busy}
+                        placeholder="e.g. Managed IT for growing teams"
+                      />
+                    </label>
+                    <label className="block space-y-2 text-sm flex flex-col">
+                      <span>Description</span>
+                      <Textarea
+                        required
+                        maxLength={1000}
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        disabled={busy}
+                        placeholder="Who is this proposal for, and what does it offer?"
+                      />
+                    </label>
+                    <label className="block space-y-2 text-sm flex flex-col">
+                      <span>Pricing brief</span>
+                      <Textarea
+                        required
+                        maxLength={20000}
+                        className="min-h-36"
+                        value={brief}
+                        onChange={(e) => setBrief(e.target.value)}
+                        disabled={busy}
+                        placeholder="Describe your packages, rates, conditions and discounts?"
+                      />
+                    </label>
+                    <div className="flex items-center justify-end gap-2 pt-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        disabled={busy}
+                        onClick={() => setCreating(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="submit"
+                        disabled={
+                          busy ||
+                          !name.trim() ||
+                          !description.trim() ||
+                          !brief.trim()
+                        }
+                      >
+                        {busy ? "Saving..." : "Save and open template"}
+                      </Button>
+                    </div>
+                  </form>
+                </div>
+              </div>
             )}
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {templates.map((row) => (

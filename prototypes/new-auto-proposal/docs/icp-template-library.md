@@ -54,11 +54,11 @@ Users choose a card to enter the existing workflow, or add a custom template wit
 
 ### Custom templates
 
-- **Add custom template** opens an inline form for name, description and pricing brief.
+- **Add custom template** opens a modal dialog for name, description and pricing brief.
 - All three fields are required. Empty/whitespace-only values disable the save action; inputs also have length limits.
-- **Save and open template** creates the database record, refreshes the library, closes the form and opens that template's workspace.
+- **Save and open template** creates the database record, refreshes the library, closes the dialog and opens that template's workspace.
 - The supplied pricing brief is prefilled exactly through the existing `pricing_spec` path, after surrounding whitespace is trimmed during validation.
-- The form has a saving state and cancel action. Failures are displayed without discarding the entered values.
+- The dialog has a saving state and cancel action. It also closes via its X button, backdrop click, or Escape; these are disabled while saving. Failures are displayed without discarding the entered values.
 - Custom creation does not call the AI.
 
 ### Deletion and capacity
