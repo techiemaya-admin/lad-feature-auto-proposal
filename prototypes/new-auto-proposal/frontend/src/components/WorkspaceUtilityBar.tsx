@@ -40,10 +40,10 @@ export const WorkspaceUtilityBar: React.FC<WorkspaceUtilityBarProps> = ({
         size="sm"
         onClick={onOpenSettings}
         disabled={isLoading}
-        className="h-7 px-2.5 text-[11px] font-medium text-foreground/80 hover:text-primary hover:border-primary/40 hover:bg-primary/5 btn-tactile"
+        className="h-7 px-2.5 text-[11px] font-medium text-foreground border-border bg-background transition-colors hover:bg-muted hover:text-foreground hover:border-border"
         title="Edit how your proposals sound"
       >
-        <PenLine className="size-3 mr-1 text-muted-foreground/70" />
+        <PenLine className="size-3 mr-1 text-primary" />
         Voice
       </Button>
       <span className="mx-1.5 h-4 w-px bg-border/70" aria-hidden="true" />
@@ -53,7 +53,7 @@ export const WorkspaceUtilityBar: React.FC<WorkspaceUtilityBarProps> = ({
         size="sm"
         onClick={handleReset}
         disabled={isResetting || isLoading}
-        className="h-6 px-2 text-[11px] text-muted-foreground hover:text-destructive hover:bg-destructive/10 btn-tactile font-normal"
+        className="h-6 px-2 text-[11px] text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors font-normal"
         title="Reset this template's pricing and progress to mock defaults"
       >
         <RotateCcw className={`size-3 mr-1 ${isResetting ? "animate-spin" : ""}`} />
