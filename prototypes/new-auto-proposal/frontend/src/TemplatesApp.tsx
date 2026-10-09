@@ -19,13 +19,14 @@ import { Textarea } from "./components/ui/textarea"
 import { Card } from "./components/ui/card"
 import { useTheme } from "./components/theme-provider"
 import RoutingTestPanel from "./components/RoutingTestPanel"
+import TemplateLibraryCard from "./components/TemplateLibraryCard"
+import TemplateSkeletonCard from "./components/TemplateSkeletonCard"
 import {
   ArrowLeft,
   ArrowUpRight,
   FileText,
   Plus,
   Sparkles,
-  Trash2,
   Workflow,
   Sun,
   Moon,
@@ -291,23 +292,7 @@ export default function TemplatesApp() {
             </div>
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {[0, 1, 2].map((i) => (
-                <Card
-                  key={i}
-                  aria-hidden="true"
-                  className="min-h-80 rounded-2xl p-7 shadow-sm motion-safe:animate-pulse"
-                  style={{ animationDelay: `${i * 180}ms` }}
-                >
-                  <div className="mb-10 h-10 w-9 rounded-md bg-muted" />
-                  <div className="mb-5 h-5 w-3/4 rounded bg-muted" />
-                  {[100, 90, 75, 85].map((width, j) => (
-                    <div
-                      key={j}
-                      className="mb-3 h-3 rounded bg-muted"
-                      style={{ width: `${width}%` }}
-                    />
-                  ))}
-                  <div className="mt-10 h-3 w-1/3 rounded bg-muted" />
-                </Card>
+                <TemplateSkeletonCard key={i} index={i} />
               ))}
             </div>
           </section>
@@ -451,42 +436,16 @@ export default function TemplatesApp() {
             )}
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {templates.map((row) => (
-                <Card
+                <TemplateLibraryCard
                   key={row.template_id}
-                  className={`group relative overflow-hidden rounded-2xl py-0 shadow-sm transition-all hover:border-primary/30 hover:shadow-md ${!emailDirty && routing?.template_id === row.template_id ? "border-primary ring-2 ring-primary/20" : ""}`}
-                >
-                  <button
-                    disabled={busy}
-                    onClick={() => setTemplateId(row.template_id)}
-                    className="flex h-full min-h-64 w-full flex-col p-6 text-left focus-visible:outline-2 focus-visible:outline-offset-[-4px] focus-visible:outline-primary disabled:opacity-50"
-                  >
-                    <div className="mb-4 flex size-10 items-center justify-center rounded-lg border border-primary/10 bg-primary/5 text-primary">
-                      <FileText className="size-5" />
-                    </div>
-                    <h2 className="text-base leading-snug font-semibold tracking-tight break-words">
-                      {row.name}
-                    </h2>
-                    <p title={row.description || undefined} className="mt-2 line-clamp-4 text-[13px] leading-5 break-words text-muted-foreground">
-                      {row.description ||
-                        "Continue setting up this saved proposal template."}
-                    </p>
-                    <span className="mt-auto flex items-center gap-2 pt-5 text-xs font-medium text-primary">
-                      Open template
-                      <ArrowUpRight className="size-3.5 transition-transform group-hover:translate-x-0.5" />
-                    </span>
-                  </button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    disabled={busy}
-                    aria-label={`Delete ${row.name}`}
-                    title={`Delete ${row.name}`}
-                    className="absolute top-3 right-3 text-muted-foreground hover:text-destructive"
-                    onClick={() => void remove(row)}
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </Card>
+                  template={row}
+                  highlighted={
+                    !emailDirty && routing?.template_id === row.template_id
+                  }
+                  disabled={busy}
+                  onOpen={(id) => setTemplateId(id)}
+                  onDelete={(template) => void remove(template)}
+                />
               ))}
             </div>
             {templates.length >= 7 && (

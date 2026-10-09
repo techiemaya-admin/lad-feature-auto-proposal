@@ -181,7 +181,9 @@ Expected failures:
 | `backend/src/routes/templates.ts` | Adds ICP import, validates full custom briefs, returns descriptions/briefs in lists and explicitly guards management writes. |
 | `backend/src/app.ts` | Orders management routes before generic template-scoped workflow routes. |
 | `frontend/src/services/api.ts` | Extends `ProposalTemplateSummary`; changes `createProposalTemplate` to send all three fields; adds `importIcpTemplates`. |
-| `frontend/src/TemplatesApp.tsx` | Replaces dropdown management with themed cards, empty/loading/error states, generation skeletons, custom form, deletion, capacity feedback, and workspace/library navigation. Uses existing Button, Input, Textarea, Card and theme primitives with Lucide icons. |
+| `frontend/src/TemplatesApp.tsx` | Replaces dropdown management with themed cards, empty/loading/error states, generation skeletons, custom form, deletion, capacity feedback, and workspace/library navigation. Delegates the per-template card to `components/TemplateLibraryCard.tsx` and the import skeleton to `components/TemplateSkeletonCard.tsx`. Uses existing Button, Input, Textarea, Card and theme primitives with Lucide icons. |
+| `frontend/src/components/TemplateLibraryCard.tsx` (new) | Per-template library card: open button, four-line clamped description with hover tooltip, routed-template highlight ring, delete button. Props: `template`, `highlighted`, `disabled`, `onOpen`, `onDelete`. |
+| `frontend/src/components/TemplateSkeletonCard.tsx` (new) | Pulsing import skeleton card with staggered `animationDelay` from its `index` prop. |
 | `backend/src/tests/template-ideas.test.ts` (new) | Integration coverage for new import/custom creation contracts with a stubbed model. |
 | `backend/src/tests/template-fixtures.ts` (new) | Explicitly seeds template fixtures for existing pipeline tests now that fresh application databases start empty. |
 | `backend/src/tests/briefing.test.ts` | Uses explicit template fixtures. |
@@ -205,6 +207,10 @@ The initial ICP library reused the existing document pipeline without adding dep
 The custom form already handled `onSubmit`, but its shared Base UI `Button` defaults to `type="button"`. The save button omitted an explicit type, so clicking it did not submit the form or call the creation API.
 
 `TemplatesApp.tsx` now explicitly sets `type="submit"` on **Save and open template**. Cancel remains `type="button"`. The busy label was also corrected to `Saving...`. The shared button primitive was left unchanged to avoid changing unrelated buttons.
+
+### Follow-up: library cards extracted to subcomponents
+
+The template grid card and the import skeleton card were inline markup in `TemplatesApp.tsx`, repeated once per template / skeleton. They are now `frontend/src/components/TemplateLibraryCard.tsx` (open, highlight, delete) and `frontend/src/components/TemplateSkeletonCard.tsx` (pulsing placeholder, staggered by `index`). No visual or behavioral change: same classes, same callbacks, same highlight rule (`!emailDirty && routing?.template_id === row.template_id`, now passed as the `highlighted` prop).
 
 ## 7. Verification and manual checks
 
@@ -337,7 +343,7 @@ Base: `/api/companies/:companyId/templates`. These management paths are mounted 
 | `backend/src/routes/templates.ts` | Four email endpoints and error responses. |
 | `backend/src/routes/companies.ts` | Assigned-email-first Stage 5 prefill in the common workflow response. |
 | `frontend/src/services/api.ts` | Fetch/save/route/assign helpers and saved routing type including version. |
-| `frontend/src/TemplatesApp.tsx` | Library layout, routing callbacks, highlighted card and restoration on navigation; workspace `templateControls` is breadcrumb-only. |
+| `frontend/src/TemplatesApp.tsx` | Library layout, routing callbacks, highlight computation and restoration on navigation; renders the grid through `components/TemplateLibraryCard.tsx`. Workspace `templateControls` is breadcrumb-only. |
 | `frontend/src/components/RoutingTestPanel.tsx` | Collapsible check panel, check/reset controls, saved result with email quote, closed manual-override disclosure. |
 | `backend/src/tests/email-routing.test.ts` | Offline integration coverage for matching contracts, persistence, ownership, concurrency, editing and Stage 5 prefill. |
 
