@@ -196,7 +196,7 @@ Rendered under the pricing deck once `working_state.stage === "lead_simulation"`
 ## 4. Ambient Shell Components
 
 ### 4.1 Slide-Over Configuration Drawer (`ConfigurationSheet.tsx`, "Voice & inbox")
-Opened from the company context strip, not the header — the header holds developer controls (AI model picker, theme) only. The strip button is the tenant's one solid CTA (`Set up voice & inbox`, amber dot) until the inbox is linked, then a quiet outline pill (`Voice & inbox`, green dot).
+Opened from the workspace toolbar, not the header — the header holds developer controls (AI model picker, theme) only. The toolbar's right side carries the tenant's one solid CTA (`Set up voice & inbox`, amber dot) until the inbox is linked, then a quiet outline pill (`Voice & inbox`, green dot), beside a ghost Reset; the left side holds back navigation and the template name. The toolbar owns no company identity — that lives in the header tabs.
 - **Proposal voice (free text, not sliders):** *How your proposals should sound* (style notes), *A proposal you're proud of* (optional reference proposal the drafter learns voice and structure from — few-shot beats a formality enum), *When a lead's request is missing details* (how the clarification email should sound). Each has a real example as placeholder; empty means the Stage 5 drafter uses its built-in default.
 - **Send from your inbox:** mock link against the company profile address — `Connect inbox` / `Disconnect` act immediately and show `Connected` / `Not connected`. No SMTP or webhooks.
 - **Save / Cancel:** explicit; Save is disabled until a field changes, and Cancel, Esc and the backdrop discard the draft.

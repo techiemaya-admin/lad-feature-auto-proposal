@@ -21,6 +21,7 @@ import type { TemplateStats } from "./types/template";
 import type { PricingRulesState } from "./types/pricing";
 import type { RulesStatus } from "./components/pricing/PricingEngineDeck";
 import { CompanyProfileCard } from "./components/CompanyProfileCard";
+import { WorkspaceUtilityBar } from "./components/WorkspaceUtilityBar";
 import { DevDock } from "./components/DevDock";
 import { ConfigurationSheet } from "./components/ConfigurationSheet";
 import { Button } from "./components/ui/button";
@@ -35,7 +36,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 
-export function TemplateWorkspace({ activeCompanyId, templateId, onCompanyChange, templateControls }: { activeCompanyId: string; templateId: string; onCompanyChange: (id: string) => void; templateControls: React.ReactNode }) {
+export function TemplateWorkspace({ activeCompanyId, templateId, templateName, onCompanyChange, templateControls }: { activeCompanyId: string; templateId: string; templateName?: string; onCompanyChange: (id: string) => void; templateControls: React.ReactNode }) {
   const { theme, setTheme } = useTheme();
   const [companies, setCompanies] = useState<CompanySummary[]>([]);
   const setActiveCompanyId = onCompanyChange;
@@ -58,7 +59,7 @@ export function TemplateWorkspace({ activeCompanyId, templateId, onCompanyChange
   const [aiSettings, setAiSettings] = useState<AISettings | null>(null);
   const [aiModels, setAiModels] = useState<Record<string, string[]>>({});
   const [isConfigOpen, setIsConfigOpen] = useState(false);
-  // Only the inbox status is read here (drives the strip CTA); the sheet owns editing.
+  // Only the inbox status is read here (drives the toolbar CTA); the sheet owns editing.
   const [configuration, setConfiguration] = useState<CompanyConfiguration | null>(null);
 
   useEffect(() => {
@@ -324,40 +325,6 @@ export function TemplateWorkspace({ activeCompanyId, templateId, onCompanyChange
     }
   };
 
-  const handleImportSettings = async () => {
-    if (!currentCompany) return;
-    try {
-      const reseeded = await resetProposalTemplate(currentCompany.company_id, templateId);
-      setCurrentCompany(reseeded);
-      setActiveVariables([]);
-      setActiveCompoundTables([]);
-      setTemplateStats(null);
-      setTemplateFilesize(null);
-      setPricingRules(null);
-      setNotification({
-        type: "success",
-        message: `Settings & spec imported for ${reseeded.company_name}.`,
-      });
-      setCompanies((prev: CompanySummary[]) =>
-        prev.map((c: CompanySummary) =>
-          c.company_id === reseeded.company_id
-            ? {
-                ...c,
-                pricing_spec: reseeded.pricing_spec,
-                briefing_locked: false,
-                quotation_filename: undefined,
-              }
-            : c
-        )
-      );
-    } catch (err) {
-      setNotification({
-        type: "error",
-        message: err instanceof Error ? err.message : "Failed to import settings",
-      });
-    }
-  };
-
   const handleResetDefault = async () => {
     if (!currentCompany) return;
     try {
@@ -472,8 +439,20 @@ export function TemplateWorkspace({ activeCompanyId, templateId, onCompanyChange
       </header>
 
       {/* Main Workspace */}
-      <main className="mx-auto max-w-4xl px-4 pt-3 pb-8 sm:px-6 sm:pt-4 space-y-5">
-        {templateControls}
+      <main className="mx-auto max-w-4xl px-4 pt-3 pb-8 sm:px-6 sm:pt-4 space-y-3">
+        {/* Workspace toolbar — navigation left, tenant controls right. One quiet row
+            so Stage 1 remains the hero; the template name truncates in the middle
+            and the back button collapses to its icon on small screens. */}
+        <div className="flex items-center justify-between gap-3 px-0.5 py-1">
+          <div className="min-w-0 flex-1">{templateControls}</div>
+          <WorkspaceUtilityBar
+            isLoading={isLoading}
+            onOpenSettings={() => setIsConfigOpen(true)}
+            emailConnected={configuration?.email_connected ?? null}
+            onReset={handleResetDefault}
+            templateName={templateName}
+          />
+        </div>
         {/* Floating Notification */}
         {notification && (
           <div
@@ -519,12 +498,7 @@ export function TemplateWorkspace({ activeCompanyId, templateId, onCompanyChange
         ) : currentCompany ? (
           <CompanyProfileCard
             company={currentCompany}
-            isLoading={isLoading}
             isSubmittingBriefing={isSubmittingBriefing}
-            onImportSettings={handleImportSettings}
-            onOpenSettings={() => setIsConfigOpen(true)}
-            emailConnected={configuration?.email_connected ?? null}
-            onResetDefault={handleResetDefault}
             onSubmitBriefing={handleBriefingSubmit}
             onUnlockBriefing={handleBriefingUnlock}
             onVariablesChange={handleVariablesChange}

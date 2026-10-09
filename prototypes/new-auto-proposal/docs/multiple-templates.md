@@ -106,16 +106,15 @@ The frontend selects the first remaining template, or shows the empty state if n
 
 Log artifacts, legacy migration source copies, and the empty template directory are not removed by this action.
 
-### 2.6 Import, Reset, and Edit/Reset are different operations
+### 2.6 Reset and Edit/Reset are different operations
 
 | Action in the workspace | Pricing briefing afterward | Uploaded quotation afterward | Downstream work afterward |
 | --- | --- | --- | --- |
 | Briefing Edit/Reset (unlock) | Retained as entered | Retained, including metadata | Variables, generated file, and pricing rules cleared; stage becomes `briefing`. |
-| Import | Replaced with the company's mock pricing text | Retained, including metadata | Cleared for this template; briefing unlocked; working state becomes `NULL`. |
-| Reset | Same behavior as Import | Retained, including metadata | Same behavior as Import. |
+| Reset | Replaced with the company's mock pricing text | Retained, including metadata | Cleared for this template; briefing unlocked; working state becomes `NULL`. |
 | Delete template | Record removed | The nested original Word file is deleted | Record, generated Word file, and associated variables removed. |
 
-Both Import and Reset now call the selected template's reset endpoint. Both require confirmation in the UI. Their mock pricing comes from the company's entry in `Mock Data/companies_dataset.json`; it is not inferred from the template's name or uploaded document. If the company is absent from that dataset, the reset pricing text is empty.
+Reset calls the selected template's reset endpoint and requires confirmation in the UI. Its mock pricing comes from the company's entry in `Mock Data/companies_dataset.json`; it is not inferred from the template's name or uploaded document. If the company is absent from that dataset, the reset pricing text is empty. (A previous duplicate Import button in the workspace called the same endpoint and was removed; seed-data import now lives in the template library as Import ICP data.)
 
 The company-level profile Import/Reset API still exists separately. It is no longer what these workspace buttons call.
 
@@ -603,17 +602,18 @@ Changing either ID unmounts the old workspace and mounts a new one. This separat
 
 ### 10.2 Existing application becomes a workspace
 
-[App.tsx](../frontend/src/App.tsx) now exports `TemplateWorkspace` rather than owning the entire selection lifecycle. Its props are `activeCompanyId`, `templateId`, `onCompanyChange`, and `templateControls`.
+[App.tsx](../frontend/src/App.tsx) now exports `TemplateWorkspace` rather than owning the entire selection lifecycle. Its props are `activeCompanyId`, `templateId`, `templateName`, `onCompanyChange`, and `templateControls`.
 
-It fetches `fetchProposalTemplate()` instead of `fetchCompany()` for workflow state. It passes the template ID for briefing submission/unlock, document generation/status, pricing compilation, and proceeding to simulation. The controls render above the existing workspace content.
+It fetches `fetchProposalTemplate()` instead of `fetchCompany()` for workflow state. It passes the template ID for briefing submission/unlock, document generation/status, pricing compilation, and proceeding to simulation. The navigation controls and the tenant utilities (Voice & inbox, Reset) render in one toolbar row above the workspace content; the template name renders at `text-xs` so it stays quiet next to the back button.
 
-Import and Reset now call `resetProposalTemplate()`. The obsolete `handleSaveSpec` that wrote template pricing through company profile updates was removed, together with the unused `onSaveSpec` component prop. Shared configuration loading and the Voice & inbox drawer still use the company ID alone.
+Reset calls `resetProposalTemplate()`. The obsolete `handleSaveSpec` that wrote template pricing through company profile updates was removed, together with the unused `onSaveSpec` component prop. Shared configuration loading and the Voice & inbox drawer still use the company ID alone.
 
 ### 10.3 Components
 
 | Component | Change |
 | --- | --- |
-| `CompanyProfileCard.tsx` | Passes `company.template_id` to variable, checkpoint, and pricing decks; removes unused save-spec prop; scopes reset/import confirmations to the selected template. |
+| `CompanyProfileCard.tsx` | Passes `company.template_id` to variable, checkpoint, and pricing decks; removes unused save-spec prop; no longer owns navigation or tenant controls. |
+| `WorkspaceUtilityBar.tsx` | Tenant utilities for the workspace toolbar: Voice & inbox CTA (solid until the inbox is linked, quiet outline pill after) and a ghost Reset scoped to the selected template via `templateName`. |
 | `VariableReviewDeck.tsx` | Requires `templateId`; passes it to fetch, extract, update, and custom-variable API calls; includes it in relevant effect/callback dependencies. |
 | `TemplateCheckpointCard.tsx` | Requires `templateId`; uses it for preview blob and download URL, and related reload dependencies. |
 | `pricing/PricingEngineDeck.tsx` | Requires `templateId`; sends it with rule updates; includes it in the autosave dependency list. |

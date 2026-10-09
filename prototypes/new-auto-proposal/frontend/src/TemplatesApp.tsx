@@ -74,9 +74,6 @@ export default function TemplatesApp() {
   useEffect(() => {
     if (!companyId) return
     let alive = true
-    setLoading(true)
-    setEmail("")
-    setRouting(null)
     Promise.all([listTemplates(companyId), fetchMockEmail(companyId)])
       .then(([rows, emailText]) => {
         if (alive) {
@@ -107,6 +104,8 @@ export default function TemplatesApp() {
       return
     setTemplateId("")
     setTemplates([])
+    setEmail("")
+    setRouting(null)
     setLoading(true)
     setCreating(false)
     setError("")
@@ -206,14 +205,15 @@ export default function TemplatesApp() {
         key={`${companyId}:${templateId}`}
         activeCompanyId={companyId}
         templateId={templateId}
+        templateName={templates.find((t) => t.template_id === templateId)?.name}
         onCompanyChange={switchCompany}
         templateControls={
-          <div className="flex items-center gap-3 py-1">
-            <Button variant="ghost" size="sm" onClick={back}>
-              <ArrowLeft className="mr-2 size-4" />
-              All templates
+          <div className="flex items-center gap-2 min-w-0">
+            <Button variant="ghost" size="sm" onClick={back} className="shrink-0 px-2 sm:px-3" title="Back to all templates">
+              <ArrowLeft className="size-4 sm:mr-2" />
+              <span className="hidden sm:inline">All templates</span>
             </Button>
-            <span className="truncate text-sm text-muted-foreground">
+            <span className="truncate text-xs text-muted-foreground">
               {templates.find((t) => t.template_id === templateId)?.name}
             </span>
           </div>
