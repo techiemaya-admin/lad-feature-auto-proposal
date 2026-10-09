@@ -4,7 +4,15 @@ import { extractVariablesWithDeepSeek, generateJsonWithDeepSeek } from "./deepse
 import { getAISettings } from "./ai-settings.service.js";
 
 // Single entry point the routes call — routes never pick a provider themselves.
+let extractionOverride: ((params: ExtractVariablesParams) => Promise<ExtractionResponse>) | null = null;
+
+/** Offline route tests can replace the model call without changing persistence behavior. */
+export function setExtractionModelCall(call: typeof extractionOverride): void {
+  extractionOverride = call;
+}
+
 export async function extractVariables(params: ExtractVariablesParams): Promise<ExtractionResponse> {
+  if (extractionOverride) return extractionOverride(params);
   const { provider, model } = getAISettings();
   return provider === "deepseek"
     ? extractVariablesWithDeepSeek(params, model)

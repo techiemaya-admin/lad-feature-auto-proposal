@@ -113,7 +113,7 @@ const callModel: ModelCall = (prompt) => (modelCall ?? ((p) => generateJson<Clar
 
 async function draftEmail(company: CompanyRow, prompt: string, artifact: string): Promise<ClarificationEmail> {
   const raw = await callModel(prompt);
-  logPipelineArtifact(company.company_id, artifact, { ai: getAISettings(), ...raw });
+  logPipelineArtifact(company.company_id, artifact, { ai: getAISettings(), ...raw }, company.template_id);
   return { subject: String(raw.subject ?? ""), body: String(raw.body ?? "") };
 }
 

@@ -27,7 +27,7 @@ Self-contained proof of concept for zero-configuration proposal generation: a re
 - The extraction model returns verbatim text and nothing else: `sample_text`, `category`, `condition_flag`, `enum_options`, rare `context_text`, and loop tables by `header_texts` + `row_labels`. The engine (`template-mutator.service.ts`) owns every locator and derives each mutation from the variable itself.
 - One exception: for a `date`, the model also returns `date_format`, a date-fns pattern it derives rather than copies. Code trusts it only when the sample reads with it and prints back exactly; otherwise `MMMM d, yyyy` is used and Variable Review warns.
 - Every field the engine reads is `required` in the response schema — optional fields get skipped regardless of prompt wording.
-- Provider and model live in the `app_settings` table (`ai-settings.service.ts`) and are stamped into each `logs/<company>/*-variables-raw.json` as `ai`. Default `deepseek-flash`; `gemini-flash-lite` drops money amounts.
+- Provider and model live in the `app_settings` table (`ai-settings.service.ts`) and are stamped into each `logs/<company>/<template>/*-variables-raw.json` as `ai`. Default `deepseek-flash`; `gemini-flash-lite` drops money amounts.
 - Mutation mechanics — loop collapse, tier matrix, paragraph sub-spans, ordering: [docs/plan.md](docs/plan.md) §4.2–4.3.
 
 ### 3. Lossless Word mutation
@@ -51,12 +51,13 @@ Self-contained proof of concept for zero-configuration proposal generation: a re
 
 ### 6. Ambient decoupling
 - The primary canvas holds the 5-stage pipeline alone.
-- Per-company drafter preferences (style notes, reference proposal, clarification-email notes) and the mock inbox link live in the slide-over drawer (`ConfigurationSheet.tsx`), backed by `company_configurations`.
+- Per-company drafter preferences (style notes, reference proposal, clarification-email notes) live in the slide-over drawer (`ConfigurationSheet.tsx`), backed by `company_configurations`. The mock inbox link for the same row lives in the template library title block (`CompanyInboxControl.tsx` in `TemplatesApp.tsx`) so it is controlled from one place across templates.
 - Technical inspection data (AnyDoc Markdown, Variables JSON, Rule Schema JSON, mutation logs) lives in the collapsible bottom HUD (`DevDock.tsx`).
 
 ### 7. Per-company isolation
-- Working files sit on disk under `backend/storage/<company_id>/`. Stage 5 runs are transient: `proposal.docx` / `proposal.pdf` are overwritten per generate, there is no proposals table, and a refresh clears the on-screen result.
+- Working files sit on disk under `backend/storage/<company_id>/<template_id>/`. Stage 5 runs are transient: `proposal.docx` / `proposal.pdf` are overwritten per generate, there is no proposals table, and a refresh clears the on-screen result.
 - Variable tables, rule schemas and configurations persist in SQLite so switching company tabs keeps progress; app-wide settings (AI provider/model) live in `app_settings`.
+- The template library persists one editable lead email per company in `mock_email_routes`; assignments must reference a template owned by that company. Email edits clear its assignment; version checks reject stale AI results. Stage 5 prefill uses the selected template's assigned email before the dev sample. Connect inbox remains a mock flag, not mailbox access.
 - "Reset to Mock Default" re-seeds from `companies_dataset.json` + `Mock Data/test_seeds.json`.
 
 ### 8. Testing

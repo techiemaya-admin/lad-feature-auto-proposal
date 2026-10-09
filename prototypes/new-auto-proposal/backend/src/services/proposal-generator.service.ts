@@ -5,7 +5,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { toMarkdown } from "@firecrawl/anydoc";
-import { getStorageDir } from "../db/database.js";
+import { templateDirectory } from "./template-storage.js";
 import type { CompanyRow } from "../routes/companies.js";
 import { logPipelineArtifact } from "./pipeline-log.js";
 import { buildProposalPayload, evaluate } from "./pricing-calculator.js";
@@ -24,13 +24,13 @@ import { draftNarrative, type NarrativeResult } from "./narrative-drafter.servic
 // Files
 // ---------------------------------------------------------------------------
 
-export const proposalFilePath = (companyId: string, ext: "docx" | "pdf") => path.join(getStorageDir(), companyId, `proposal.${ext}`);
+export const proposalFilePath = (companyId: string, ext: "docx" | "pdf", templateId = `default-${companyId}`) => path.join(templateDirectory(companyId, templateId), `proposal.${ext}`);
 
 /** Hard-reset hook: any earlier-stage change makes the last generated proposal stale. Never throws. */
-export function clearProposalFiles(companyId: string): void {
+export function clearProposalFiles(companyId: string, templateId = `default-${companyId}`): void {
   for (const ext of ["docx", "pdf"] as const) {
     try {
-      fs.rmSync(proposalFilePath(companyId, ext), { force: true });
+      fs.rmSync(proposalFilePath(companyId, ext, templateId), { force: true });
     } catch {
       // a locked file on Windows is not worth failing the reset over
     }
@@ -104,6 +104,7 @@ export type GenerateResult = {
 export async function generateProposal(input: GenerateInput): Promise<GenerateResult> {
   const { company, rules, stage2, inputs } = input;
   const companyId = company.company_id;
+  const templateId = company.template_id ?? `default-${companyId}`;
 
   // Dates come out of the sheet like money: it builds them from `today`, which the lead never supplies.
   const evaluation = evaluate(rules, { ...inputs, today: input.today ?? localToday() });
@@ -127,23 +128,23 @@ export async function generateProposal(input: GenerateInput): Promise<GenerateRe
 
   const narrative = await draftNarrative({ ...input, payload });
   for (const [name, n] of Object.entries(narrative)) payload[name] = n.text;
-  logPipelineArtifact(companyId, "proposal-payload.json", payload);
+  logPipelineArtifact(companyId, "proposal-payload.json", payload, templateId);
 
-  const docx = await hydrateProposalTemplate(fs.readFileSync(path.join(getStorageDir(), companyId, "template.docx")), payload);
-  fs.writeFileSync(proposalFilePath(companyId, "docx"), docx);
+  const docx = await hydrateProposalTemplate(fs.readFileSync(path.join(templateDirectory(companyId, templateId), "template.docx")), payload);
+  fs.writeFileSync(proposalFilePath(companyId, "docx", templateId), docx);
   // Log anydoc markdown of the final docx (best-effort, never blocks generation)
-  toMarkdown(proposalFilePath(companyId, "docx"))
-    .then((md) => logPipelineArtifact(companyId, "proposal.md", md))
+  toMarkdown(proposalFilePath(companyId, "docx", templateId))
+    .then((md) => logPipelineArtifact(companyId, "proposal.md", md, templateId))
     .catch((err) => console.warn("[pipeline-log] anydoc conversion failed:", err));
 
   let pdf: Buffer | null = null;
   let pdf_error: string | undefined;
   try {
     pdf = await (pdfConverter ?? libreOfficePdf)(docx);
-    fs.writeFileSync(proposalFilePath(companyId, "pdf"), pdf);
+    fs.writeFileSync(proposalFilePath(companyId, "pdf", templateId), pdf);
   } catch (err) {
     pdf_error = err instanceof Error ? err.message : String(err);
-    fs.rmSync(proposalFilePath(companyId, "pdf"), { force: true });
+    fs.rmSync(proposalFilePath(companyId, "pdf", templateId), { force: true });
   }
   return { evaluation, payload, narrative, docx, pdf, pdf_error };
 }

@@ -164,7 +164,7 @@ export interface LeadFacts {
 export async function extractLeadFacts(company: CompanyRow, rules: PricingRules, stage2: Stage2Context, leadText: string): Promise<LeadFacts> {
   const fields = leadFields(rules, stage2);
   const raw = await callModel(buildExtractPrompt(company, fields, leadText), fields);
-  logPipelineArtifact(company.company_id, "lead-raw.json", { ai: getAISettings(), ...raw });
+  logPipelineArtifact(company.company_id, "lead-raw.json", { ai: getAISettings(), ...raw }, company.template_id);
 
   const inputs: Record<string, Value> = {};
   for (const f of fields) {

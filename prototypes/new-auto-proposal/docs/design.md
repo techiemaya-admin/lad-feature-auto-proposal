@@ -1,5 +1,13 @@
 # Auto-Proposal Prototype — UI/UX & Interaction Design Specification (`DESIGN.md`)
 
+## Current combined workflow (8 October 2026)
+
+The library now persists a company's editable lead email and its AI/manual template assignment. **Route email** considers all company templates, and the assigned email prefills **Check & Generate Proposal**. The merged Stage 5 generates template-scoped Word/PDF proposals; the latest date changes add Stage 2 format previews and Stage 4 date formulas using `date-fns`. Profiles and dev pricing/sample emails now come from separate dataset and seed files. See [the complete routing and merge record](icp-template-library.md#10-saved-email-routing-and-editing) for APIs, persistence, file changes, migrations, tests and limitations. Earlier snapshot statements that Stage 5 is absent or pricing lives inside the profile dataset are superseded.
+
+## October 2026 workflow update
+
+The application now starts in the company-scoped template library. Empty libraries show a centered welcome panel with overlapping document illustrations, the selected company name, explanatory text and a larger **Import ICP data** button; import displays three pulsing page cards, followed by clickable saved briefs. Custom creation, deletion, the seven-template limit and **All templates** navigation precede the existing linear canvas. See [ICP template library](icp-template-library.md) for current UI behavior and implementation. Cards now use tighter spacing, 16px titles and 13px descriptions clamped to four lines; full saved descriptions are retained and available through a native hover tooltip. The per-template card lives in `frontend/src/components/TemplateLibraryCard.tsx` and the import skeleton in `frontend/src/components/TemplateSkeletonCard.tsx`, both rendered by `TemplatesApp.tsx`. Earlier direct-to-briefing entry descriptions below are superseded.
+
 ## 1. Design Vision & Philosophy
 
 The Rush Away Auto-Proposal onboarding workflow is an **agentic configuration workspace**. Rather than forcing the agency owner to endure a multi-step enterprise setup wizard with heavy forms, dense tables, and disconnected tabs, this experience is designed as an **intuitive, conversational briefing**:
@@ -7,7 +15,7 @@ The Rush Away Auto-Proposal onboarding workflow is an **agentic configuration wo
 1. **Minimal, Fluid, and Fast:** Elevate what is critical for the current decision, keeping secondary metadata low-profile.
 2. **Elevated Surface Hierarchy (Light Cards on Neutral Canvas):** In light mode, the canvas is a soft neutral light gray (`zinc-100/80` / `#f4f4f5`), while cards are crisp, elevated white surfaces (`#ffffff` / `bg-card`) with delicate borders and subtle micro-shadows. Never invert this by applying darker cards on a white canvas. In dark mode, an obsidian canvas (`zinc-950`) holds elevated dark cards (`zinc-900/80`).
 3. **Conversational, Human Language (Anti-AI-Slop):** Strip away developer-centric implementation details, library name drops (e.g. `@firecrawl/anydoc`), and sci-fi jargon (e.g. "Compound Briefing Capsule"). Use clear, natural words that business owners understand: e.g. **"Pricing Briefing"**, "Drop your sample quotation here (.docx)".
-4. **Standardized Component Primitives:** Build with consistent UI components (`Card`, `CardHeader`, `CardTitle`, `CardContent`, `Button`, `Badge`, `Textarea`) from `@/components/ui`, avoiding ad-hoc div soup.
+4. **Standardized Component Primitives:** Build with consistent UI components (`Card`, `CardHeader`, `CardTitle`, `CardContent`, `Button`, `Badge`, `Textarea`) from `@/components/ui`, avoiding ad-hoc div soup. Confirmations use the shared `ConfirmDialog` (`frontend/src/components/ConfirmDialog.tsx`) — never a native `window.confirm`/`alert`.
 5. **Linear Predictability (Unidirectional State Discipline):** Prevent the chaos of bidirectional synchronization. Moving forward locks previous stages. Editing an earlier stage safely rewinds downstream progress with explicit warning, ensuring backend and AI states remain 100% deterministic.
 6. **Separation of Concerns:** Keep technical inspection tools in the theme-matching bottom Dev Inspector, leaving the primary viewport dedicated exclusively to the business proposal workflow.
 
@@ -187,10 +195,10 @@ Rendered under the pricing deck once `working_state.stage === "lead_simulation"`
 
 ## 4. Ambient Shell Components
 
-### 4.1 Slide-Over Configuration Drawer (`ConfigurationSheet.tsx`, "Voice & inbox")
-Opened from the company context strip, not the header — the header holds developer controls (AI model picker, theme) only. The strip button is the tenant's one solid CTA (`Set up voice & inbox`, amber dot) until the inbox is linked, then a quiet outline pill (`Voice & inbox`, green dot).
+### 4.1 Slide-Over Configuration Drawer (`ConfigurationSheet.tsx`, "Voice")
+Opened from the workspace toolbar, not the header — the header holds developer controls (AI model picker, theme) only. The toolbar's right side carries a quiet outline `Voice` pill beside a ghost Reset; the left side holds back navigation and the template name. The toolbar owns no company identity — that lives in the header tabs.
 - **Proposal voice (free text, not sliders):** *How your proposals should sound* (style notes), *A proposal you're proud of* (optional reference proposal the drafter learns voice and structure from — few-shot beats a formality enum), *When a lead's request is missing details* (how the clarification email should sound). Each has a real example as placeholder; empty means the Stage 5 drafter uses its built-in default.
-- **Send from your inbox:** mock link against the company profile address — `Connect inbox` / `Disconnect` act immediately and show `Connected` / `Not connected`. No SMTP or webhooks.
+- **Inbox lives in the template library, not the drawer:** the per-company mock link is a single inline status line under the library title (`CompanyInboxControl.tsx` — `Sends from <address> · Disconnect`, or `Inbox not linked · Connect inbox`). One control per company instead of one per open template. `Connect inbox` / `Disconnect` act immediately with the same 600 ms mock handshake. No SMTP or webhooks.
 - **Save / Cancel:** explicit; Save is disabled until a field changes, and Cancel, Esc and the backdrop discard the draft.
 - **Design Consistency:** shadcn Sheet on base-ui Dialog (focus trap, Esc, scroll-lock), `bg-card`, `z-50` above the Dev Dock, zero jargon.
 - **Persistence:** `company_configurations` table (typed columns, one row per company), capped at 6,000 chars per field; untouched by pipeline resets and by "Import Settings".

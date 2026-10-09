@@ -3,7 +3,7 @@ import path from "node:path";
 import { Router, Request, Response } from "express";
 import { LOG_ROOT } from "../services/pipeline-log.js";
 
-const router = Router();
+const router = Router({ mergeParams: true });
 
 // ponytail: prototype-only. Serves the debug artifacts pipeline-log.ts drops on disk so the Dev Dock
 // can show them. The real build ships structured logs to an observability sink — no equivalent endpoint there.
@@ -25,22 +25,22 @@ function parseStamp(file: string): Pick<LogArtifact, "kind" | "logged_at"> {
     : { logged_at: "", kind: file };
 }
 
-function companyDir(id: string): string | null {
+function companyDir(id: string, templateId: string): string | null {
   if (!SAFE_NAME.test(id)) return null;
-  const dir = path.join(LOG_ROOT, id);
+  const dir = path.join(LOG_ROOT, id, templateId);
   return fs.existsSync(dir) ? dir : null;
 }
 
 // GET /api/companies/:id/logs - newest ARTIFACT_LIMIT artifacts for the company
-router.get("/:id/logs", (req: Request, res: Response): void => {
-  const dir = companyDir(req.params.id);
+router.get("/logs", (req: Request, res: Response): void => {
+  const dir = companyDir(req.params.companyId, req.params.templateId);
   if (!dir) {
     res.json({ success: true, artifacts: [] });
     return;
   }
   const artifacts: LogArtifact[] = fs
     .readdirSync(dir)
-    .filter((f) => SAFE_NAME.test(f))
+    .filter((f) => SAFE_NAME.test(f) && fs.statSync(path.join(dir, f)).isFile())
     .sort()
     .reverse()
     .slice(0, ARTIFACT_LIMIT)
@@ -49,10 +49,10 @@ router.get("/:id/logs", (req: Request, res: Response): void => {
 });
 
 // GET /api/companies/:id/logs/:file - one artifact's contents as text
-router.get("/:id/logs/:file", (req: Request, res: Response): void => {
+router.get("/logs/:file", (req: Request, res: Response): void => {
   const { file } = req.params;
-  const dir = companyDir(req.params.id);
-  const target = dir && SAFE_NAME.test(file) ? path.join(dir, file) : null;
+  const dir = companyDir(req.params.companyId, req.params.templateId);
+  const target = dir && SAFE_NAME.test(file) && file !== "." && file !== ".." ? path.join(dir, file) : null;
   if (!target || !fs.existsSync(target)) {
     res.status(404).json({ success: false, error: "Artifact not found" });
     return;

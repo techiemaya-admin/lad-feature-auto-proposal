@@ -78,7 +78,7 @@ export const LeadSimulator: React.FC<LeadSimulatorProps> = ({ company, rules }) 
     setPhase("generating");
     setError(null);
     try {
-      const proposal = await generateProposal(company.company_id, f.inputs, transcript(t), f.assumed);
+      const proposal = await generateProposal(company.company_id, f.inputs, transcript(t), f.assumed, company.template_id!);
       setResult(proposal);
       setGeneratedFor(rules);
       setPhase("done");
@@ -91,7 +91,7 @@ export const LeadSimulator: React.FC<LeadSimulatorProps> = ({ company, rules }) 
   const runClarify = async (f: LeadFacts, t: Msg[]) => {
     setIsClarifying(true);
     try {
-      const email = await draftClarification(company.company_id, transcript(t), f.inputs, f.missing, f.assumed);
+      const email = await draftClarification(company.company_id, transcript(t), f.inputs, f.missing, f.assumed, company.template_id!);
       setThread([...t, { from: "us", subject: email.subject, text: email.body }]);
     } catch (e) {
       setError({ message: e instanceof Error ? e.message : "Drafting the clarification email failed.", retry: () => runClarify(f, t) });
@@ -107,7 +107,7 @@ export const LeadSimulator: React.FC<LeadSimulatorProps> = ({ company, rules }) 
     setError(null);
     setResult(null);
     try {
-      const f = await extractLead(company.company_id, transcript(t));
+      const f = await extractLead(company.company_id, transcript(t), company.template_id!);
       setFacts(f);
       if (f.missing.length) {
         setPhase("facts");
@@ -134,7 +134,7 @@ export const LeadSimulator: React.FC<LeadSimulatorProps> = ({ company, rules }) 
     setIsDraftingReply(true);
     setError(null);
     try {
-      setReply((await draftLeadReply(company.company_id, transcript(thread))).body);
+      setReply((await draftLeadReply(company.company_id, transcript(thread), company.template_id!)).body);
     } catch (e) {
       setError({ message: e instanceof Error ? e.message : "Drafting the lead's reply failed.", retry: simulateReply });
     } finally {

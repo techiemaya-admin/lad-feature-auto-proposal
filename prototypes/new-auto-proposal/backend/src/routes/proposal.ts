@@ -9,15 +9,15 @@ import { generateProposal, proposalFilePath } from "../services/proposal-generat
 import type { MutationLogEntry } from "../services/template-mutator.service.js";
 import type { CompanyRow } from "./companies.js";
 
-const router = Router();
+const router = Router({ mergeParams: true });
 const fail = (res: Response, status: number, error: string) => res.status(status).json({ success: false, error });
 const MAX_LEAD_CHARS = 12_000;
 
 /** Stage 5 needs a compiled rule set and the stage set by POST /rules/proceed. */
 function loadStage5(req: Request, res: Response): { company: CompanyRow; workingState: any; state: PricingRulesState } | null {
-  const company = loadCompany(req.params.id);
+  const company = loadCompany(req.params.companyId, req.params.templateId);
   if (!company) {
-    fail(res, 404, `Company "${req.params.id}" not found`);
+    fail(res, 404, `Company "${req.params.companyId}" not found`);
     return null;
   }
   let workingState: any = {};
@@ -48,14 +48,14 @@ function coveredByParagraph(details: MutationLogEntry[] = []): Record<string, st
   return out;
 }
 
-// POST /api/companies/:id/lead/extract — body { lead_text } → { inputs, missing, assumptions }
-router.post("/:id/lead/extract", async (req: Request, res: Response): Promise<void> => {
+// POST /api/companies/lead/extract — body { lead_text } → { inputs, missing, assumptions }
+router.post("/lead/extract", async (req: Request, res: Response): Promise<void> => {
   try {
     const s5 = loadStage5(req, res);
     if (!s5) return;
     const leadText = leadTextOf(req, res);
     if (leadText === null) return;
-    const facts = await extractLeadFacts(s5.company, s5.state.rules, loadStage2Context(s5.company.company_id), leadText);
+    const facts = await extractLeadFacts(s5.company, s5.state.rules, loadStage2Context(s5.company.company_id, req.params.templateId), leadText);
     res.json({ success: true, ...facts });
   } catch (error) {
     fail(res, 500, error instanceof Error ? error.message : "Failed to extract lead facts");
@@ -64,8 +64,8 @@ router.post("/:id/lead/extract", async (req: Request, res: Response): Promise<vo
 
 const namesOf = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
 
-// POST /api/companies/:id/lead/clarify — body { lead_text, inputs, missing, assumed? } → { subject, body }
-router.post("/:id/lead/clarify", async (req: Request, res: Response): Promise<void> => {
+// POST /api/companies/lead/clarify — body { lead_text, inputs, missing, assumed? } → { subject, body }
+router.post("/lead/clarify", async (req: Request, res: Response): Promise<void> => {
   try {
     const s5 = loadStage5(req, res);
     if (!s5) return;
@@ -73,7 +73,7 @@ router.post("/:id/lead/clarify", async (req: Request, res: Response): Promise<vo
     if (leadText === null) return;
     const missing = namesOf(req.body?.missing);
     if (!missing.length) return void fail(res, 400, "missing must list at least one field");
-    const fields = leadFields(s5.state.rules, loadStage2Context(s5.company.company_id));
+    const fields = leadFields(s5.state.rules, loadStage2Context(s5.company.company_id, req.params.templateId));
     const email = await draftClarification({ company: s5.company, fields, inputs: req.body?.inputs ?? {}, missing, assumed: namesOf(req.body?.assumed), leadText });
     res.json({ success: true, ...email });
   } catch (error) {
@@ -81,9 +81,9 @@ router.post("/:id/lead/clarify", async (req: Request, res: Response): Promise<vo
   }
 });
 
-// POST /api/companies/:id/lead/reply — body { lead_text: the thread, ending with our ask } → { subject, body }
+// POST /api/companies/lead/reply — body { lead_text: the thread, ending with our ask } → { subject, body }
 // The simulator playing the lead; the caller appends it to the thread and re-extracts.
-router.post("/:id/lead/reply", async (req: Request, res: Response): Promise<void> => {
+router.post("/lead/reply", async (req: Request, res: Response): Promise<void> => {
   try {
     const s5 = loadStage5(req, res);
     if (!s5) return;
@@ -95,15 +95,15 @@ router.post("/:id/lead/reply", async (req: Request, res: Response): Promise<void
   }
 });
 
-// POST /api/companies/:id/proposal/generate — body { inputs, lead_text, assumed? }; facts in, documents out (never re-extracts)
-router.post("/:id/proposal/generate", async (req: Request, res: Response): Promise<void> => {
+// POST /api/companies/proposal/generate — body { inputs, lead_text, assumed? }; facts in, documents out (never re-extracts)
+router.post("/proposal/generate", async (req: Request, res: Response): Promise<void> => {
   try {
     const s5 = loadStage5(req, res);
     if (!s5) return;
     const { company, workingState, state } = s5;
     const inputs = req.body?.inputs;
     if (!inputs || typeof inputs !== "object" || Array.isArray(inputs)) return void fail(res, 400, "Body must be { inputs, lead_text }");
-    const stage2 = loadStage2Context(company.company_id);
+    const stage2 = loadStage2Context(company.company_id, req.params.templateId);
     const fields = leadFields(state.rules, stage2);
     // Defaults are applied here too (server-side truth); the client's assumed[] names what extract already filled.
     const assumable = new Set(fields.filter((f) => f.default !== undefined).map((f) => f.name));
@@ -123,7 +123,7 @@ router.post("/:id/proposal/generate", async (req: Request, res: Response): Promi
     // The client's name for the filename: whatever Stage 2 called it, it is the first free-text fact.
     const nameField = fields.find((f) => f.input_type === "text");
     const client = encodeURIComponent(String((nameField && inputs[nameField.name]) || company.company_name));
-    const download = (ext: string) => `/api/companies/${company.company_id}/proposal/download?format=${ext}&client=${client}`;
+    const download = (ext: string) => `/api/companies/${company.company_id}/templates/${req.params.templateId}/proposal/download?format=${ext}&client=${client}`;
     res.json({
       success: true,
       evaluation: result.evaluation,
@@ -137,16 +137,16 @@ router.post("/:id/proposal/generate", async (req: Request, res: Response): Promi
   }
 });
 
-// GET /api/companies/:id/proposal/download?format=docx|pdf[&client=…][&download=1]
+// GET /api/companies/proposal/download?format=docx|pdf[&client=…][&download=1]
 // The PDF is served inline by default so the Stage 5 <iframe> renders it; the download buttons ask for
 // `download=1` and get the attachment. A .docx has nothing to preview, so it is always an attachment.
-router.get("/:id/proposal/download", (req: Request, res: Response): void => {
+router.get("/proposal/download", (req: Request, res: Response): void => {
   const format = req.query.format === "pdf" ? "pdf" : req.query.format === "docx" ? "docx" : null;
   if (!format) return void fail(res, 400, "format must be docx or pdf");
-  const file = path.resolve(proposalFilePath(req.params.id, format));
+  const file = path.resolve(proposalFilePath(req.params.companyId, format, req.params.templateId));
   if (!fs.existsSync(file)) return void fail(res, 404, `No proposal.${format} has been generated for this company yet`);
   // ponytail: nothing is persisted, so the client name rides on the URL the generate call handed out.
-  const client = String(req.query.client ?? "").replace(/[^\w &'.,-]/g, "").trim() || req.params.id;
+  const client = String(req.query.client ?? "").replace(/[^\w &'.,-]/g, "").trim() || req.params.companyId;
   const filename = `Proposal - ${client}.${format}`;
   if (format === "docx" || req.query.download === "1") return void res.download(file, filename);
   res.sendFile(file, { headers: { "Content-Disposition": `inline; filename="${filename}"` } });

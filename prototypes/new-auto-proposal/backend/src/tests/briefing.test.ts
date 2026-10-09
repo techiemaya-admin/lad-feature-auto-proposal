@@ -1,3 +1,4 @@
+import { seedTemplateFixtures } from "./template-fixtures.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import request from "supertest";
@@ -21,6 +22,7 @@ test("Briefing & Quotation Ingestion Suite", async (t) => {
   process.env.STORAGE_DIR = testStorageDir;
 
   initDatabase(testDbPath);
+  seedTemplateFixtures();
   const app = createApp();
 
   const northstarDocx = path.resolve(__dirname, "../../../Mock Data/docx/Co1_Proposal_Northstar_BloomAndCo.docx");
@@ -37,7 +39,7 @@ test("Briefing & Quotation Ingestion Suite", async (t) => {
   await t.test("POST /briefing/submit rejects a missing file, an empty prompt, and a non-.docx upload", async () => {
     const fakeTxt = path.join(testDir, "test.txt");
     fs.writeFileSync(fakeTxt, "hello world");
-    const url = "/api/companies/co1_seo/briefing/submit";
+    const url = "/api/companies/co1_seo/templates/default-co1_seo/briefing/submit";
     const cases = [
       { req: request(app).post(url).field("prompt", "My custom pricing prompt"), error: "quotation document is required" },
       { req: request(app).post(url).attach("file", northstarDocx), error: "prompt cannot be empty" },
@@ -54,7 +56,7 @@ test("Briefing & Quotation Ingestion Suite", async (t) => {
     const customPrompt = "Tier 1 Local $1,000/mo, Tier 2 Growth $3,000/mo, Tier 3 Authority $8,000/mo. Texas tax 8.25%.";
 
     const res = await request(app)
-      .post("/api/companies/co1_seo/briefing/submit")
+      .post("/api/companies/co1_seo/templates/default-co1_seo/briefing/submit")
       .field("prompt", customPrompt)
       .attach("file", northstarDocx);
 
@@ -74,12 +76,12 @@ test("Briefing & Quotation Ingestion Suite", async (t) => {
     assert.ok(res.body.markdown.includes("|")); // table present
 
     // Verify file saved under storage/<company_id>/original_quotation.docx
-    const savedFile = path.join(testStorageDir, "co1_seo", "original_quotation.docx");
+    const savedFile = path.join(testStorageDir, "co1_seo", "default-co1_seo", "original_quotation.docx");
     assert.ok(fs.existsSync(savedFile));
   });
 
   await t.test("GET /briefing/markdown returns extracted quotation markdown", async () => {
-    const res = await request(app).get("/api/companies/co1_seo/briefing/markdown");
+    const res = await request(app).get("/api/companies/co1_seo/templates/default-co1_seo/briefing/markdown");
     assert.equal(res.status, 200);
     assert.equal(res.body.success, true);
     assert.equal(res.body.filename, "Co1_Proposal_Northstar_BloomAndCo.docx");
@@ -88,7 +90,7 @@ test("Briefing & Quotation Ingestion Suite", async (t) => {
   });
 
   await t.test("POST /briefing/unlock safely unlocks briefing and preserves prompt text", async () => {
-    const res = await request(app).post("/api/companies/co1_seo/briefing/unlock");
+    const res = await request(app).post("/api/companies/co1_seo/templates/default-co1_seo/briefing/unlock");
     assert.equal(res.status, 200);
     assert.equal(res.body.success, true);
     assert.equal(res.body.company.briefing_locked, false);

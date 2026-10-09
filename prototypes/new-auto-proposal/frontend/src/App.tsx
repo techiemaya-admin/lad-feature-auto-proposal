@@ -1,10 +1,8 @@
 import { useState, useEffect } from "react";
 import {
   fetchCompanies,
-  fetchCompany,
-  updateCompanyProfile,
-  importCompanySettings,
-  resetCompany,
+  fetchProposalTemplate,
+  resetProposalTemplate,
   submitBriefing,
   unlockBriefing,
   generateTemplate,
@@ -13,9 +11,7 @@ import {
   proceedToLeadSimulation,
   fetchAISettings,
   updateAISettings,
-  fetchConfiguration,
   type AISettings,
-  type CompanyConfiguration,
 } from "./services/api";
 import type { Company, CompanySummary } from "./types/company";
 import type { CompanyVariable, CompoundTable } from "./types/variable";
@@ -23,6 +19,7 @@ import type { TemplateStats } from "./types/template";
 import type { PricingRulesState } from "./types/pricing";
 import type { RulesStatus } from "./components/pricing/PricingEngineDeck";
 import { CompanyProfileCard } from "./components/CompanyProfileCard";
+import { WorkspaceUtilityBar } from "./components/WorkspaceUtilityBar";
 import { DevDock } from "./components/DevDock";
 import { ConfigurationSheet } from "./components/ConfigurationSheet";
 import { Button } from "./components/ui/button";
@@ -37,10 +34,10 @@ import {
   RefreshCw,
 } from "lucide-react";
 
-export function App() {
+export function TemplateWorkspace({ activeCompanyId, templateId, templateName, onCompanyChange, templateControls }: { activeCompanyId: string; templateId: string; templateName?: string; onCompanyChange: (id: string) => void; templateControls: React.ReactNode }) {
   const { theme, setTheme } = useTheme();
   const [companies, setCompanies] = useState<CompanySummary[]>([]);
-  const [activeCompanyId, setActiveCompanyId] = useState<string>("co1_seo");
+  const setActiveCompanyId = onCompanyChange;
   const [currentCompany, setCurrentCompany] = useState<Company | null>(null);
   const [activeVariables, setActiveVariables] = useState<CompanyVariable[]>([]);
   const [activeCompoundTables, setActiveCompoundTables] = useState<CompoundTable[]>([]);
@@ -60,8 +57,6 @@ export function App() {
   const [aiSettings, setAiSettings] = useState<AISettings | null>(null);
   const [aiModels, setAiModels] = useState<Record<string, string[]>>({});
   const [isConfigOpen, setIsConfigOpen] = useState(false);
-  // Only the inbox status is read here (drives the strip CTA); the sheet owns editing.
-  const [configuration, setConfiguration] = useState<CompanyConfiguration | null>(null);
 
   useEffect(() => {
     if (notification) {
@@ -143,7 +138,7 @@ export function App() {
     setPricingRules(null);
     setRulesStatus({ status: "idle" });
 
-    fetchCompany(activeCompanyId)
+    fetchProposalTemplate(activeCompanyId, templateId)
       .then((data) => {
         if (!ignore) {
           setCurrentCompany(data);
@@ -158,13 +153,8 @@ export function App() {
         }
       });
 
-    setConfiguration(null);
-    fetchConfiguration(activeCompanyId)
-      .then((config) => { if (!ignore) setConfiguration(config); })
-      .catch(() => { if (!ignore) setConfiguration(null); });
-
     // Check template status
-    fetchTemplateStatus(activeCompanyId)
+    fetchTemplateStatus(activeCompanyId, templateId)
       .then((res) => {
         if (!ignore) {
           if (res.exists && res.stats) {
@@ -188,31 +178,11 @@ export function App() {
     };
   }, [activeCompanyId]);
 
-  const handleSaveSpec = async (newSpec: string) => {
-    if (!currentCompany) return;
-    try {
-      const updated = await updateCompanyProfile(currentCompany.company_id, {
-        pricing_spec: newSpec,
-      });
-      setCurrentCompany(updated);
-      setNotification({
-        type: "success",
-        message: `Pricing spec saved for ${updated.company_name}.`,
-      });
-    } catch (err) {
-      setNotification({
-        type: "error",
-        message: err instanceof Error ? err.message : "Failed to save pricing spec",
-      });
-      throw err;
-    }
-  };
-
   const handleBriefingSubmit = async (prompt: string, file: File | null) => {
     if (!currentCompany) return;
     setIsSubmittingBriefing(true);
     try {
-      const result = await submitBriefing(currentCompany.company_id, prompt, file);
+      const result = await submitBriefing(currentCompany.company_id, prompt, file, templateId);
       setCurrentCompany(result.company);
       setNotification({
         type: "success",
@@ -244,7 +214,7 @@ export function App() {
   const handleBriefingUnlock = async () => {
     if (!currentCompany) return;
     try {
-      const updated = await unlockBriefing(currentCompany.company_id);
+      const updated = await unlockBriefing(currentCompany.company_id, templateId);
       setCurrentCompany(updated);
       setActiveVariables([]);
       setActiveCompoundTables([]);
@@ -288,12 +258,12 @@ export function App() {
     if (!currentCompany) return;
     setIsGeneratingTemplate(true);
     try {
-      const result = await generateTemplate(currentCompany.company_id);
+      const result = await generateTemplate(currentCompany.company_id, templateId);
       setTemplateStats(result);
       setPricingRules(null); // a new template resets Stage 4
       setRulesStatus({ status: "idle" });
 
-      const status = await fetchTemplateStatus(currentCompany.company_id).catch(() => null);
+      const status = await fetchTemplateStatus(currentCompany.company_id, templateId).catch(() => null);
       if (status) {
         setTemplateFilesize(status.filesize);
       }
@@ -317,7 +287,7 @@ export function App() {
     if (!currentCompany) return;
     setRulesStatus({ status: "compiling" });
     try {
-      const state = await compilePricingRules(currentCompany.company_id);
+      const state = await compilePricingRules(currentCompany.company_id, templateId);
       setPricingRules(state);
       setRulesStatus({ status: "idle" });
       const toCheck = state.sample_check.filter((c) => !c.ok).length + state.validation_errors.length;
@@ -336,7 +306,7 @@ export function App() {
     if (!currentCompany) return;
     setIsProceeding(true);
     try {
-      const updated = await proceedToLeadSimulation(currentCompany.company_id);
+      const updated = await proceedToLeadSimulation(currentCompany.company_id, templateId);
       setCurrentCompany(updated);
       setNotification({ type: "success", message: `Rules confirmed for ${updated.company_name}. Ready for Stage 5: Check & Generate Proposal.` });
     } catch (err) {
@@ -346,44 +316,10 @@ export function App() {
     }
   };
 
-  const handleImportSettings = async () => {
-    if (!currentCompany) return;
-    try {
-      const reseeded = await importCompanySettings(currentCompany.company_id);
-      setCurrentCompany(reseeded);
-      setActiveVariables([]);
-      setActiveCompoundTables([]);
-      setTemplateStats(null);
-      setTemplateFilesize(null);
-      setPricingRules(null);
-      setNotification({
-        type: "success",
-        message: `Settings & spec imported for ${reseeded.company_name}.`,
-      });
-      setCompanies((prev: CompanySummary[]) =>
-        prev.map((c: CompanySummary) =>
-          c.company_id === reseeded.company_id
-            ? {
-                ...c,
-                pricing_spec: reseeded.pricing_spec,
-                briefing_locked: false,
-                quotation_filename: undefined,
-              }
-            : c
-        )
-      );
-    } catch (err) {
-      setNotification({
-        type: "error",
-        message: err instanceof Error ? err.message : "Failed to import settings",
-      });
-    }
-  };
-
   const handleResetDefault = async () => {
     if (!currentCompany) return;
     try {
-      const reset = await resetCompany(currentCompany.company_id);
+      const reset = await resetProposalTemplate(currentCompany.company_id, templateId);
       setCurrentCompany(reset);
       setActiveVariables([]);
       setActiveCompoundTables([]);
@@ -494,7 +430,19 @@ export function App() {
       </header>
 
       {/* Main Workspace */}
-      <main className="mx-auto max-w-4xl px-4 pt-3 pb-8 sm:px-6 sm:pt-4 space-y-5">
+      <main className="mx-auto max-w-4xl px-4 pt-3 pb-8 sm:px-6 sm:pt-4 space-y-3">
+        {/* Workspace toolbar — navigation left, tenant controls right. One quiet row
+            so Stage 1 remains the hero; the template name truncates in the middle
+            and the back button collapses to its icon on small screens. */}
+        <div className="flex items-center justify-between gap-3 px-0.5 py-1">
+          <div className="min-w-0 flex-1">{templateControls}</div>
+          <WorkspaceUtilityBar
+            isLoading={isLoading}
+            onOpenSettings={() => setIsConfigOpen(true)}
+            onReset={handleResetDefault}
+            templateName={templateName}
+          />
+        </div>
         {/* Floating Notification */}
         {notification && (
           <div
@@ -540,13 +488,7 @@ export function App() {
         ) : currentCompany ? (
           <CompanyProfileCard
             company={currentCompany}
-            isLoading={isLoading}
             isSubmittingBriefing={isSubmittingBriefing}
-            onSaveSpec={handleSaveSpec}
-            onImportSettings={handleImportSettings}
-            onOpenSettings={() => setIsConfigOpen(true)}
-            emailConnected={configuration?.email_connected ?? null}
-            onResetDefault={handleResetDefault}
             onSubmitBriefing={handleBriefingSubmit}
             onUnlockBriefing={handleBriefingUnlock}
             onVariablesChange={handleVariablesChange}
@@ -567,7 +509,7 @@ export function App() {
         ) : null}
       </main>
 
-      {/* Ambient slide-over: per-company drafter preferences + mock inbox link */}
+      {/* Ambient slide-over: per-company drafter preferences (inbox lives in the library) */}
       {currentCompany && (
         <ConfigurationSheet
           open={isConfigOpen}
@@ -575,7 +517,6 @@ export function App() {
           companyId={currentCompany.company_id}
           companyName={currentCompany.company_name}
           onNotify={setNotification}
-          onConfigurationChange={setConfiguration}
         />
       )}
 
@@ -592,4 +533,4 @@ export function App() {
   );
 }
 
-export default App;
+export default TemplateWorkspace;

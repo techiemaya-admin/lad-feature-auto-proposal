@@ -49,6 +49,7 @@ export interface RulesStatus {
 
 interface PricingEngineDeckProps {
   companyId: string;
+  templateId: string;
   companyName: string;
   state: PricingRulesState | null;
   status: RulesStatus;
@@ -64,6 +65,7 @@ const INPUT_TYPE_LABEL: Record<string, string> = { integer: "a number", choice: 
 
 export const PricingEngineDeck: React.FC<PricingEngineDeckProps> = ({
   companyId,
+  templateId,
   companyName,
   state,
   status,
@@ -99,7 +101,7 @@ export const PricingEngineDeck: React.FC<PricingEngineDeckProps> = ({
     if (state?.rules && JSON.stringify(stripForPayload(rules)) === JSON.stringify(stripForPayload(state.rules))) return;
     const timer = setTimeout(async () => {
       try {
-        const next = await updatePricingRules(companyId, stripForPayload(rules));
+        const next = await updatePricingRules(companyId, stripForPayload(rules), templateId);
         setLastSaved(rules);
         setErrors([]);
         onStateChange({ ...next, rules });
@@ -110,7 +112,7 @@ export const PricingEngineDeck: React.FC<PricingEngineDeckProps> = ({
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [rules, companyId]); // eslint-disable-line react-hooks/exhaustive-deps -- state.rules only matters at fire time
+  }, [rules, companyId, templateId]); // eslint-disable-line react-hooks/exhaustive-deps -- state.rules only matters at fire time
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

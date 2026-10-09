@@ -33,6 +33,7 @@ import {
 
 interface VariableReviewDeckProps {
   companyId: string;
+  templateId: string;
   companyName: string;
   quotationMarkdown?: string | null;
   isGenerating?: boolean;
@@ -81,6 +82,7 @@ const tableKey = (t: CompoundTable) => `table:${t.table_id}`;
 
 export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
   companyId,
+  templateId,
   companyName,
   quotationMarkdown,
   isGenerating = false,
@@ -130,7 +132,7 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
     setError(null);
     setSelectedKey(null);
     try {
-      const result = await extractVariables(companyId);
+      const result = await extractVariables(companyId, templateId);
       setVariables(result.variables);
       setCompoundTables(result.compound_tables);
       setDealKey((k) => k + 1);
@@ -146,7 +148,7 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
       setIsExtracting(false);
       setIsLoading(false);
     }
-  }, [companyId]);
+  }, [companyId, templateId]);
 
   // Walk the scan trace while extracting; the last step holds until the call returns
   useEffect(() => {
@@ -162,7 +164,7 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
   useEffect(() => {
     let ignore = false;
 
-    fetchVariables(companyId)
+    fetchVariables(companyId, templateId)
       .then((data: VariablesResponse) => {
         if (!ignore) {
           if (data.variables.length === 0) {
@@ -187,7 +189,7 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
     return () => {
       ignore = true;
     };
-  }, [companyId, runExtraction]);
+  }, [companyId, templateId, runExtraction]);
 
   // A warning chip in the template card asks us to open a specific variable (adjust during render)
   const [handledFocus, setHandledFocus] = useState(focusRequest);
@@ -244,7 +246,7 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
 
   const persist = async (patch: VariablePatch, msg: string) => {
     try {
-      await updateVariables(companyId, { variables: [patch] });
+      await updateVariables(companyId, { variables: [patch] }, templateId);
       flash(msg);
     } catch {
       flash("Couldn't save, try again");
@@ -322,7 +324,7 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
     const updated = variables.map((v) => (v.id === id ? { ...v, descriptor: { ...v.descriptor, date_format } } : v));
     commit(updated);
     await persist({ id, descriptor: updated.find((v) => v.id === id)?.descriptor }, "Date format saved");
-    const fresh = (await fetchVariables(companyId).catch(() => null))?.variables.find((v) => v.id === id);
+    const fresh = (await fetchVariables(companyId, templateId).catch(() => null))?.variables.find((v) => v.id === id);
     if (fresh) setVariables((cur) => cur.map((v) => (v.id === id ? { ...v, date_format_ok: fresh.date_format_ok } : v)));
   };
 
@@ -353,7 +355,7 @@ export const VariableReviewDeck: React.FC<VariableReviewDeckProps> = ({
     exact_quotation_snippet: string;
     context_anchor?: string;
   }) => {
-    const result = await addCustomVariable(companyId, payload);
+    const result = await addCustomVariable(companyId, payload, templateId);
     commit([result.variable, ...variables]);
     setSelectedKey(result.variable.id);
     flash(`Added "${payload.natural_name}"`);

@@ -1,3 +1,4 @@
+import { seedTemplateFixtures } from "./template-fixtures.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -13,6 +14,7 @@ test("company configurations: defaults, save, isolation across companies, surviv
   process.env.DB_PATH = dbPath;
   process.env.STORAGE_DIR = path.join(dir, "storage");
   initDatabase(dbPath);
+  seedTemplateFixtures();
   try {
     const app = createApp();
 
@@ -62,11 +64,11 @@ test("company configurations: defaults, save, isolation across companies, surviv
 // test without writing there. Ordering and the single-artifact read are left to the eye; traversal is not.
 test("pipeline logs: refuses path traversal", async () => {
   const app = createApp();
-  const list = await request(app).get("/api/companies/co1_seo/logs");
+  const list = await request(app).get("/api/companies/co1_seo/templates/default-co1_seo/logs");
   assert.equal(list.status, 200);
   assert.ok(Array.isArray(list.body.artifacts));
-  const escape = await request(app).get("/api/companies/co1_seo/logs/..%2F..%2Fpackage.json");
+  const escape = await request(app).get("/api/companies/co1_seo/templates/default-co1_seo/logs/..%2F..%2Fpackage.json");
   assert.equal(escape.status, 404);
   const escapeId = await request(app).get("/api/companies/..%2F..%2Fbackend/logs");
-  assert.deepEqual(escapeId.body.artifacts, []);
+  assert.equal(escapeId.status, 404);
 });

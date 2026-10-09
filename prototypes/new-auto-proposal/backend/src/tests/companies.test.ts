@@ -1,3 +1,4 @@
+import { seedTemplateFixtures } from "./template-fixtures.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import request from "supertest";
@@ -16,6 +17,7 @@ test("Companies: reset re-seeds the mock default", async (t) => {
   process.env.STORAGE_DIR = testDbDir;
 
   initDatabase(testDbPath);
+  seedTemplateFixtures();
   const app = createApp();
 
   t.after(() => {
@@ -27,15 +29,15 @@ test("Companies: reset re-seeds the mock default", async (t) => {
     }
   });
 
-  await t.test("POST /api/companies/co1_seo/reset re-seeds to pristine default and clears variables", async () => {
+  await t.test("POST /api/companies/co1_seo/reset re-seeds to pristine default and preserves template variables", async () => {
     // Insert a dummy variable to verify reset wipes company_variables
     const db = getDatabase();
     db.prepare(`
-      INSERT INTO company_variables (id, company_id, variable_name, natural_name, category, data_type, is_custom, is_deleted, sort_order, descriptor_json, created_at, updated_at)
-      VALUES ('var_test_1', 'co1_seo', 'test_var', 'Test Var', 'pricing', 'currency', 0, 0, 1, '{}', datetime('now'), datetime('now'))
+      INSERT INTO company_variables (id, company_id, template_id, variable_name, natural_name, category, data_type, is_custom, is_deleted, sort_order, descriptor_json, created_at, updated_at)
+      VALUES ('var_test_1', 'co1_seo', 'default-co1_seo', 'test_var', 'Test Var', 'pricing', 'currency', 0, 0, 1, '{}', datetime('now'), datetime('now'))
     `).run();
 
-    const preResetVars = await request(app).get("/api/companies/co1_seo/variables");
+    const preResetVars = await request(app).get("/api/companies/co1_seo/templates/default-co1_seo/variables");
     assert.equal(preResetVars.body.variables.length, 1);
 
     const resetRes = await request(app).post("/api/companies/co1_seo/reset");
@@ -51,10 +53,10 @@ test("Companies: reset re-seeds the mock default", async (t) => {
     // the sample lead is attached to the response (never stored).
     assert.ok(getRes.body.company.sample_lead_text.includes("Bloom & Co"));
 
-    // Verify company_variables was cleared
-    const postResetVars = await request(app).get("/api/companies/co1_seo/variables");
+    // Shared profile reset must preserve template variables
+    const postResetVars = await request(app).get("/api/companies/co1_seo/templates/default-co1_seo/variables");
     assert.equal(postResetVars.status, 200);
-    assert.equal(postResetVars.body.variables.length, 0);
+    assert.equal(postResetVars.body.variables.length, 1);
   });
 
 });
@@ -62,22 +64,30 @@ test("Companies: reset re-seeds the mock default", async (t) => {
 test("Database: a pre-`fixed` company_variables table is rebuilt in place, rows kept", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "auto-proposal-migrate-"));
   const dbPath = path.join(dir, "old.sqlite");
+  closeDatabase();
+  initDatabase(dbPath);
+  seedTemplateFixtures();
+  closeDatabase();
   const old = new DatabaseSync(dbPath);
   old.exec(`
+    DROP TABLE company_variables;
     CREATE TABLE company_variables (
-      id TEXT PRIMARY KEY, company_id TEXT NOT NULL, variable_name TEXT NOT NULL, natural_name TEXT NOT NULL,
+      id TEXT PRIMARY KEY, company_id TEXT NOT NULL, template_id TEXT, variable_name TEXT NOT NULL, natural_name TEXT NOT NULL,
       category TEXT NOT NULL CHECK (category IN ('customer_input', 'pricing', 'paragraph', 'table_loop', 'comparison_matrix', 'compound_table')),
       data_type TEXT NOT NULL CHECK (data_type IN ('string', 'number', 'currency', 'enum', 'date', 'paragraph', 'table')),
       is_custom INTEGER DEFAULT 0, is_deleted INTEGER DEFAULT 0, sort_order INTEGER DEFAULT 0, descriptor_json TEXT NOT NULL,
       created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE INDEX idx_company_variables_lookup ON company_variables (company_id, category, is_deleted);
-    INSERT INTO company_variables VALUES ('v1', 'co1_seo', 'x', 'X', 'customer_input', 'string', 0, 0, 0, '{}', 't', 't');
+    INSERT INTO company_variables VALUES ('v1', 'co1_seo', 'default-co1_seo', 'x', 'X', 'customer_input', 'string', 0, 0, 0, '{}', 't', 't');
   `);
   old.close();
   closeDatabase();
   const db = initDatabase(dbPath);
-  db.prepare("INSERT INTO company_variables VALUES ('v2', 'co1_seo', 'd', 'D', 'fixed', 'date', 0, 0, 1, '{}', 't', 't')").run();
+  db.prepare("INSERT INTO company_variables VALUES ('v2', 'co1_seo', 'default-co1_seo', 'd', 'D', 'fixed', 'date', 0, 0, 1, '{}', 't', 't')").run();
   assert.equal((db.prepare("SELECT count(*) AS n FROM company_variables").get() as { n: number }).n, 2);
+  assert.equal((db.prepare("SELECT template_id FROM company_variables WHERE id = 'v1'").get() as any).template_id, "default-co1_seo");
+  assert.throws(() => db.prepare("UPDATE company_variables SET template_id = 'missing' WHERE id = 'v1'").run(), /belonging/);
+  assert.deepEqual(db.prepare("PRAGMA foreign_key_check").all(), []);
   closeDatabase();
   try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* handle may linger on Windows */ }
 });

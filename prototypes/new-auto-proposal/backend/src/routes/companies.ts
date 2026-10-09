@@ -3,11 +3,13 @@ import path from "node:path";
 import { Router, Request, Response } from "express";
 import { getDatabase, getStorageDir } from "../db/database.js";
 import { findSeed, resetCompanyById } from "../db/seed.js";
-import { clearProposalFiles } from "../services/proposal-generator.service.js";
+import { assignedEmail } from "../repositories/email-routing.repository.js";
 
 const router = Router();
 
 export interface CompanyRow {
+  template_id?: string;
+  name?: string;
   company_id: string;
   company_name: string;
   industry: string | null;
@@ -55,6 +57,8 @@ export function formatCompanyResponse(row: CompanyRow) {
   }
 
   return {
+    template_id: row.template_id,
+    template_name: row.name,
     company_id: row.company_id,
     company_name: row.company_name,
     industry: row.industry,
@@ -64,8 +68,9 @@ export function formatCompanyResponse(row: CompanyRow) {
     phone: row.phone,
     data: parsedData,
     pricing_spec: row.pricing_spec,
-    // Dev-only Stage 5 prefill; read from test_seeds.json, never stored.
-    sample_lead_text: findSeed(row.company_id)?.sample_lead_text || "",
+    // The selected template's routed email takes precedence over the demo seed.
+    sample_lead_text: (row.template_id ? assignedEmail(row.company_id, row.template_id) : undefined)
+      ?? findSeed(row.company_id)?.sample_lead_text ?? "",
     working_state: parsedWorkingState,
     briefing_locked: Boolean(row.briefing_locked),
     document_metadata: documentMetadata,
@@ -168,7 +173,6 @@ router.post("/:id/reset", (req: Request, res: Response): void => {
     const { id } = req.params;
     const db = getDatabase();
     const reset = resetCompanyById(db, id);
-    clearProposalFiles(id);
 
     // Clean up downstream generated template.docx if present
     const templatePath = path.join(getStorageDir(), id, "template.docx");

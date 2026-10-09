@@ -1,3 +1,4 @@
+import { templateDirectory } from "./template-storage.js";
 import { Document, Paragraph, TableCell, TableRow } from "docxmlater";
 import fs from "node:fs";
 import path from "node:path";
@@ -342,11 +343,12 @@ const MOCK_DOCX: Record<string, string> = {
 };
 
 /** storage/<company>/original_quotation.docx, seeded from Mock Data on first use. */
-export function resolveQuotationPath(companyId: string): string {
-  const companyDir = path.join(getStorageDir(), companyId);
+export function resolveQuotationPath(companyId: string, templateId?: string): string {
+  const companyDir = templateId ? templateDirectory(companyId, templateId) : path.join(getStorageDir(), companyId);
   const sourceFilePath = path.join(companyDir, "original_quotation.docx");
   if (fs.existsSync(sourceFilePath)) return sourceFilePath;
 
+  if (templateId && templateId !== `default-${companyId}`) throw new Error("Upload a quotation for this template first");
   const mockFilename = MOCK_DOCX[companyId];
   const mockDir = [
     path.resolve(process.cwd(), "Mock Data/docx"),
@@ -408,16 +410,16 @@ export function applyTemplate(
 }
 
 /** Loads the company's active variables from SQLite, mutates the quotation, writes template.docx. */
-export async function mutateDocumentTemplate(companyId: string): Promise<MutationResult> {
-  const sourceFilePath = resolveQuotationPath(companyId);
+export async function mutateDocumentTemplate(companyId: string, templateId = `default-${companyId}`): Promise<MutationResult> {
+  const sourceFilePath = resolveQuotationPath(companyId, templateId);
   const targetFilePath = path.join(path.dirname(sourceFilePath), "template.docx");
   const doc = await Document.loadFromBuffer(fs.readFileSync(sourceFilePath));
 
   const rows = getDatabase()
     .prepare(
-      `SELECT * FROM company_variables WHERE company_id = ? AND is_deleted = 0 ORDER BY sort_order ASC, created_at ASC`
+      `SELECT * FROM company_variables WHERE company_id = ? AND template_id = ? AND is_deleted = 0 ORDER BY sort_order ASC, created_at ASC`
     )
-    .all(companyId) as unknown as VariableRow[];
+    .all(companyId, templateId) as unknown as VariableRow[];
 
   const variables: TemplateVariable[] = [];
   const loops: LoopTable[] = [];

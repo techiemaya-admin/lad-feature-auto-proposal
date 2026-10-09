@@ -1,15 +1,12 @@
 import { useEffect, useState } from "react";
-import { Mail, MailCheck, PenLine, MessageCircleQuestion, Loader2 } from "lucide-react";
+import { PenLine, MessageCircleQuestion, FileText } from "lucide-react";
 import {
-  connectEmail,
-  disconnectEmail,
   fetchConfiguration,
   updateConfiguration,
   type CompanyConfiguration,
   type ConfigurationPatch,
 } from "../services/api";
 import { Button } from "./ui/button";
-import { Badge } from "./ui/badge";
 import { Textarea } from "./ui/textarea";
 import {
   Sheet,
@@ -26,8 +23,6 @@ interface ConfigurationSheetProps {
   companyId: string;
   companyName: string;
   onNotify: (n: { type: "success" | "error" | "info"; message: string }) => void;
-  /** Fires with every saved state (load, save, link/unlink) so the company strip can mirror the inbox status. */
-  onConfigurationChange?: (config: CompanyConfiguration) => void;
 }
 
 type Draft = Required<ConfigurationPatch>;
@@ -59,7 +54,7 @@ const FIELDS: Array<{
   },
   {
     key: "reference_proposal_text",
-    icon: Mail,
+    icon: FileText,
     label: "A proposal you’re proud of (optional)",
     hint: "Paste a real proposal email you’ve sent. The drafter studies its voice and structure — never its numbers.",
     placeholder:
@@ -85,11 +80,10 @@ function pickDraft(config: CompanyConfiguration): Draft {
   };
 }
 
-export function ConfigurationSheet({ open, onOpenChange, companyId, companyName, onNotify, onConfigurationChange }: ConfigurationSheetProps) {
+export function ConfigurationSheet({ open, onOpenChange, companyId, companyName, onNotify }: ConfigurationSheetProps) {
   const [saved, setSaved] = useState<CompanyConfiguration | null>(null);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [isSaving, setIsSaving] = useState(false);
-  const [emailBusy, setEmailBusy] = useState(false);
 
   // Switching company drops everything loaded for the previous one before the effect below refetches.
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
@@ -108,13 +102,12 @@ export function ConfigurationSheet({ open, onOpenChange, companyId, companyName,
         if (ignore) return;
         setSaved(config);
         setDraft(pickDraft(config));
-        onConfigurationChange?.(config);
       })
       .catch((err) => onNotify({ type: "error", message: err instanceof Error ? err.message : "Couldn’t load settings" }));
     return () => {
       ignore = true;
     };
-  }, [open, companyId, onNotify, onConfigurationChange]);
+  }, [open, companyId, onNotify]);
 
   const isDirty = saved !== null && FIELDS.some(({ key }) => draft[key] !== saved[key]);
 
@@ -133,7 +126,6 @@ export function ConfigurationSheet({ open, onOpenChange, companyId, companyName,
       const next = await updateConfiguration(companyId, patch);
       setSaved(next);
       setDraft(pickDraft(next));
-      onConfigurationChange?.(next);
       onNotify({ type: "success", message: `Voice saved for ${companyName}.` });
       onOpenChange(false);
     } catch (err) {
@@ -143,36 +135,13 @@ export function ConfigurationSheet({ open, onOpenChange, companyId, companyName,
     }
   };
 
-  // Connect/Disconnect act immediately — they are not part of the Save/Cancel form.
-  const handleEmailToggle = async () => {
-    if (!saved) return;
-    setEmailBusy(true);
-    try {
-      // ponytail: mock link — 600ms so the demo reads as a real handshake; swap for the OAuth redirect later
-      await new Promise((r) => setTimeout(r, 600));
-      const next = saved.email_connected ? await disconnectEmail(companyId) : await connectEmail(companyId);
-      setSaved(next);
-      onConfigurationChange?.(next);
-      onNotify({
-        type: "info",
-        message: next.email_connected ? `Inbox linked: ${next.email_address}` : "Inbox disconnected.",
-      });
-    } catch (err) {
-      onNotify({ type: "error", message: err instanceof Error ? err.message : "Couldn’t update the inbox link" });
-    } finally {
-      setEmailBusy(false);
-    }
-  };
-
-  const connected = saved?.email_connected ?? false;
-
   return (
     <Sheet open={open} onOpenChange={(next) => (next ? onOpenChange(true) : close())}>
       <SheetContent side="right" className="w-full sm:max-w-md bg-card text-card-foreground gap-0 p-0">
         <SheetHeader className="border-b border-border/60 px-5 py-4 pr-12">
-          <SheetTitle className="text-sm font-semibold tracking-tight">Voice &amp; inbox</SheetTitle>
+          <SheetTitle className="text-sm font-semibold tracking-tight">Voice</SheetTitle>
           <SheetDescription className="text-xs">
-            How <span className="font-medium text-foreground">{companyName}</span>’s proposals sound, and the inbox they go out from.
+            How <span className="font-medium text-foreground">{companyName}</span>’s proposals sound. The inbox lives in the template library.
           </SheetDescription>
         </SheetHeader>
 
@@ -197,46 +166,6 @@ export function ConfigurationSheet({ open, onOpenChange, companyId, companyName,
             </section>
           ))}
 
-          <section className="space-y-2 rounded-xl border border-border/60 bg-muted/30 p-4">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
-                {connected ? <MailCheck className="size-3.5 text-emerald-500" /> : <Mail className="size-3.5 text-primary" />}
-                Send from your inbox
-              </div>
-              {connected ? (
-                <Badge variant="success" className="font-medium">Connected</Badge>
-              ) : (
-                <Badge variant="outline" className="font-medium text-muted-foreground">Not connected</Badge>
-              )}
-            </div>
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
-              {connected ? (
-                <>
-                  Proposals and clarification emails go out from{" "}
-                  <span className="font-medium text-foreground">{saved?.email_address}</span>.
-                </>
-              ) : (
-                "Link the inbox on your company profile so proposals reach leads from an address they already recognise."
-              )}
-            </p>
-            <Button
-              size="sm"
-              variant={connected ? "outline" : "default"}
-              onClick={handleEmailToggle}
-              disabled={emailBusy || saved === null}
-              className="h-7 text-xs"
-            >
-              {emailBusy ? (
-                <>
-                  <Loader2 className="size-3 animate-spin" /> {connected ? "Disconnecting…" : "Linking inbox…"}
-                </>
-              ) : connected ? (
-                "Disconnect"
-              ) : (
-                "Connect inbox"
-              )}
-            </Button>
-          </section>
         </div>
 
         <SheetFooter className="flex-row justify-end gap-2 border-t border-border/60 px-5 py-3">

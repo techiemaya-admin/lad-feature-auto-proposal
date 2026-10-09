@@ -1,3 +1,5 @@
+import templatesRouter from "./routes/templates.js";
+import { requireTemplate, serializeTemplateWrites } from "./middleware/template-scope.js";
 import express, { Express, Request, Response } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -29,14 +31,10 @@ export function createApp(): Express {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
-  // Mount company, briefing, variables, template & pricing-rules routes
-  app.use("/api/companies", briefingRouter);
-  app.use("/api/companies", variablesRouter);
-  app.use("/api/companies", templateRouter);
-  app.use("/api/companies", rulesRouter);
-  app.use("/api/companies", proposalRouter);
+  app.use("/api/companies/:companyId/templates", templatesRouter);
+  const workflowPath = "/api/companies/:companyId/templates/:templateId";
+  app.use(workflowPath, requireTemplate, serializeTemplateWrites, briefingRouter, variablesRouter, templateRouter, rulesRouter, proposalRouter, logsRouter);
   app.use("/api/companies", configurationsRouter);
-  app.use("/api/companies", logsRouter);
   app.use("/api/companies", companiesRouter);
   app.use("/api/settings", settingsRouter);
 
