@@ -41,8 +41,8 @@ Users choose a card to enter the existing workflow, or add a custom template wit
 - The existing workflow fetches the saved template; `PromptDocCapsule` initializes its prompt from `company.pricing_spec`.
 - This import does not upload a quotation, extract variables, generate a Word document, compile pricing rules or lock the briefing.
 - The user still supplies a sample quotation and proceeds through the existing five-stage workflow.
-- **All templates** returns to the library and refreshes the list. A confirmation warns that unsaved edits will be discarded; saved work stays intact.
-- Switching companies from a workspace gives the same unsaved-edit warning. Library company switching resets the active selection, form and error state.
+- **All templates** returns to the library and refreshes the list. A shared in-app `ConfirmDialog` warns that unsaved edits will be discarded; saved work stays intact (no native `window.confirm`).
+- Switching companies from a workspace gives the same unsaved-edit warning through the same dialog. Library company switching resets the active selection, form and error state.
 
 ### Compact template cards
 
@@ -64,7 +64,7 @@ Users choose a card to enter the existing workflow, or add a custom template wit
 ### Deletion and capacity
 
 - Each card has a separate, labeled delete button, outside the card's open button.
-- Deletion requires confirmation and uses the existing template deletion endpoint.
+- Deletion requires confirmation through the shared `ConfirmDialog` (destructive variant) and uses the existing template deletion endpoint.
 - The deletion service removes `original_quotation.docx`, `template.docx`, `proposal.docx`, `proposal.pdf` and the template row; associated variables are removed through database ownership/cascade behavior. An assigned email is retained but becomes unassigned. Logs are not cleaned up by this action.
 - The responsive grid adjusts to the remaining cards: one column on small screens, two at the small breakpoint and three at the large breakpoint.
 - A count shows the number of templates out of seven. At seven, custom creation is disabled and an explanatory message appears.
@@ -184,6 +184,7 @@ Expected failures:
 | `frontend/src/TemplatesApp.tsx` | Replaces dropdown management with themed cards, empty/loading/error states, generation skeletons, custom form, deletion, capacity feedback, and workspace/library navigation. Delegates the per-template card to `components/TemplateLibraryCard.tsx` and the import skeleton to `components/TemplateSkeletonCard.tsx`. Uses existing Button, Input, Textarea, Card and theme primitives with Lucide icons. |
 | `frontend/src/components/TemplateLibraryCard.tsx` (new) | Per-template library card: open button, four-line clamped description with hover tooltip, routed-template highlight ring, delete button. Props: `template`, `highlighted`, `disabled`, `onOpen`, `onDelete`. |
 | `frontend/src/components/TemplateSkeletonCard.tsx` (new) | Pulsing import skeleton card with staggered `animationDelay` from its `index` prop. |
+| `frontend/src/components/ConfirmDialog.tsx` (new) | Shared confirmation dialog replacing `window.confirm` for back-to-library, company-switch, template-delete (`TemplatesApp.tsx`) and workspace reset (`WorkspaceUtilityBar.tsx`). Same overlay/card styling as the PromptDocCapsule hard-reset modal; `role="alertdialog"`, Escape-to-cancel, `default`/`destructive` variants. |
 | `backend/src/tests/template-ideas.test.ts` (new) | Integration coverage for new import/custom creation contracts with a stubbed model. |
 | `backend/src/tests/template-fixtures.ts` (new) | Explicitly seeds template fixtures for existing pipeline tests now that fresh application databases start empty. |
 | `backend/src/tests/briefing.test.ts` | Uses explicit template fixtures. |

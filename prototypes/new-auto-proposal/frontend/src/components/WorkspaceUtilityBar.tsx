@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { RotateCcw, PenLine } from "lucide-react";
 import { Button } from "./ui/button";
+import ConfirmDialog from "./ConfirmDialog";
 
 interface WorkspaceUtilityBarProps {
   isLoading: boolean;
@@ -16,23 +17,20 @@ export const WorkspaceUtilityBar: React.FC<WorkspaceUtilityBarProps> = ({
   templateName,
 }) => {
   const [isResetting, setIsResetting] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const handleReset = async () => {
-    if (
-      window.confirm(
-        `Reset pricing and progress for "${templateName || "this template"}"? Other templates are unaffected.`
-      )
-    ) {
-      setIsResetting(true);
-      try {
-        await onReset();
-      } finally {
-        setIsResetting(false);
-      }
+    setShowResetConfirm(false);
+    setIsResetting(true);
+    try {
+      await onReset();
+    } finally {
+      setIsResetting(false);
     }
   };
 
   return (
+    <>
     <div className="flex items-center gap-1 shrink-0">
       {/* Voice-only: the inbox moved to the template library. Reset is a mock-data chore and stays ghost. */}
       <Button
@@ -51,7 +49,7 @@ export const WorkspaceUtilityBar: React.FC<WorkspaceUtilityBarProps> = ({
       <Button
         variant="ghost"
         size="sm"
-        onClick={handleReset}
+        onClick={() => setShowResetConfirm(true)}
         disabled={isResetting || isLoading}
         className="h-6 px-2 text-[11px] text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors font-normal"
         title="Reset this template's pricing and progress to mock defaults"
@@ -60,5 +58,16 @@ export const WorkspaceUtilityBar: React.FC<WorkspaceUtilityBarProps> = ({
         {isResetting ? "Resetting..." : "Reset"}
       </Button>
     </div>
+    <ConfirmDialog
+      open={showResetConfirm}
+      title={`Reset "${templateName || "this template"}"?`}
+      description="This resets pricing and progress to mock defaults. Other templates are unaffected."
+      confirmLabel="Reset template"
+      variant="destructive"
+      isBusy={isResetting}
+      onConfirm={() => void handleReset()}
+      onCancel={() => setShowResetConfirm(false)}
+    />
+    </>
   );
 };

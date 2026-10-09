@@ -26,6 +26,7 @@ import RoutingTestPanel from "./components/RoutingTestPanel"
 import CompanyInboxControl from "./components/CompanyInboxControl"
 import TemplateLibraryCard from "./components/TemplateLibraryCard"
 import TemplateSkeletonCard from "./components/TemplateSkeletonCard"
+import ConfirmDialog from "./components/ConfirmDialog"
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -56,6 +57,12 @@ export default function TemplatesApp() {
   const [inboxBusy, setInboxBusy] = useState(false)
   const [creating, setCreating] = useState(false)
   const [routingOpen, setRoutingOpen] = useState(false)
+  const [pendingConfirm, setPendingConfirm] = useState<
+    | { kind: "back" }
+    | { kind: "switch"; id: string }
+    | { kind: "delete"; row: ProposalTemplateSummary }
+    | null
+  >(null)
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [brief, setBrief] = useState("")
@@ -113,13 +120,13 @@ export default function TemplatesApp() {
   }, [companyId])
   function switchCompany(id: string) {
     if (busy || id === companyId) return
-    if (
-      templateId &&
-      !window.confirm(
-        "Switch company? Saved work is kept. Unsaved edits will be discarded."
-      )
-    )
+    if (templateId) {
+      setPendingConfirm({ kind: "switch", id })
       return
+    }
+    doSwitchCompany(id)
+  }
+  function doSwitchCompany(id: string) {
     setTemplateId("")
     setTemplates([])
     setEmail("")
@@ -204,12 +211,9 @@ export default function TemplatesApp() {
     }
   }
   async function remove(row: ProposalTemplateSummary) {
-    if (
-      !window.confirm(
-        `Delete "${row.name}" and its saved documents, variables and pricing rules? This cannot be undone.`
-      )
-    )
-      return
+    setPendingConfirm({ kind: "delete", row })
+  }
+  async function doDelete(row: ProposalTemplateSummary) {
     setBusy(true)
     setError("")
     try {
@@ -223,12 +227,9 @@ export default function TemplatesApp() {
     }
   }
   function back() {
-    if (
-      !window.confirm(
-        "Return to templates? Saved work is kept. Unsaved edits will be discarded."
-      )
-    )
-      return
+    setPendingConfirm({ kind: "back" })
+  }
+  function doBack() {
     setTemplateId("")
     setLoading(true)
     setConfiguration(null)
@@ -240,8 +241,53 @@ export default function TemplatesApp() {
       .then((config) => setConfiguration(config))
       .catch(() => setConfiguration(null))
   }
+  function confirmPending() {
+    const pending = pendingConfirm
+    setPendingConfirm(null)
+    if (!pending) return
+    if (pending.kind === "back") doBack()
+    else if (pending.kind === "switch") doSwitchCompany(pending.id)
+    else void doDelete(pending.row)
+  }
+  const confirmCopy =
+    pendingConfirm?.kind === "delete"
+      ? {
+          title: `Delete "${pendingConfirm.row.name}"?`,
+          description:
+            "This deletes its saved documents, variables and pricing rules. This cannot be undone.",
+          confirmLabel: "Delete template",
+          variant: "destructive" as const,
+        }
+      : pendingConfirm?.kind === "switch"
+        ? {
+            title: "Switch company?",
+            description:
+              "Saved work is kept. Unsaved edits will be discarded.",
+            confirmLabel: "Switch company",
+            variant: "default" as const,
+          }
+        : {
+            title: "Return to templates?",
+            description:
+              "Saved work is kept. Unsaved edits will be discarded.",
+            confirmLabel: "Back to templates",
+            variant: "default" as const,
+          }
+  const confirmDialog = (
+    <ConfirmDialog
+      open={pendingConfirm !== null}
+      title={confirmCopy.title}
+      description={confirmCopy.description}
+      confirmLabel={confirmCopy.confirmLabel}
+      variant={confirmCopy.variant}
+      isBusy={busy}
+      onConfirm={confirmPending}
+      onCancel={() => setPendingConfirm(null)}
+    />
+  )
   if (templateId)
     return (
+      <>
       <TemplateWorkspace
         key={`${companyId}:${templateId}`}
         activeCompanyId={companyId}
@@ -260,6 +306,8 @@ export default function TemplatesApp() {
           </div>
         }
       />
+      {confirmDialog}
+      </>
     )
   return (
     <div className="min-h-screen bg-zinc-100/70 text-foreground antialiased selection:bg-primary/20 dark:bg-zinc-950">
@@ -521,6 +569,7 @@ export default function TemplatesApp() {
           </section>
         )}
       </main>
+      {confirmDialog}
     </div>
   )
 }
