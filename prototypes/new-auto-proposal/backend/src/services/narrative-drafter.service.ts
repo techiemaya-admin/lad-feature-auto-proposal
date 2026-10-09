@@ -52,10 +52,10 @@ export function substitutePlaceholders(text: string, payload: Record<string, unk
 }
 
 /** Drafter tips live in descriptor_json.paragraph_config (Stage 2 context only carries the mode). */
-export function loadParagraphTips(companyId: string): Record<string, ParagraphTips> {
+export function loadParagraphTips(companyId: string, templateId: string): Record<string, ParagraphTips> {
   const rows = getDatabase()
-    .prepare("SELECT variable_name, descriptor_json FROM company_variables WHERE company_id = ? AND is_deleted = 0 AND category = 'paragraph'")
-    .all(companyId) as unknown as { variable_name: string; descriptor_json: string }[];
+    .prepare("SELECT variable_name, descriptor_json FROM company_variables WHERE company_id = ? AND template_id = ? AND is_deleted = 0 AND category = 'paragraph'")
+    .all(companyId, templateId) as unknown as { variable_name: string; descriptor_json: string }[];
   const out: Record<string, ParagraphTips> = {};
   for (const r of rows) {
     try {
@@ -187,7 +187,7 @@ const callModel: ModelCall = (prompt, names) =>
 export async function draftNarrative(input: NarrativeInput): Promise<NarrativeResult> {
   const names = draftedParagraphs(input.stage2).map((v) => v.variable_name);
   if (names.length === 0) return {};
-  const tips = input.tips ?? loadParagraphTips(input.company.company_id);
+  const tips = input.tips ?? loadParagraphTips(input.company.company_id, input.company.template_id ?? `default-${input.company.company_id}`);
   const raw = await callModel(buildNarrativePrompt({ ...input, tips }), names);
   logPipelineArtifact(input.company.company_id, "narrative-raw.json", { ai: getAISettings(), ...raw }, input.company.template_id);
   const out: NarrativeResult = {};

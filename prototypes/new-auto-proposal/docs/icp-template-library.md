@@ -124,7 +124,7 @@ The three brief fields are persisted even if the user never uploads or generates
 
 `database.ts` checks `PRAGMA table_info(proposal_templates)` and adds `description` only when absent. Existing template rows receive an empty description, and the UI supplies fallback description text for them.
 
-The company count is captured before initial seeding. `migrateTemplates` now accepts a `migrateExisting` argument, defaulting to true. On a fresh database, startup seeds the mock company profiles but passes false so legacy default templates are not manufactured. The migration still installs its indexes/triggers and records completion.
+The company count is captured before initial seeding. `migrateTemplates` now accepts a `migrateExisting` argument, defaulting to true. On a fresh database, startup seeds the mock company profiles but passes false so legacy default templates are not manufactured. This is intentional: a fresh database starts with an empty template library and the user creates the first templates via **Import ICP data**. The migration still installs its indexes/triggers and records completion.
 
 For an existing database with company records that still needs the older multiple-template migration, legacy workflow migration remains enabled. Already-migrated databases retain their templates. Restarting does not recreate deleted templates or automatically call the AI.
 

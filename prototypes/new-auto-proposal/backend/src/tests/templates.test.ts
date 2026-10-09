@@ -8,6 +8,8 @@ import { DatabaseSync } from "node:sqlite";
 import request from "supertest";
 import { createApp } from "../app.js";
 import { initDatabase, getDatabase, closeDatabase } from "../db/database.js";
+import { insertTemplate } from "../repositories/templates.repository.js";
+import { loadParagraphTips } from "../services/narrative-drafter.service.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 test("templates isolate documents, variables, state, resets, deletion and survive restart", async () => {
@@ -74,6 +76,27 @@ test("templates isolate documents, variables, state, resets, deletion and surviv
     assert.equal((await request(app).get(bp)).status, 200);
     assert.equal((getDatabase().prepare("SELECT count(*) AS n FROM company_variables WHERE company_id = ? AND template_id = ?").get("co1_seo", aid) as any).n, 0);
     assert.deepEqual(getDatabase().prepare("PRAGMA foreign_key_check").all(), []);
+  } finally { closeDatabase(); }
+});
+
+test("paragraph tips are template-scoped: one template's tone never reaches another's draft", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "paragraph-tips-"));
+  process.env.DB_PATH = path.join(dir, "db.sqlite");
+  process.env.STORAGE_DIR = path.join(dir, "storage");
+  initDatabase();
+  try {
+    insertTemplate("co1_seo", "tmpl-a", "A", "", "");
+    insertTemplate("co1_seo", "tmpl-b", "B", "", "");
+    const db = getDatabase();
+    const now = new Date().toISOString();
+    const insert = db.prepare(
+      `INSERT INTO company_variables (id, company_id, template_id, variable_name, natural_name, category, data_type, descriptor_json, created_at, updated_at)
+       VALUES (?, 'co1_seo', ?, ?, ?, 'paragraph', 'string', ?, ?, ?)`);
+    insert.run("pa", "tmpl-a", "intro_para", "Intro", JSON.stringify({ paragraph_config: { tone: "warm" } }), now, now);
+    insert.run("pb", "tmpl-b", "intro_para", "Intro", JSON.stringify({ paragraph_config: { tone: "formal" } }), now, now);
+    assert.deepEqual(Object.keys(loadParagraphTips("co1_seo", "tmpl-a")), ["intro_para"]);
+    assert.equal(loadParagraphTips("co1_seo", "tmpl-a").intro_para.tone, "warm");
+    assert.equal(loadParagraphTips("co1_seo", "tmpl-b").intro_para.tone, "formal");
   } finally { closeDatabase(); }
 });
 
