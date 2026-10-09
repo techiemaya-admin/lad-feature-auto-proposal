@@ -24,7 +24,7 @@ A zero-configuration, AI-assisted auto-proposal prototype that enables an agency
 3. **Minimal Template Checkpoint:** Confirm XML-safe dynamic template tags and repeating line-item loops with an inline status card and optional quick preview before moving to pricing.
 4. **Interactive Pricing Engine:** Review and fine-tune compiled visual rule cards powered by a 100% deterministic JavaScript math engine.
 5. **Lead Simulator & Verification:** Paste an inbound lead message, see the facts read from it (a missing one drafts a clarification email and opens a reply loop until the thread answers it), and get a mathematically verified `.docx` + PDF proposal previewed in the browser — always for a human to check and send; when a review reason fires, it is flagged above the proposal and the values it touches are printed as `[to confirm]`, and a red Draft box lists the reasons.
-6. **Ambient Controls:** Persistent slide-over drawer for proposal voice notes and a mock inbox link, and a bottom developer dock for raw Markdown, JSON schemas, and pipeline logs.
+6. **Ambient Controls:** Persistent slide-over drawer for proposal voice notes, a one-place inbox link in the template library, and a bottom developer dock for raw Markdown, JSON schemas, and pipeline logs.
 
 ## User Stories
 
@@ -46,13 +46,14 @@ A zero-configuration, AI-assisted auto-proposal prototype that enables an agency
 16. As a tenant configuring pricing, I want to view my pricing rules displayed as visual cards (packages, volume breakpoints, add-ons, taxes) compiled from my prompt, variables, and sample quotation values.
 17. As a tenant tuning pricing, I want to edit prices, adjust volume multipliers, and add or remove conditional rules directly on the visual cards, so that I can refine my pricing logic without rewriting prompts.
 18. As a reviewer inspecting pricing rules, I want to inspect and edit the compiled JSON rule schema in the bottom developer dock, so that I can verify mathematical structures and debug edge cases.
-19. As a tenant adjusting peripheral settings, I want a slide-over sheet where I describe how my proposals should sound, paste a proposal I'm proud of, say how clarification emails should read, and link my inbox, so that secondary options remain easily accessible without cluttering the generative workflow.
+19. As a tenant adjusting peripheral settings, I want a slide-over sheet where I describe how my proposals should sound, paste a proposal I'm proud of, and say how clarification emails should read, so that secondary options remain easily accessible without cluttering the generative workflow.
 20. As a tenant testing the system, I want to paste an unstructured lead inquiry email or click "Load Sample Lead Message" in the simulation stage, so that I can simulate how an inbound lead is handled in real life.
 21. As a tenant generating a proposal, I want the AI to extract key requirements (seat count, location count, requested add-ons, state) from the lead email, so that pricing inputs are populated accurately.
 22. As an agency owner, I want all proposal calculations to be executed by a deterministic JavaScript math engine rather than an LLM, so that dollar figures are mathematically exact with zero rounding or arithmetic hallucinations.
 23. As a tenant generating a proposal, I want the AI to draft customized narrative sections based on the lead's unique pain points and my prompt tips, so that the generated proposal feels personal and persuasive.
 24. As a tenant generating a proposal, I want to download the completed, personalized `.docx` proposal and preview it in-browser, so that I can inspect the final deliverable.
 25. As a reviewer verifying system accuracy, I want to compare calculated figures against established ground-truth benchmarks, so that I can be certain the math is 100% correct before considering the concept proven.
+26. As a tenant with several templates, I want to link my inbox once in the template library, so that the send-from address is controlled from one place instead of inside every template.
 
 ## Implementation Decisions
 
@@ -109,7 +110,7 @@ interface PricingRules {
 - **Compound Briefing Capsule:** Unified prompt area + docked dropzone. `Enter` creates new lines; submission via explicit `[Send ➔]` button when both inputs are present. Transitions to read-only locked state with edit/reset modal.
 - **Categorized Variable Review Chip-Deck:** Replaces dense tables with 4 modular card buckets (`Customer Inputs`, `Fixed & auto-filled`, `Pricing Placeholders`, `Narrative Paragraphs`). `Fixed & auto-filled` (dates, seller-set values) is a screen label: the pipeline processes it exactly like Customer Inputs. Supports AST-verified custom chips, dropdown bucket movement, and paragraph mode toggling.
 - **Minimal Template Checkpoint:** Low-profile status banner with tag stats and optional `docx-preview` modal, acting as a lightweight confirmation step before pricing.
-- **Slide-Over Configuration Drawer:** Persistent per-company sheet for free-text voice notes, a reference proposal, clarification-email notes, and a mock inbox link.
+- **Slide-Over Configuration Drawer:** Persistent per-company sheet for free-text voice notes, a reference proposal, and clarification-email notes. The mock inbox link lives in the template library title block (one control per company).
 - **Bottom Developer Dock (HUD):** Collapsible drawer housing AnyDoc Markdown, raw Variables JSON, Rule Schema JSON, and pipeline logs.
 
 ### 6. State Lifecycle & Unidirectional Hard Reset Policy

@@ -331,7 +331,7 @@ Base: `/api/companies/:companyId/templates`. These management paths are mounted 
 
 ### Mock inbox connection versus mock lead data
 
-**Connect inbox** still only persists the proposal-making company's profile address, a connection flag and timestamp in `company_configurations`. It does not authenticate to Gmail/Outlook, read a mailbox, send drafts or invoke routing. The three initial mock messages are Bloom & Co for Northstar, Whitfield & Associates for Fortress IT, and Rosewood Home Goods for Fieldstone. They come from `test_seeds.json`, independently of the inbox flag. No sender/recipient envelope, attachment ingestion or real inbox polling is implemented.
+**Connect inbox** still only persists the proposal-making company's profile address, a connection flag and timestamp in `company_configurations`. It does not authenticate to Gmail/Outlook, read a mailbox, send drafts or invoke routing. The control lives in the template library title block (`CompanyInboxControl.tsx`, one per company) rather than the workspace drawer. The three initial mock messages are Bloom & Co for Northstar, Whitfield & Associates for Fortress IT, and Rosewood Home Goods for Fieldstone. They come from `test_seeds.json`, independently of the inbox flag. No sender/recipient envelope, attachment ingestion or real inbox polling is implemented.
 
 ### Routing implementation inventory
 

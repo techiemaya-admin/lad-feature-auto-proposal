@@ -76,7 +76,7 @@ The system runs a **5-stage sequential pipeline** anchored by an **ambient shell
   └── Split view: facts form + assumptions + numbers ledger | PDF <iframe> + .docx / .pdf downloads
 
 AMBIENT SHELL COMPONENTS:
-├── Slide-Over Configuration Drawer ("Voice & inbox"): style notes, reference proposal, clarification-email notes, mock inbox link
+├── Slide-Over Configuration Drawer ("Voice"): style notes, reference proposal, clarification-email notes (per company; the mock inbox link lives in the template library title block)
 └── Bottom Dev Dock (HUD): Collapsible tray for AnyDoc MD, Variables JSON, Rule Schema JSON, Logs
 ```
 
@@ -225,4 +225,4 @@ Verified against `logs/*/variables-raw.json` and `company_variables` on 2026-09-
 | **Phase 4** | **docxmlater Mutation & Minimal Checkpoint** | Mutate .docx AST & confirm template | `docxmlater` replacement pipeline, smart table row collapse, compact inline checkpoint card with tag stats and optional `docx-preview` modal. |
 | **Phase 5** | **Pricing Compiler & Rule Cards** | Compile spec to visual & executable rules | Rule compiler using Prompt + Variables + Sample Quote Values, interactive rule cards UI, collapsible JSON editor, deterministic JS math engine. |
 | **Phase 6** | **Check & Generate Proposal** | Generate proposal from lead message & verify math | Prefilled lead textarea, structured fact extraction with a read-only facts panel and a clarification-reply loop on a missing fact, deterministic numbers ledger, placeholder-only narrative drafting, `easy-template-x` + LibreOffice PDF generation with iframe preview and downloads, red Draft box on review reasons. |
-| **Auxiliary** | **Ambient Shell Enhancements** | Independent settings & developer tools | Slide-Over Configuration Drawer (free-text voice notes, reference proposal, clarification-email notes, mock inbox link) and Bottom Developer Dock (AnyDoc MD, Variables JSON, Rule Schema JSON, pipeline logs + run artifacts). |
+| **Auxiliary** | **Ambient Shell Enhancements** | Independent settings & developer tools | Slide-Over Configuration Drawer (free-text voice notes, reference proposal, clarification-email notes), one-place inbox link in the template library title block, and Bottom Developer Dock (AnyDoc MD, Variables JSON, Rule Schema JSON, pipeline logs + run artifacts). |

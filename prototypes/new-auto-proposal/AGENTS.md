@@ -51,7 +51,7 @@ Self-contained proof of concept for zero-configuration proposal generation: a re
 
 ### 6. Ambient decoupling
 - The primary canvas holds the 5-stage pipeline alone.
-- Per-company drafter preferences (style notes, reference proposal, clarification-email notes) and the mock inbox link live in the slide-over drawer (`ConfigurationSheet.tsx`), backed by `company_configurations`.
+- Per-company drafter preferences (style notes, reference proposal, clarification-email notes) live in the slide-over drawer (`ConfigurationSheet.tsx`), backed by `company_configurations`. The mock inbox link for the same row lives in the template library title block (`CompanyInboxControl.tsx` in `TemplatesApp.tsx`) so it is controlled from one place across templates.
 - Technical inspection data (AnyDoc Markdown, Variables JSON, Rule Schema JSON, mutation logs) lives in the collapsible bottom HUD (`DevDock.tsx`).
 
 ### 7. Per-company isolation

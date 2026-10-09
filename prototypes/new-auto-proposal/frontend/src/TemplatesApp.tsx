@@ -11,6 +11,10 @@ import {
   createProposalTemplate,
   deleteProposalTemplate,
   importIcpTemplates,
+  fetchConfiguration,
+  connectEmail,
+  disconnectEmail,
+  type CompanyConfiguration,
   type ProposalTemplateSummary,
 } from "./services/api"
 import { Button } from "./components/ui/button"
@@ -19,6 +23,7 @@ import { Textarea } from "./components/ui/textarea"
 import { Card } from "./components/ui/card"
 import { useTheme } from "./components/theme-provider"
 import RoutingTestPanel from "./components/RoutingTestPanel"
+import CompanyInboxControl from "./components/CompanyInboxControl"
 import TemplateLibraryCard from "./components/TemplateLibraryCard"
 import TemplateSkeletonCard from "./components/TemplateSkeletonCard"
 import {
@@ -46,6 +51,9 @@ export default function TemplatesApp() {
   const [busy, setBusy] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState("")
+  const [configuration, setConfiguration] =
+    useState<CompanyConfiguration | null>(null)
+  const [inboxBusy, setInboxBusy] = useState(false)
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
@@ -89,6 +97,15 @@ export default function TemplatesApp() {
           setLoading(false)
         }
       })
+    // Inbox status loads independently so a config failure never blocks the grid.
+    // (Stale-company clearing happens in switchCompany/back, not here.)
+    fetchConfiguration(companyId)
+      .then((config) => {
+        if (alive) setConfiguration(config)
+      })
+      .catch(() => {
+        if (alive) setConfiguration(null)
+      })
     return () => {
       alive = false
     }
@@ -106,6 +123,7 @@ export default function TemplatesApp() {
     setTemplates([])
     setEmail("")
     setRouting(null)
+    setConfiguration(null)
     setLoading(true)
     setCreating(false)
     setError("")
@@ -146,6 +164,24 @@ export default function TemplatesApp() {
     try { setRouting(await assignMockEmail(companyId, id)) }
     catch (e) { setError(e instanceof Error ? e.message : "Assignment failed") }
     finally { setBusy(false) }
+  }
+  async function toggleInbox() {
+    if (!configuration || busy || inboxBusy) return
+    setInboxBusy(true)
+    setError("")
+    try {
+      // Mock link — 600ms so the demo reads as a real handshake; swap for the OAuth redirect later
+      await new Promise((r) => setTimeout(r, 600))
+      setConfiguration(
+        configuration.email_connected
+          ? await disconnectEmail(companyId)
+          : await connectEmail(companyId)
+      )
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not update the inbox link")
+    } finally {
+      setInboxBusy(false)
+    }
   }
   async function create() {
     setBusy(true)
@@ -194,10 +230,14 @@ export default function TemplatesApp() {
       return
     setTemplateId("")
     setLoading(true)
+    setConfiguration(null)
     Promise.all([listTemplates(companyId), fetchMockEmail(companyId)])
       .then(([rows, saved]) => { setTemplates(rows); setRouting(saved); setEmail(saved.email) })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
+    fetchConfiguration(companyId)
+      .then((config) => setConfiguration(config))
+      .catch(() => setConfiguration(null))
   }
   if (templateId)
     return (
@@ -342,9 +382,15 @@ export default function TemplatesApp() {
                 <h1 className="text-3xl font-semibold tracking-tight">
                   Your proposal templates
                 </h1>
-                <p className="mt-2 text-sm text-muted-foreground">
+                {/* <p className="mt-1 text-sm text-muted-foreground">
                   Choose a starting point and make it yours.
-                </p>
+                </p> */}
+                <CompanyInboxControl
+                  configuration={configuration}
+                  disabled={busy}
+                  inboxBusy={inboxBusy}
+                  onToggle={() => void toggleInbox()}
+                />
               </div>
               <div className="flex items-center gap-3">
                 <span className="text-xs text-muted-foreground">

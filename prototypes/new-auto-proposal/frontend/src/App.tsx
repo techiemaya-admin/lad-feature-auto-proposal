@@ -11,9 +11,7 @@ import {
   proceedToLeadSimulation,
   fetchAISettings,
   updateAISettings,
-  fetchConfiguration,
   type AISettings,
-  type CompanyConfiguration,
 } from "./services/api";
 import type { Company, CompanySummary } from "./types/company";
 import type { CompanyVariable, CompoundTable } from "./types/variable";
@@ -59,8 +57,6 @@ export function TemplateWorkspace({ activeCompanyId, templateId, templateName, o
   const [aiSettings, setAiSettings] = useState<AISettings | null>(null);
   const [aiModels, setAiModels] = useState<Record<string, string[]>>({});
   const [isConfigOpen, setIsConfigOpen] = useState(false);
-  // Only the inbox status is read here (drives the toolbar CTA); the sheet owns editing.
-  const [configuration, setConfiguration] = useState<CompanyConfiguration | null>(null);
 
   useEffect(() => {
     if (notification) {
@@ -156,11 +152,6 @@ export function TemplateWorkspace({ activeCompanyId, templateId, templateName, o
           setIsLoading(false);
         }
       });
-
-    setConfiguration(null);
-    fetchConfiguration(activeCompanyId)
-      .then((config) => { if (!ignore) setConfiguration(config); })
-      .catch(() => { if (!ignore) setConfiguration(null); });
 
     // Check template status
     fetchTemplateStatus(activeCompanyId, templateId)
@@ -448,7 +439,6 @@ export function TemplateWorkspace({ activeCompanyId, templateId, templateName, o
           <WorkspaceUtilityBar
             isLoading={isLoading}
             onOpenSettings={() => setIsConfigOpen(true)}
-            emailConnected={configuration?.email_connected ?? null}
             onReset={handleResetDefault}
             templateName={templateName}
           />
@@ -519,7 +509,7 @@ export function TemplateWorkspace({ activeCompanyId, templateId, templateName, o
         ) : null}
       </main>
 
-      {/* Ambient slide-over: per-company drafter preferences + mock inbox link */}
+      {/* Ambient slide-over: per-company drafter preferences (inbox lives in the library) */}
       {currentCompany && (
         <ConfigurationSheet
           open={isConfigOpen}
@@ -527,7 +517,6 @@ export function TemplateWorkspace({ activeCompanyId, templateId, templateName, o
           companyId={currentCompany.company_id}
           companyName={currentCompany.company_name}
           onNotify={setNotification}
-          onConfigurationChange={setConfiguration}
         />
       )}
 

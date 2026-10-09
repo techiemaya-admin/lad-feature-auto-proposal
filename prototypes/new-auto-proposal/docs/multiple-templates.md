@@ -604,21 +604,21 @@ Changing either ID unmounts the old workspace and mounts a new one. This separat
 
 [App.tsx](../frontend/src/App.tsx) now exports `TemplateWorkspace` rather than owning the entire selection lifecycle. Its props are `activeCompanyId`, `templateId`, `templateName`, `onCompanyChange`, and `templateControls`.
 
-It fetches `fetchProposalTemplate()` instead of `fetchCompany()` for workflow state. It passes the template ID for briefing submission/unlock, document generation/status, pricing compilation, and proceeding to simulation. The navigation controls and the tenant utilities (Voice & inbox, Reset) render in one toolbar row above the workspace content; the template name renders at `text-xs` so it stays quiet next to the back button.
+It fetches `fetchProposalTemplate()` instead of `fetchCompany()` for workflow state. It passes the template ID for briefing submission/unlock, document generation/status, pricing compilation, and proceeding to simulation. The navigation controls and the tenant utilities (Voice, Reset) render in one toolbar row above the workspace content; the template name renders at `text-xs` so it stays quiet next to the back button. The per-company inbox link is owned by the template library (`CompanyInboxControl.tsx` under the library title), not the workspace.
 
-Reset calls `resetProposalTemplate()`. The obsolete `handleSaveSpec` that wrote template pricing through company profile updates was removed, together with the unused `onSaveSpec` component prop. Shared configuration loading and the Voice & inbox drawer still use the company ID alone.
+Reset calls `resetProposalTemplate()`. The obsolete `handleSaveSpec` that wrote template pricing through company profile updates was removed, together with the unused `onSaveSpec` component prop. Shared voice-note loading and the Voice drawer still use the company ID alone; the inbox link moved to the library and loads via `fetchConfiguration()` in `TemplatesApp.tsx`.
 
 ### 10.3 Components
 
 | Component | Change |
 | --- | --- |
 | `CompanyProfileCard.tsx` | Passes `company.template_id` to variable, checkpoint, and pricing decks; removes unused save-spec prop; no longer owns navigation or tenant controls. |
-| `WorkspaceUtilityBar.tsx` | Tenant utilities for the workspace toolbar: Voice & inbox CTA (solid until the inbox is linked, quiet outline pill after) and a ghost Reset scoped to the selected template via `templateName`. |
+| `WorkspaceUtilityBar.tsx` | Tenant utilities for the workspace toolbar: quiet outline Voice pill opening the voice drawer, and a ghost Reset scoped to the selected template via `templateName`. |
 | `VariableReviewDeck.tsx` | Requires `templateId`; passes it to fetch, extract, update, and custom-variable API calls; includes it in relevant effect/callback dependencies. |
 | `TemplateCheckpointCard.tsx` | Requires `templateId`; uses it for preview blob and download URL, and related reload dependencies. |
 | `pricing/PricingEngineDeck.tsx` | Requires `templateId`; sends it with rule updates; includes it in the autosave dependency list. |
 | `DevDock.tsx` | Uses selected template ID for rule JSON saves, artifact lists, and artifact text reads. |
-| `ConfigurationSheet.tsx` | No template ownership change; remains shared per company. |
+| `ConfigurationSheet.tsx` | Voice-only since the inbox move; no template ownership change, remains shared per company. |
 
 Pricing edits retain their 300 ms debounce. Effect cleanup clears a pending timer. A save already dispatched can still complete for its original template. Switching confirmation explains that unsaved edits can be discarded; it is not a flush-all-edits-before-switch mechanism.
 
