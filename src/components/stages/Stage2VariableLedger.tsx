@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from "react";
 import {
   Sparkles,
+  AlertTriangle,
   Table2,
   Quote,
   WandSparkles,
@@ -55,6 +56,13 @@ const GROUPS: {
       "bg-blue-50/70 dark:bg-blue-950/30 border-blue-200/90 dark:border-blue-500/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100/80 dark:hover:bg-blue-900/40 hover:border-blue-300",
   },
   {
+    category: "fixed",
+    label: "Fixed & Auto-filled",
+    badgeClass: "text-amber-700 dark:text-amber-300",
+    idleChipClass:
+      "bg-amber-50/70 dark:bg-amber-950/30 border-amber-200/90 dark:border-amber-500/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100/80 dark:hover:bg-amber-900/40 hover:border-amber-300",
+  },
+  {
     category: "pricing",
     label: "Pricing & Calculations",
     badgeClass: "text-emerald-700 dark:text-emerald-300",
@@ -71,13 +79,15 @@ const GROUPS: {
 ];
 
 const CATEGORY_OPTIONS = [
-  { value: "customer_input", label: "Customer Input" },
-  { value: "pricing", label: "Pricing" },
-  { value: "paragraph", label: "Paragraph" },
+  { value: "customer_input", label: "Customer Input", dotColor: "bg-blue-500", description: "Supplied by the lead or client" },
+  { value: "fixed", label: "Fixed & Auto-filled", dotColor: "bg-amber-500", description: "Constant business values" },
+  { value: "pricing", label: "Pricing", dotColor: "bg-emerald-500", description: "Calculated via pricing engine" },
+  { value: "paragraph", label: "Paragraph", dotColor: "bg-purple-500", description: "Dynamic generated text block" },
 ];
 
 const GHOST_ROWS = [
   ["110px", "140px", "95px", "125px", "105px"],
+  ["100px", "130px", "110px", "90px"],
   ["130px", "100px", "150px", "115px", "85px", "120px"],
   ["160px", "140px", "180px", "125px"],
 ];
@@ -97,6 +107,7 @@ export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
   variables,
   compoundTables,
   quotationMarkdown,
+  isLoading = false,
   isExtracting = false,
   isGeneratingTemplate = false,
   attentionTargets = [],
@@ -111,6 +122,7 @@ export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
   const [connectorLeft, setConnectorLeft] = useState<number | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [traceStep, setTraceStep] = useState(0);
+  const isScanning = isExtracting || (isLoading && variables.length === 0);
 
   const ledgerRef = useRef<HTMLDivElement>(null);
   const chipRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
@@ -153,13 +165,13 @@ export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
 
   // Trace step progress when extracting
   useEffect(() => {
-    if (!isExtracting) return;
+    if (!isScanning) return;
     const id = setInterval(
       () => setTraceStep((s) => Math.min(s + 1, SCAN_TRACE.length - 1)),
       TRACE_STEP_MS
     );
     return () => clearInterval(id);
-  }, [isExtracting]);
+  }, [isScanning]);
 
   useLayoutEffect(() => {
     const measure = () => {
@@ -264,12 +276,22 @@ export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
     (t) => tableKey(t) === selectedKey || t.table_id === selectedKey || t.loop_tag === selectedKey
   ) || null;
 
+  const attentionVariables = Array.from(new Set(attentionTargets))
+    .map((target) =>
+      variables.find(
+        (variable) =>
+          !variable.is_deleted &&
+          (variable.variable_name === target || variable.natural_name === target)
+      )
+    )
+    .filter((variable): variable is CompanyVariable => Boolean(variable));
+
   const inUse = variables.filter((v) => !v.is_deleted).length + compoundTables.length;
   const leftOut = variables.filter((v) => v.is_deleted).length;
 
   return (
-    <div className="relative rounded-2xl border border-border/80 bg-card p-5 sm:p-6 space-y-5 shadow-xs animate-in fade-in duration-200 overflow-hidden">
-      {isExtracting && <div className="shimmer-bar" />}
+    <div className="stage-arrival relative rounded-2xl border border-border/80 bg-card p-5 sm:p-6 space-y-5 shadow-xs overflow-hidden">
+      {isScanning && <div className="shimmer-bar" />}
 
       {/* Header Sub-banner */}
       <div className="flex items-start justify-between gap-3 border-b border-border/50 pb-4">
@@ -308,18 +330,42 @@ export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
             variant="ghost"
             size="sm"
             onClick={onRescan}
-            disabled={isExtracting}
+            disabled={isScanning}
             className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer"
             title="Re-run AI extraction against quotation markdown"
           >
-            <RefreshCw className={`size-3.5 mr-1.5 ${isExtracting ? "animate-spin" : ""}`} />
-            <span>{isExtracting ? "Scanning..." : "Re-scan"}</span>
+            <RefreshCw className={`size-3.5 mr-1.5 ${isScanning ? "animate-spin" : ""}`} />
+            <span>{isScanning ? "Scanning..." : "Re-scan"}</span>
           </Button>
         </div>
       </div>
 
+      {attentionVariables.length > 0 && !isScanning && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3.5 space-y-2 shadow-2xs">
+          <div className="flex items-center gap-2 text-xs font-bold text-amber-700 dark:text-amber-400">
+            <AlertTriangle className="size-3.5 shrink-0" />
+            <span>
+              {attentionVariables.length} variable{attentionVariables.length === 1 ? " was" : "s were"} not placed. Review {attentionVariables.length === 1 ? "it" : "them"} here before finalizing the template:
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {attentionVariables.map((variable) => (
+              <button
+                key={variable.id || variable.variable_name}
+                type="button"
+                onClick={() => setSelectedKey(variable.id || variable.variable_name)}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 hover:bg-amber-500/20 cursor-pointer transition-colors"
+              >
+                <span>{variable.natural_name || variable.variable_name}</span>
+                <span className="text-[10px] text-amber-600/70">Review</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Extraction in progress HUD with animated trace and ghost skeleton chips */}
-      {isExtracting ? (
+      {isScanning ? (
         <div className="space-y-5">
           <div className="p-4 sm:p-5 rounded-xl border border-blue-200/60 dark:border-[#2B7CFF]/30 bg-blue-50/20 dark:bg-[#000724]/40 space-y-3">
             <div className="flex items-center gap-2 text-xs font-bold text-[#0B1957] dark:text-[#2B7CFF]">

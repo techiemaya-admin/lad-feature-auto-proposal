@@ -117,16 +117,16 @@ export const TemplateCheckpointCard: React.FC<TemplateCheckpointCardProps> = ({
 
   return (
     <>
-      <div className="rounded-2xl border border-border/80 bg-card p-5 sm:p-6 shadow-xs space-y-4 animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none">
+      <div className="rounded-2xl border border-border/80 bg-card p-5 sm:p-6 shadow-xs space-y-4 animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none max-w-full overflow-hidden">
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
-          <div className="flex items-start gap-2.5">
+          <div className="flex items-start gap-2.5 min-w-0">
             <div className="size-7 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
               <CheckCircle2 className="size-4" />
             </div>
-            <div>
-              <h3 className="font-semibold text-sm tracking-tight text-foreground">Template ready</h3>
-              <p className="text-xs text-muted-foreground mt-0.5">{summary}.</p>
+            <div className="min-w-0">
+              <h3 className="font-semibold text-sm tracking-tight text-foreground truncate">Template ready</h3>
+              <p className="text-xs text-muted-foreground mt-0.5 break-words">{summary}.</p>
             </div>
           </div>
 
@@ -165,10 +165,10 @@ export const TemplateCheckpointCard: React.FC<TemplateCheckpointCardProps> = ({
                   <span>Drawing your template</span>
                 </div>
               )}
-              <div className="absolute inset-x-0 top-0 flex justify-center pt-4">
+              <div className="absolute inset-x-0 top-0 flex justify-center pt-4 pointer-events-none overflow-hidden">
                 <div
                   ref={thumbRef}
-                  className={`bg-white text-zinc-900 shadow-md w-[816px] max-w-none origin-top scale-[0.62] sm:scale-[0.72] transition-opacity duration-300 ${
+                  className={`bg-white text-zinc-900 shadow-md w-[816px] max-w-none origin-top scale-[0.62] sm:scale-[0.72] transition-opacity duration-300 rounded-sm overflow-hidden ${
                     thumbReady ? "opacity-100" : "opacity-0"
                   }`}
                 />
@@ -184,7 +184,7 @@ export const TemplateCheckpointCard: React.FC<TemplateCheckpointCardProps> = ({
         </button>
 
         {warnings.length > 0 && (
-          <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 space-y-2 max-w-full overflow-hidden">
             <div className="flex items-center gap-2 text-xs font-medium text-amber-700 dark:text-amber-400">
               <AlertTriangle className="size-3.5 shrink-0" />
               <span>
@@ -199,10 +199,10 @@ export const TemplateCheckpointCard: React.FC<TemplateCheckpointCardProps> = ({
                   type="button"
                   onClick={() => onFixVariable?.(d.target)}
                   title={d.info}
-                  className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-xs font-medium border border-amber-500/40 bg-card text-foreground hover:border-amber-500 transition-colors"
+                  className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md text-xs font-medium border border-amber-500/40 bg-card text-foreground hover:border-amber-500 transition-colors max-w-full"
                 >
-                  <span className="size-1.5 rounded-full bg-amber-500" />
-                  {naturalNames[d.target] || d.target}
+                  <span className="size-1.5 rounded-full bg-amber-500 shrink-0" />
+                  <span className="truncate max-w-xs">{naturalNames[d.target] || d.target}</span>
                 </button>
               ))}
             </div>
@@ -210,9 +210,9 @@ export const TemplateCheckpointCard: React.FC<TemplateCheckpointCardProps> = ({
         )}
 
         {/* Footer */}
-        <div className="pt-1 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <a href={downloadUrl} download="template.docx" className="inline-flex items-center">
+        <div className="pt-1 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <a href={downloadUrl} download="template.docx" className="inline-flex items-center shrink-0">
               <Button
                 variant="ghost"
                 size="sm"
@@ -223,14 +223,14 @@ export const TemplateCheckpointCard: React.FC<TemplateCheckpointCardProps> = ({
               </Button>
             </a>
             {filesize ? (
-              <span className="text-[11px] text-muted-foreground/70">{formatBytes(filesize)}</span>
+              <span className="text-[11px] text-muted-foreground/70 shrink-0">{formatBytes(filesize)}</span>
             ) : null}
           </div>
 
           <Button
             onClick={onProceedToPricing}
             size="sm"
-            className="h-8 px-4 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-xs btn-tactile"
+            className="h-8 px-4 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-xs btn-tactile shrink-0"
           >
             <span>Set up pricing</span>
             <ChevronRight className="size-3.5 ml-1" />
@@ -246,13 +246,13 @@ export const TemplateCheckpointCard: React.FC<TemplateCheckpointCardProps> = ({
             aria-modal="true"
           >
             <div className="flex items-center justify-between px-5 py-3.5 border-b border-border/60 bg-muted/20 shrink-0">
-              <div>
-                <h4 className="font-semibold text-xs tracking-tight">Template preview</h4>
-                <p className="text-[11px] text-muted-foreground">
+              <div className="min-w-0 pr-3">
+                <h4 className="font-semibold text-xs tracking-tight truncate">Template preview</h4>
+                <p className="text-[11px] text-muted-foreground truncate">
                   {companyName}. Curly tags mark what changes per client.
                 </p>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 shrink-0">
                 <a href={downloadUrl} download="template.docx">
                   <Button variant="ghost" size="sm" className="h-7 px-2.5 text-xs">
                     <Download className="size-3 mr-1" />
@@ -275,7 +275,7 @@ export const TemplateCheckpointCard: React.FC<TemplateCheckpointCardProps> = ({
               ) : (
                 <div
                   ref={modalRef}
-                  className="bg-white text-zinc-900 rounded-lg shadow-md p-6 sm:p-10 max-w-2xl w-full min-h-125 overflow-x-auto text-xs"
+                  className="bg-white text-zinc-900 rounded-lg shadow-md p-6 sm:p-10 max-w-3xl w-full min-h-125 overflow-x-auto text-xs"
                 />
               )}
             </div>

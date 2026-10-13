@@ -17,7 +17,8 @@ interface DocxDocumentPreviewProps {
   receipt: ProposalReceipt;
   simulation: InboundLeadSimulation;
   onDownload: () => void;
-  onSendEmail: () => void;
+  onSendEmail: () => void | Promise<void>;
+  isSending?: boolean;
 }
 
 export const DocxDocumentPreview: React.FC<DocxDocumentPreviewProps> = ({
@@ -25,6 +26,7 @@ export const DocxDocumentPreview: React.FC<DocxDocumentPreviewProps> = ({
   simulation,
   onDownload,
   onSendEmail,
+  isSending = false,
 }) => {
   const [zoomLevel, setZoomLevel] = useState<number>(100);
   const [isFullScreen, setIsFullScreen] = useState<boolean>(false);
@@ -52,7 +54,7 @@ export const DocxDocumentPreview: React.FC<DocxDocumentPreviewProps> = ({
               {receipt.company.name.replace(/\s+/g, "_")}_Proposal_{receipt.client.company.replace(/\s+/g, "")}.docx
             </div>
             <div className="text-[10px] text-muted-foreground font-mono">
-              Word OpenXML Engine • Hydrated Preview • 2 Pages
+              Backend-generated proposal preview
             </div>
           </div>
         </div>
@@ -100,12 +102,13 @@ export const DocxDocumentPreview: React.FC<DocxDocumentPreviewProps> = ({
           </Button>
 
           <Button
-            onClick={onSendEmail}
+            onClick={() => void onSendEmail()}
+            disabled={isSending}
             size="sm"
             className="h-8 px-4 text-xs font-semibold bg-[#0B1957] hover:bg-[#152a8a] dark:bg-[#2B7CFF] dark:hover:bg-[#2563eb] text-white dark:text-[#000724] rounded-xl shadow-xs"
           >
             <Send className="size-3.5 mr-1.5" />
-            <span>Send</span>
+            <span>{isSending ? "Sending…" : "Send"}</span>
           </Button>
         </div>
       </div>
@@ -128,7 +131,7 @@ export const DocxDocumentPreview: React.FC<DocxDocumentPreviewProps> = ({
                 </h1>
               </div>
               <p className="text-xs text-slate-600 mt-1 font-medium">
-                {receipt.company.location} • {receipt.company.email || "proposals@agency.com"}
+                  {receipt.company.location} • {receipt.company.email || "—"}
               </p>
             </div>
 
@@ -164,7 +167,7 @@ export const DocxDocumentPreview: React.FC<DocxDocumentPreviewProps> = ({
                 <strong className="text-slate-900">Term:</strong> {receipt.deal_summary.payment_terms}
               </div>
               <div className="text-slate-800">
-                <strong className="text-slate-900">Validity:</strong> Until {receipt.valid_until} (14 Days)
+                <strong className="text-slate-900">Validity:</strong> Until {receipt.valid_until}
               </div>
               <div className="text-emerald-700 font-medium text-[11px] mt-0.5 flex items-center gap-1">
                 <ShieldCheck className="size-3" /> Price Lock Guaranteed
@@ -247,7 +250,7 @@ export const DocxDocumentPreview: React.FC<DocxDocumentPreviewProps> = ({
           {receipt.payment_milestones && receipt.payment_milestones.length > 0 && (
             <div className="space-y-2">
               <h2 className="text-xs font-bold uppercase tracking-wider text-slate-900 border-b border-slate-200 pb-1">
-                4. Payment Milestone Schedule (50/50 Split)
+                4. Payment Milestone Schedule
               </h2>
               <div className="grid grid-cols-2 gap-3 text-xs">
                 {receipt.payment_milestones.map((m, idx) => (

@@ -7,7 +7,6 @@ import {
   ChevronRight,
   Maximize2,
   X,
-  AlertTriangle,
   Loader2,
   Eye,
 } from "lucide-react";
@@ -18,13 +17,12 @@ import { fetchTemplateBlob, getTemplateDownloadUrl } from "../../services/api";
 
 interface Stage3TemplateCheckProps {
   companyId: string;
+  templateId?: string;
   companyName: string;
   stats: TemplateStats;
   filesize?: number | null;
-  naturalNames?: Record<string, string>;
   onProceed: () => void;
   onRegenerate: () => void;
-  onFixVariable?: (target: string) => void;
   isRegenerating?: boolean;
 }
 
@@ -40,13 +38,12 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 export const Stage3TemplateCheck: React.FC<Stage3TemplateCheckProps> = ({
   companyId,
+  templateId,
   companyName,
   stats,
   filesize,
-  naturalNames = {},
   onProceed,
   onRegenerate,
-  onFixVariable,
   isRegenerating = false,
 }) => {
   const [blob, setBlob] = useState<Blob | null>(null);
@@ -60,7 +57,7 @@ export const Stage3TemplateCheck: React.FC<Stage3TemplateCheckProps> = ({
   // Fetch hydrated template docx blob for preview
   useEffect(() => {
     let ignore = false;
-    fetchTemplateBlob(companyId)
+    fetchTemplateBlob(companyId, templateId)
       .then((b) => {
         if (ignore) return;
         setThumbReady(false);
@@ -73,7 +70,7 @@ export const Stage3TemplateCheck: React.FC<Stage3TemplateCheckProps> = ({
     return () => {
       ignore = true;
     };
-  }, [companyId, stats]);
+  }, [companyId, templateId, stats]);
 
   const renderInto = (el: HTMLDivElement | null, onDone?: () => void) => {
     if (!blob || !el) return;
@@ -104,11 +101,9 @@ export const Stage3TemplateCheck: React.FC<Stage3TemplateCheckProps> = ({
     return () => window.removeEventListener("keydown", onKey);
   }, [isPreviewOpen]);
 
-  const downloadUrl = getTemplateDownloadUrl(companyId);
-  const warnings = (stats.details ?? []).filter((d) => !d.applied);
-
+  const downloadUrl = getTemplateDownloadUrl(companyId, templateId);
   const summary = [
-    `${plural(stats.tags_placed_count, "field fills", "fields fill")} in per client`,
+    `${plural(stats.tags_placed_count, "variable populated", "variables populated")} per client`,
     stats.loops_collapsed_count > 0 &&
       plural(stats.loops_collapsed_count, "repeating table", "repeating tables"),
     stats.conditional_rows_wrapped_count > 0 &&
@@ -132,7 +127,7 @@ export const Stage3TemplateCheck: React.FC<Stage3TemplateCheckProps> = ({
 
   return (
     <>
-      <div className="rounded-2xl border border-border/80 bg-card p-5 sm:p-6 space-y-5 shadow-xs animate-in fade-in duration-200">
+      <div className="stage-arrival rounded-2xl border border-border/80 bg-card p-5 sm:p-6 space-y-5 shadow-xs">
         {/* Header Sub-banner */}
         <div className="flex items-start justify-between gap-3 border-b border-border/50 pb-4">
           <div className="flex items-start gap-3.5">
@@ -141,13 +136,13 @@ export const Stage3TemplateCheck: React.FC<Stage3TemplateCheckProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold text-foreground tracking-tight flex items-center gap-2">
-                <span>Stage 3: Word Document Template AST Checkpoint</span>
+                <span>Stage 3: Draft Proposal</span>
                 <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
-                  {stats.tags_placed_count} Tags Placed
+                  {stats.tags_placed_count} Variables Placed
                 </span>
               </h3>
               <p className="text-xs text-muted-foreground mt-0.5">
-                {summary || "OpenXML AST validated and hydrated with mustache/jinja tags."}
+                {summary || "OpenXML AST validated and hydrated with dynamic variables."}
               </p>
             </div>
           </div>
@@ -164,33 +159,6 @@ export const Stage3TemplateCheck: React.FC<Stage3TemplateCheckProps> = ({
           </Button>
         </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-          <div className="p-3.5 rounded-xl bg-muted/30 dark:bg-[#14233a] border border-border/80 text-center shadow-2xs">
-            <div className="text-xl font-extrabold text-foreground">{stats.tags_placed_count}</div>
-            <div className="text-[10px] text-muted-foreground uppercase font-bold mt-0.5">
-              Placed Tags
-            </div>
-          </div>
-          <div className="p-3.5 rounded-xl bg-muted/30 dark:bg-[#14233a] border border-border/80 text-center shadow-2xs">
-            <div className="text-xl font-extrabold text-foreground">{stats.loops_collapsed_count}</div>
-            <div className="text-[10px] text-muted-foreground uppercase font-bold mt-0.5">
-              Repeating Loops
-            </div>
-          </div>
-          <div className="p-3.5 rounded-xl bg-muted/30 dark:bg-[#14233a] border border-border/80 text-center shadow-2xs">
-            <div className="text-xl font-extrabold text-foreground">{stats.conditional_rows_wrapped_count}</div>
-            <div className="text-[10px] text-muted-foreground uppercase font-bold mt-0.5">
-              Conditional Rows
-            </div>
-          </div>
-          <div className="p-3.5 rounded-xl bg-muted/30 dark:bg-[#14233a] border border-border/80 text-center shadow-2xs">
-            <div className="text-xl font-extrabold text-foreground">{stats.mutations_applied_count}</div>
-            <div className="text-[10px] text-muted-foreground uppercase font-bold mt-0.5">
-              AST Mutations
-            </div>
-          </div>
-        </div>
 
         {/* Live Hydrated DOCX Document Interactive Thumbnail Preview */}
         <div className="space-y-2">
@@ -242,34 +210,10 @@ export const Stage3TemplateCheck: React.FC<Stage3TemplateCheckProps> = ({
               </>
             )}
           </button>
-        </div>
+        </div>{/*
 
-        {/* Unplaced Field Warnings */}
-        {warnings.length > 0 && (
-          <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3.5 space-y-2 shadow-2xs">
-            <div className="flex items-center gap-2 text-xs font-bold text-amber-700 dark:text-amber-400">
-              <AlertTriangle className="size-3.5 shrink-0" />
-              <span>
-                {plural(warnings.length, "field was not", "fields were not")} placed. Click a variable to review its snippet context:
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {warnings.map((d) => (
-                <button
-                  key={d.target}
-                  type="button"
-                  onClick={() => onFixVariable?.(d.target)}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/30 hover:bg-amber-500/20 cursor-pointer transition-colors"
-                >
-                  <span>{naturalNames[d.target] || d.target}</span>
                   <span className="text-[10px] text-amber-600/70">→ Fix</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Action Footer */}
+        */}{/* Action Footer */}
         <div className="pt-4 border-t border-border/50 flex items-center justify-between">
           <Button
             onClick={handleDownload}
@@ -304,7 +248,7 @@ export const Stage3TemplateCheck: React.FC<Stage3TemplateCheckProps> = ({
                     {companyName}_Template_Hydrated.docx
                   </h4>
                   <p className="text-[11px] text-muted-foreground">
-                    Word OpenXML generated template with dynamic tags
+                    Word OpenXML generated template with dynamic variables
                   </p>
                 </div>
               </div>

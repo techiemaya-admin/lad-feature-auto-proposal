@@ -11,9 +11,9 @@ interface StageStepperProps {
 const STAGES = [
   { id: 1 as ProposalStage, label: "Briefing", statusText: "Completed" },
   { id: 2 as ProposalStage, label: "Variable Ledger", statusText: "In Progress" },
-  { id: 3 as ProposalStage, label: "Template Check", statusText: "Pending" },
+  { id: 3 as ProposalStage, label: "Draft Proposal", statusText: "Pending" },
   { id: 4 as ProposalStage, label: "Pricing Engine", statusText: "Pending" },
-  { id: 5 as ProposalStage, label: "Proposal & Receipt", statusText: "Pending" },
+  { id: 5 as ProposalStage, label: "Lead & Proposal", statusText: "Pending" },
 ];
 
 export const StageStepper: React.FC<StageStepperProps> = ({
@@ -30,7 +30,9 @@ export const StageStepper: React.FC<StageStepperProps> = ({
 
         // Determine status display text
         let statusLabel = s.statusText;
-        if (isActive) {
+        if (isActive && isCompleted) {
+          statusLabel = "Completed";
+        } else if (isActive) {
           statusLabel = "In Progress";
         } else if (isCompleted) {
           statusLabel = "Completed";

@@ -30,7 +30,7 @@ export type FormulaOp = "add" | "sub" | "mul" | "div" | "min" | "max";
 /** One flat operation. add/mul/min/max are n-ary (≥1); sub/div take exactly 2. "col:<key>" allowed inside rows.map. */
 export interface Formula { op: FormulaOp; args: (string | number)[] }
 
-export type InputType = "integer" | "choice" | "multi_choice" | "boolean" | "us_state";
+export type InputType = "integer" | "choice" | "multi_choice" | "boolean" | "us_state" | "region";
 
 interface VariableBase { name: string; label: string; in_document: boolean; unit: Unit; /** "" = none; when the flag is false the variable is skipped. */ condition_flag: string }
 
@@ -63,12 +63,22 @@ export interface PricingRules {
 export interface Evaluation {
   values: Record<string, Value>;
   present: Record<string, boolean>;
+  /** Values a problem made unknowable (and everything computed from them): printed as "[to confirm]". */
+  broken?: Record<string, boolean>;
   needs_review: { reason: string; source?: string }[];
   order: string[];
 }
 
 export interface ValidationError { path: string; message: string }
 export interface SampleCheckEntry { name: string; computed: string; expected: string; ok: boolean; note?: string }
+
+/**
+ * Stage 2's "Fixed & auto-filled" box is a screen label: inside the pipeline a `fixed` variable is handled
+ * exactly like a `customer_input` (old extractions keep dates under customer_input). Every customer-input
+ * check goes through here so the two never drift apart.
+ */
+export const isCustomerOrFixed = (v: { category: string }): boolean =>
+  v.category === "customer_input" || v.category === "fixed";
 
 export interface Stage2Variable {
   variable_name: string;

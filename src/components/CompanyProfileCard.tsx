@@ -94,7 +94,7 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
   const handleReset = async () => {
     if (
       window.confirm(
-        `Reset "${company.company_name}" to default mock settings?`
+        `Reset "${company.company_name}" to its saved backend defaults?`
       )
     ) {
       setIsResetting(true);
@@ -131,7 +131,7 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
         <div className="flex items-center gap-1 shrink-0">
           {/* The tenant's own control, so it sits with the company, not in the developer header.
               The strip's one solid button until the inbox is linked (nothing can be sent before that),
-              then a quiet outline pill. Import / Reset are mock-data chores and stay ghost. */}
+              then a quiet outline pill. Import / Reset stay secondary because they affect the saved company profile. */}
           {emailConnected === false ? (
             <Button
               size="sm"
@@ -166,7 +166,7 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
             onClick={handleImport}
             disabled={isImporting || isLoading}
             className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/60 btn-tactile font-normal"
-            title="Import mock settings and spec"
+            title="Import company settings and pricing spec"
           >
             <DownloadCloud className={`size-3 mr-1 ${isImporting ? "animate-bounce" : ""}`} />
             {isImporting ? "Importing..." : "Import"}
@@ -178,7 +178,7 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
             onClick={handleReset}
             disabled={isResetting || isLoading}
             className="h-6 px-2 text-[11px] text-muted-foreground hover:text-destructive hover:bg-destructive/10 btn-tactile font-normal"
-            title="Reset company to default mock settings"
+            title="Reset company settings to backend defaults"
           >
             <RotateCcw className={`size-3 mr-1 ${isResetting ? "animate-spin" : ""}`} />
             {isResetting ? "Resetting..." : "Reset"}

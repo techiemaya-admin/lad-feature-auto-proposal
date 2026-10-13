@@ -48,49 +48,64 @@ export const RuleTableCard: React.FC<RuleTableCardProps> = ({ table, onChange })
   const removeRow = (ri: number) => onChange({ ...table, rows: table.rows.filter((_, i) => i !== ri) });
 
   return (
-    <div className="rounded-xl border border-border/80 bg-card shadow-xs hover:-translate-y-0.5 transition-transform duration-100 overflow-hidden">
-      <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-border/60">
-        <Icon className="size-3.5 text-muted-foreground" />
-        <span className="text-xs font-semibold text-foreground">{table.label}</span>
-        <span className="text-[11px] text-muted-foreground">
-          {table.rows.length} row{table.rows.length === 1 ? "" : "s"}
-        </span>
+    <div className="rounded-2xl border border-[#E2E8F0] dark:border-[#262831] bg-white dark:bg-[#000724] shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[#E2E8F0] dark:border-[#262831] bg-[#F8FAFC] dark:bg-[#000724]">
+        <div className="flex items-center gap-2.5">
+          <div className="size-7 rounded-lg flex items-center justify-center bg-blue-50 dark:bg-blue-950/40 text-[#0B1957] dark:text-[#2B7CFF]">
+            <Icon className="size-4" />
+          </div>
+          <span className="text-xs font-bold font-heading text-slate-800 dark:text-white">{table.label}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+            {table.rows.length} {table.rows.length === 1 ? "row" : "rows"}
+          </span>
+          <button
+            type="button"
+            onClick={addRow}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-[#0B1957] hover:bg-[#152a8a] text-white dark:bg-[#2B7CFF] dark:hover:bg-[#2563eb] dark:text-[#000724] transition-all cursor-pointer shadow-xs active:scale-95"
+            title="Add row"
+          >
+            <Plus className="size-3" />
+            <span>Add</span>
+          </button>
+        </div>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-[11px] text-muted-foreground">
+            <tr className="bg-[#F8FAFC] dark:bg-[#1a2a43]/70 text-[11px] text-slate-600 dark:text-slate-300 border-b border-[#E2E8F0] dark:border-[#262831]">
               {table.columns.map((c) => (
-                <th key={c.key} className={`px-3 py-1.5 font-medium whitespace-nowrap ${isNumeric(c.unit) ? "text-right" : "text-left"}`}>
+                <th key={c.key} className={`px-3.5 py-2 font-semibold whitespace-nowrap ${isNumeric(c.unit) ? "text-right" : "text-left"}`}>
                   {c.label}
-                  {UNIT_HINT[c.unit] && <span className="ml-1 text-muted-foreground/60">{UNIT_HINT[c.unit]}</span>}
+                  {UNIT_HINT[c.unit] && <span className="ml-1 text-slate-400 dark:text-slate-500 font-mono">({UNIT_HINT[c.unit]})</span>}
                 </th>
               ))}
               <th className="w-8" />
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-[#E2E8F0] dark:divide-[#262831]">
             {table.rows.map((row, ri) => (
-              <tr key={ri} className="border-t border-border/40 group">
+              <tr key={ri} className="hover:bg-[#F8FAFC]/80 dark:hover:bg-[#1a2a43]/40 transition-colors group">
                 {table.columns.map((c) => (
-                  <td key={c.key} className="px-1.5 py-0.5">
+                  <td key={c.key} className="px-2 py-1">
                     {c.unit === "boolean" ? (
-                      <label className="flex items-center justify-center h-7">
+                      <label className="flex items-center justify-center h-8 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={Boolean(row[c.key])}
                           onChange={(e) => setCell(ri, c.key, e.target.checked)}
-                          className="size-3.5 accent-blue-600"
+                          className="size-4 rounded border-[#E2E8F0] accent-[#0B1957] dark:accent-[#2B7CFF]"
                         />
                       </label>
                     ) : (
                       <Commit
                         value={cellInputText(c.unit, row[c.key])}
-                        placeholder={c.unit === "integer" ? "∞" : ""}
+                        placeholder={c.unit === "integer" ? "∞" : "—"}
                         inputMode={isNumeric(c.unit) ? "decimal" : "text"}
                         onCommit={(s) => setCell(ri, c.key, parseCellInput(c.unit, s))}
-                        className={`h-7 w-full min-w-16 rounded-md border border-transparent bg-transparent px-1.5 text-xs text-foreground hover:border-border focus:border-border focus:bg-background outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20 transition-colors ${
-                          isNumeric(c.unit) ? "font-mono tabular-nums text-right" : ""
+                        className={`h-8 w-full min-w-18 rounded-lg border border-transparent bg-transparent px-2 text-xs text-foreground hover:border-[#E2E8F0] dark:hover:border-slate-700 focus:border-[#2B7CFF] focus:bg-white dark:focus:bg-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20 transition-all ${
+                          isNumeric(c.unit) ? "font-mono tabular-nums text-right font-medium" : ""
                         }`}
                       />
                     )}
@@ -101,9 +116,9 @@ export const RuleTableCard: React.FC<RuleTableCardProps> = ({ table, onChange })
                     type="button"
                     onClick={() => removeRow(ri)}
                     title="Remove row"
-                    className="size-6 rounded-md text-muted-foreground/0 group-hover:text-muted-foreground hover:!text-destructive hover:bg-destructive/10 inline-flex items-center justify-center transition-colors"
+                    className="size-7 rounded-lg text-slate-400 opacity-0 group-hover:opacity-100 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 inline-flex items-center justify-center transition-all cursor-pointer"
                   >
-                    <X className="size-3" />
+                    <X className="size-3.5" />
                   </button>
                 </td>
               </tr>
@@ -111,14 +126,6 @@ export const RuleTableCard: React.FC<RuleTableCardProps> = ({ table, onChange })
           </tbody>
         </table>
       </div>
-      <button
-        type="button"
-        onClick={addRow}
-        className="w-full flex items-center gap-1 px-3.5 py-1.5 border-t border-dashed border-border/60 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
-      >
-        <Plus className="size-3" />
-        Add row
-      </button>
     </div>
   );
 };

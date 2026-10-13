@@ -1,10 +1,11 @@
-export type VariableCategory = "customer_input" | "pricing" | "paragraph" | "table_loop";
+export type VariableCategory = "customer_input" | "fixed" | "pricing" | "paragraph" | "table_loop";
 
 export type VariableDataType =
   | "string"
   | "number"
   | "currency"
   | "enum"
+  | "date"
   | "paragraph"
   | "table";
 

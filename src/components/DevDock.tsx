@@ -24,6 +24,7 @@ import { Button } from "./ui/button";
 
 interface DevDockProps {
   company: Company | null;
+  templateId?: string;
   variables?: CompanyVariable[];
   compoundTables?: CompoundTable[];
   templateStats?: TemplateStats | null;
@@ -37,7 +38,7 @@ const stageLabel = (stage: string | undefined, hasTemplate: boolean, locked: boo
     : stage === "pricing_engine"
     ? "Stage 4: Pricing Engine"
     : hasTemplate
-    ? "Stage 3: Template Checkpoint"
+    ? "Stage 3: Draft Proposal"
     : locked
     ? "Stage 2: Variable Review"
     : "Stage 1: Pricing Briefing";
@@ -46,6 +47,7 @@ type TabKey = "profile" | "anydoc" | "variables" | "rules" | "logs";
 
 export const DevDock: React.FC<DevDockProps> = ({
   company,
+  templateId,
   variables,
   compoundTables,
   templateStats,
@@ -77,7 +79,7 @@ export const DevDock: React.FC<DevDockProps> = ({
     }
     setRulesApplying(true);
     try {
-      const next = await updatePricingRules(company.company_id, parsed);
+      const next = await updatePricingRules(company.company_id, parsed, templateId);
       setRulesErrors([]);
       onRulesChange?.(next);
     } catch (err) {
@@ -95,18 +97,18 @@ export const DevDock: React.FC<DevDockProps> = ({
   useEffect(() => {
     if (!isOpen || activeTab !== "logs" || !companyId) return;
     let ignore = false;
-    fetchLogArtifacts(companyId)
+    fetchLogArtifacts(companyId, templateId)
       .then((list) => { if (!ignore) setArtifacts(list); })
       .catch(() => { if (!ignore) setArtifacts([]); });
     return () => { ignore = true; };
-  }, [isOpen, activeTab, companyId, stage, templateStats, pricingRules]);
+  }, [isOpen, activeTab, companyId, stage, templateId, templateStats, pricingRules]);
   // Filenames carry a millisecond stamp, so an artifact left open for another company simply never matches.
   const shownArtifact = artifacts.some((a) => a.file === openArtifact?.file) ? openArtifact : null;
   const toggleArtifact = async (file: string) => {
     if (openArtifact?.file === file) { setOpenArtifact(null); return; }
     if (!companyId) return;
     try {
-      setOpenArtifact({ file, text: await fetchLogArtifact(companyId, file) });
+      setOpenArtifact({ file, text: await fetchLogArtifact(companyId, file, templateId) });
     } catch (err) {
       setOpenArtifact({ file, text: err instanceof Error ? err.message : String(err) });
     }

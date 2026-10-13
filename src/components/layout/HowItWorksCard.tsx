@@ -20,7 +20,7 @@ const STEPS: StepItem[] = [
   },
   {
     number: 3,
-    title: "Template Check",
+    title: "Draft Proposal",
     subtitle: "Validate proposal template tags",
   },
   {

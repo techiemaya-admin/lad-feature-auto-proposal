@@ -7,162 +7,45 @@ import {
   CheckCircle2,
   ChevronRight,
   Sparkles,
-  Wand2,
+  WandSparkles,
   FileCheck,
   Loader2,
   X,
 } from "lucide-react";
 import { Button } from "../ui/button";
 import type { Company } from "../../types/company";
-import type { BusinessProfile } from "../../types/businessProfile";
 
 interface Stage1BriefingProps {
   company: Company;
-  businessProfile?: BusinessProfile;
   isLocked: boolean;
   isSubmitting?: boolean;
   onSubmit: (prompt: string, file: File | null) => Promise<void> | void;
+  onGeneratePrompt?: () => Promise<string> | string;
   onUnlock: () => Promise<void> | void;
   onProceed: () => void;
 }
 
-interface SuggestedDoc {
-  id: string;
-  title: string;
-  category: string;
-  filename: string;
-  isUploaded: boolean;
-  isAIGenerated?: boolean;
-  fileSize?: string;
-  file?: File;
-}
-
 export const Stage1Briefing: React.FC<Stage1BriefingProps> = ({
   company,
-  businessProfile,
   isLocked,
   isSubmitting = false,
   onSubmit,
+  onGeneratePrompt,
   onUnlock,
   onProceed,
 }) => {
-  const [promptText, setPromptText] = useState(
-    company.pricing_spec || "Enter your pricing model description, tiers, discounts, and tax rules..."
-  );
+  const [promptText, setPromptText] = useState(company.pricing_spec || "");
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [generatingDocId, setGeneratingDocId] = useState<string | null>(null);
+  const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Sync state if pricing_spec changes on company switch or reset
   useEffect(() => {
-    if (company.pricing_spec) {
-      setPromptText(company.pricing_spec);
-    }
-  }, [company.pricing_spec, company.company_id]);
-
-  const [suggestedDocs, setSuggestedDocs] = useState<SuggestedDoc[]>([
-    {
-      id: "doc_quote",
-      title: "1. Primary Quotation & Pricing (.docx)",
-      category: "Quotation Schedule",
-      filename: company.document_metadata?.filename || "Sample_Quotation.docx",
-      isUploaded: Boolean(company.document_metadata?.filename),
-      fileSize: company.document_metadata?.filesize
-        ? `${(company.document_metadata.filesize / 1024).toFixed(1)} KB`
-        : "28.4 KB",
-    },
-    {
-      id: "doc_sow",
-      title: "2. Scope of Work & Deliverables SOW (.docx)",
-      category: "Scope Specifications",
-      filename: "Scope_of_Work_Deliverables.docx",
-      isUploaded: false,
-      fileSize: "32.1 KB",
-    },
-    {
-      id: "doc_msa",
-      title: "3. Master Services Agreement MSA (.docx)",
-      category: "Terms & Conditions",
-      filename: "Master_Services_Agreement_Terms.docx",
-      isUploaded: false,
-      fileSize: "45.0 KB",
-    },
-  ]);
-
-  // Dynamically synthesize natural language briefing prompt from Business Profile data
-  const handleAIGeneratePrompt = () => {
-    const bp = businessProfile;
-    const companyName = bp?.companyName || company.company_name || "Our Company";
-    const industry = bp?.industry || "B2B Services";
-    const dealSize = bp?.averageDealSize || "$25,000 - $80,000";
-    const guarantee = bp?.compliantGuarantee || "100% money back guarantee if not satisfied within 14 days.";
-    const locations = bp?.icpLocations || "USA, UAE, Singapore";
-
-    let generated = "";
-
-    if (company.company_id === "co2_msp" || industry.toLowerCase().includes("it") || industry.toLowerCase().includes("cloud")) {
-      generated = `${companyName} Managed Security & IT Retainer Specification:
-
-1. Per-Seat Service Tiers:
-• Essential IT Defense: $45 / user / mo (24/7 helpdesk, anti-virus, patch management).
-• Standard Zero-Trust: $65 / user / mo (SOC monitoring, email security, cloud backup).
-• Premium Enterprise: $85 / user / mo (Dedicated SOC, compliance audit readiness, HIPAA/SOC2).
-
-2. Volume & Commitments:
-• $5/seat/mo discount for 25+ seats, $10/seat/mo discount for 50+ seats.
-• Extra server / firewall endpoints billed at $120/device/mo.
-• One-time onboarding setup fee: $75/seat.
-
-3. Discounts & Taxes:
-• 10% annual prepayment discount on 12-month commitments.
-• Applicable state sales tax (6.00%) applied to hardware & taxable post-discount subtotal.
-• Guarantee: ${guarantee}`;
-    } else if (company.company_id === "co3_dev" || industry.toLowerCase().includes("software") || industry.toLowerCase().includes("dev")) {
-      generated = `${companyName} Dedicated Product Squad & Fixed Builds:
-
-1. Milestone & Build Packages:
-• MVP / Landing Engine: $4,500 fixed (Scope: 2-week turnaround, responsive UI, database).
-• Core Platform Build: $12,500 fixed (Scope: Full stack web application, auth, payment rails).
-• Enterprise Scaled Squad: $24,000 / mo (Dedicated 3-engineer squad, CI/CD, weekly sprints).
-
-2. Optional Modular Add-ons:
-• AI Model Integration: $3,500 fixed.
-• DevOps & Cloud Infrastructure: $2,200 fixed.
-• 10% bundle discount when 2 or more modular add-ons are included.
-
-3. Payment Structure & Terms:
-• 50% upfront deposit upon contract execution, 50% on final UAT milestone acceptance.
-• Standard engagement cycle: 3 to 6 weeks. Target regions: ${locations}.`;
-    } else {
-      generated = `${companyName} (${industry}) 3-Tier Proposal Pricing Model:
-
-1. Structured Packages:
-• Local Starter: $1,000 / mo (Single location, monthly audit, local visibility & core optimization).
-• Growth Accelerator: $3,000 / mo (Up to 3 clinic locations, directory citations, 4 content pieces/mo).
-• Authority Leader: $8,000 / mo (Unlimited locations, dedicated senior strategist, weekly custom deliverables).
-
-2. Commercial Terms & Incentives:
-• 10% annual prepayment discount applied for upfront 12-month contract commitment.
-• Texas state sales tax (8.25%) applied to taxable post-discount subtotal.
-• Average Deal Benchmark: ${dealSize}.
-• Guarantee & Reversal: ${guarantee}`;
-    }
-
-    setPromptText(generated);
-  };
-
-  const handlePresetPrompt = (preset: "tier" | "seat" | "milestone") => {
-    if (preset === "tier") {
-      setPromptText(`Tier Model: Local ($1000/mo, 1 loc), Growth ($3000/mo, 3 locs), Authority ($8000/mo, unlimited). 10% annual discount. 8.25% TX tax.`);
-    } else if (preset === "seat") {
-      setPromptText(`Per-seat IT Support: Essential ($45/seat/mo), Standard ($65/seat/mo), Premium ($85/seat/mo). $5/seat off past 25 seats, $10 off past 50. Extra devices $12/mo. $75 setup/seat. 6% OH tax.`);
-    } else {
-      setPromptText(`Fixed Web Builds: Landing Page ($2500), Business Site ($6000), E-Commerce ($9500). Add-ons: Copywriting ($600), SEO ($450). 10% bundle discount on 2+ add-ons. 50/50 payment split.`);
-    }
-  };
+    setPromptText(company.pricing_spec || "");
+  }, [company.pricing_spec, company.company_id, company.template_id]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -185,19 +68,6 @@ export const Stage1Briefing: React.FC<Stage1BriefingProps> = ({
       const file = e.dataTransfer.files[0];
       if (file.name.toLowerCase().endsWith(".docx")) {
         setSelectedFile(file);
-        setSuggestedDocs((prev) =>
-          prev.map((d, i) =>
-            i === 0
-              ? {
-                  ...d,
-                  filename: file.name,
-                  fileSize: `${(file.size / 1024).toFixed(1)} KB`,
-                  isUploaded: true,
-                  file,
-                }
-              : d
-          )
-        );
       } else {
         alert("Please upload a Microsoft Word document (.docx)");
       }
@@ -209,37 +79,10 @@ export const Stage1Briefing: React.FC<Stage1BriefingProps> = ({
       const file = e.target.files[0];
       if (file.name.toLowerCase().endsWith(".docx")) {
         setSelectedFile(file);
-        setSuggestedDocs((prev) =>
-          prev.map((d, i) =>
-            i === 0
-              ? {
-                  ...d,
-                  filename: file.name,
-                  fileSize: `${(file.size / 1024).toFixed(1)} KB`,
-                  isUploaded: true,
-                  file,
-                }
-              : d
-          )
-        );
       } else {
         alert("Please upload a Microsoft Word document (.docx)");
       }
     }
-  };
-
-  const handleLetAIBuildDoc = (docId: string) => {
-    setGeneratingDocId(docId);
-    setTimeout(() => {
-      setSuggestedDocs((prev) =>
-        prev.map((d) =>
-          d.id === docId
-            ? { ...d, isUploaded: true, isAIGenerated: true }
-            : d
-        )
-      );
-      setGeneratingDocId(null);
-    }, 600);
   };
 
   const handleSubmit = async () => {
@@ -251,8 +94,22 @@ export const Stage1Briefing: React.FC<Stage1BriefingProps> = ({
     await onSubmit(promptText.trim(), selectedFile);
   };
 
+  const handleGeneratePrompt = async () => {
+    if (!onGeneratePrompt) return;
+    setIsGeneratingPrompt(true);
+    try {
+      const generated = await onGeneratePrompt();
+      if (generated.trim()) {
+        setPromptText(generated);
+        requestAnimationFrame(() => textareaRef.current?.focus());
+      }
+    } finally {
+      setIsGeneratingPrompt(false);
+    }
+  };
+
   return (
-    <div className="rounded-2xl border border-border/80 bg-card p-5 sm:p-6 space-y-6 shadow-xs animate-in fade-in duration-200">
+    <div className="stage-arrival rounded-2xl border border-border/80 bg-card p-5 sm:p-6 space-y-6 shadow-xs">
       {/* Header Sub-banner */}
       <div className="flex items-start justify-between gap-3 border-b border-border/50 pb-4">
         <div className="flex items-start gap-3.5">
@@ -355,40 +212,23 @@ export const Stage1Briefing: React.FC<Stage1BriefingProps> = ({
               <label className="text-xs font-bold text-foreground">
                 Describe your pricing logic, tiers, volume rules, and taxes
               </label>
-
-              {/* AI Prompt Generator & Sample Words */}
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <button
+              {onGeneratePrompt && (
+                <Button
                   type="button"
-                  onClick={handleAIGeneratePrompt}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-[#000724] border border-blue-200/80 dark:border-[#2B7CFF]/40 text-[#0B1957] dark:text-[#2B7CFF] text-[11px] font-semibold hover:bg-blue-100 dark:hover:bg-[#1A2A43] transition-all shadow-2xs cursor-pointer"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleGeneratePrompt}
+                  disabled={isGeneratingPrompt}
+                  className="h-8 px-3 text-xs font-semibold border-[#2B7CFF]/30 text-[#0B1957] hover:bg-[#2B7CFF]/5 dark:text-[#2B7CFF] cursor-pointer"
                 >
-                  <Wand2 className="size-3 text-[#2B7CFF]" />
-                  <span>AI Generate Prompt</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handlePresetPrompt("tier")}
-                  className="px-2 py-1 rounded-lg bg-muted text-muted-foreground hover:text-foreground text-[10px] font-medium border border-border cursor-pointer"
-                >
-                  Tiers Preset
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handlePresetPrompt("seat")}
-                  className="px-2 py-1 rounded-lg bg-muted text-muted-foreground hover:text-foreground text-[10px] font-medium border border-border cursor-pointer"
-                >
-                  Per-Seat Preset
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handlePresetPrompt("milestone")}
-                  className="px-2 py-1 rounded-lg bg-muted text-muted-foreground hover:text-foreground text-[10px] font-medium border border-border cursor-pointer"
-                >
-                  Fixed Build Preset
-                </button>
-              </div>
+                  {isGeneratingPrompt ? (
+                    <Loader2 className="size-3.5 mr-1.5 animate-spin" />
+                  ) : (
+                    <WandSparkles className="size-3.5 mr-1.5" />
+                  )}
+                  <span>{isGeneratingPrompt ? "Generating..." : "AI Generate Prompt"}</span>
+                </Button>
+              )}
             </div>
 
             <textarea
@@ -495,102 +335,6 @@ export const Stage1Briefing: React.FC<Stage1BriefingProps> = ({
                 </p>
               </div>
             )}
-          </div>
-
-          {/* 3 Suggested Reference Documents Section */}
-          <div className="space-y-3 pt-1">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="text-xs font-bold text-foreground">
-                  Document Schedule Check
-                </h4>
-                <p className="text-[11px] text-muted-foreground">
-                  Ingest or auto-build supporting proposal attachments.
-                </p>
-              </div>
-              <span className="text-[10px] font-mono font-medium text-muted-foreground">
-                {suggestedDocs.filter((d) => d.isUploaded).length} of 3 Available
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {suggestedDocs.map((doc, idx) => {
-                const isGenerating = generatingDocId === doc.id;
-
-                return (
-                  <div
-                    key={doc.id}
-                    className={`rounded-xl border p-3 flex flex-col justify-between space-y-2.5 transition-all ${
-                      doc.isUploaded
-                        ? "bg-card border-border/80 shadow-2xs ring-1 ring-emerald-500/20"
-                        : "bg-muted/20 border-dashed border-border hover:border-[#2B7CFF]/50"
-                    }`}
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                          {doc.category}
-                        </span>
-                        {doc.isUploaded && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                            <CheckCircle2 className="size-2.5" />
-                            {doc.isAIGenerated ? "AI Built" : "Attached"}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="text-xs font-bold text-foreground">
-                        {doc.title}
-                      </div>
-                      <div className="text-[11px] text-muted-foreground truncate font-mono">
-                        {doc.filename} {doc.fileSize ? `(${doc.fileSize})` : ""}
-                      </div>
-                    </div>
-
-                    {/* Actions per card */}
-                    <div className="pt-2 border-t border-border/40">
-                      {doc.isUploaded ? (
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
-                            <FileCheck className="size-3" /> Ready
-                          </span>
-                          {idx === 0 ? (
-                            <button
-                              type="button"
-                              onClick={() => fileInputRef.current?.click()}
-                              className="text-[10px] text-muted-foreground hover:text-foreground cursor-pointer"
-                            >
-                              Replace
-                            </button>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleLetAIBuildDoc(doc.id)}
-                            disabled={isGenerating}
-                            className="w-full inline-flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg bg-[#0B1957] hover:bg-[#152a8a] dark:bg-[#2B7CFF] dark:hover:bg-[#2563eb] text-white dark:text-[#000724] text-[11px] font-bold transition-all shadow-xs disabled:opacity-50 cursor-pointer"
-                          >
-                            {isGenerating ? (
-                              <>
-                                <Loader2 className="size-3 animate-spin" />
-                                <span>Building...</span>
-                              </>
-                            ) : (
-                              <>
-                                <Sparkles className="size-3" />
-                                <span>Let AI Build</span>
-                              </>
-                            )}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
           </div>
 
           {/* Action Footer */}

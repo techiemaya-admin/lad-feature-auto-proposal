@@ -3,8 +3,6 @@ import {
   Target,
   Building2,
   MapPin,
-  Upload,
-  Sparkles,
   Save,
   CheckCircle2,
 } from "lucide-react";
@@ -13,76 +11,170 @@ import {
   type BusinessProfile,
   computeProfileCompleteness,
   computeOfferCompleteness,
-  DEFAULT_BUSINESS_PROFILES,
 } from "../../types/businessProfile";
-import { AiAutoFillModal } from "./AiAutoFillModal";
+import type { Company } from "../../types/company";
+import { updateCompanyProfile } from "../../services/api";
 
 interface BusinessProfileViewProps {
-  companyId: string;
+  company: Company;
+  onCompanyChange?: (company: Company) => void;
   onSaveNotification?: (message: string) => void;
+  onErrorNotification?: (message: string) => void;
+}
+
+function companyToProfile(company: Company): BusinessProfile {
+  const basics = company.data?.company_basics ?? {};
+  const details = company.data?.company_details ?? {};
+  const idealCustomer = company.data?.ideal_customer ?? {};
+  const offer = company.data?.offer ?? {};
+  const stored = (company.data as unknown as { business_profile?: BusinessProfile }).business_profile ?? {};
+
+  return {
+    ...stored,
+    companyName: basics.company_name || company.company_name || "",
+    industry: details.industry || company.industry || "",
+    website: basics.website || company.website || "",
+    companyLocation: basics.location || company.location || "",
+    contactEmail: basics.email || company.email || "",
+    contactPhone: basics.phone || company.phone || "",
+    valueProposition: details.value_proposition || "",
+    productsServices: Array.isArray(details.products_and_services)
+      ? details.products_and_services.join(", ")
+      : "",
+    targetCustomers: details.target_customers || "",
+    companyDescription: idealCustomer.description || "",
+    icpPainPoints: idealCustomer.pain_points || "",
+    commonObjections: Array.isArray(offer.common_objections)
+      ? offer.common_objections.map((item) => `${item.objection} -> ${item.response}`).join("\n")
+      : "",
+    discoveryQuestions: Array.isArray(offer.discovery_questions)
+      ? offer.discovery_questions.join("\n")
+      : "",
+    deliveryProcess: offer.what_happens_after_they_sign || "",
+    proofPoints: offer.evidenced_results || "",
+    notAGoodFit: Array.isArray(offer.who_is_not_a_good_fit)
+      ? offer.who_is_not_a_good_fit.join(", ")
+      : "",
+    differentiators: offer.why_buyers_pick_you || "",
+    guarantee: offer.guarantee_risk_reversal || "",
+  };
+}
+
+function profileToPayload(profile: BusinessProfile) {
+  return {
+    company_basics: {
+      company_name: profile.companyName || "",
+      location: profile.companyLocation || "",
+      email: profile.contactEmail || "",
+      phone: profile.contactPhone || "",
+      website: profile.website || "",
+    },
+    company_details: {
+      industry: profile.industry || "",
+      value_proposition: profile.valueProposition || "",
+      products_and_services: (profile.productsServices || "")
+        .split(/,|\n/)
+        .map((item) => item.trim())
+        .filter(Boolean),
+      target_customers: profile.targetCustomers || "",
+    },
+    ideal_customer: {
+      description: profile.companyDescription || "",
+      pain_points: profile.icpPainPoints || "",
+    },
+    offer: {
+      common_objections: (profile.commonObjections || "")
+        .split("\n")
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .map((item) => {
+          const [objection, ...response] = item.split(" -> ");
+          return { objection, response: response.join(" -> ") };
+        }),
+      discovery_questions: (profile.discoveryQuestions || "")
+        .split("\n")
+        .map((item) => item.trim())
+        .filter(Boolean),
+      what_happens_after_they_sign: profile.deliveryProcess || "",
+      evidenced_results: profile.proofPoints || "",
+      who_is_not_a_good_fit: (profile.notAGoodFit || "")
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean),
+      why_buyers_pick_you: profile.differentiators || "",
+      guarantee_risk_reversal: profile.guarantee || "",
+    },
+    data: { business_profile: profile },
+  };
 }
 
 export const BusinessProfileView: React.FC<BusinessProfileViewProps> = ({
-  companyId,
+  company,
+  onCompanyChange,
   onSaveNotification,
+  onErrorNotification,
 }) => {
-  const initialProfile = DEFAULT_BUSINESS_PROFILES[companyId] || DEFAULT_BUSINESS_PROFILES["co1_seo"];
+  const initialProfile = companyToProfile(company);
   const [profile, setProfile] = useState<BusinessProfile>(initialProfile);
-  const [locationInput, setLocationInput] = useState<string>(initialProfile.companyLocation || "LAD, UAE");
+  const [locationInput, setLocationInput] = useState<string>(initialProfile.companyLocation || "");
   const [isSaving, setIsSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [locationSaved, setLocationSaved] = useState(false);
-  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
-  const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
-  // Sync profile when companyId changes
   useEffect(() => {
-    const next = DEFAULT_BUSINESS_PROFILES[companyId] || DEFAULT_BUSINESS_PROFILES["co1_seo"];
+    const next = companyToProfile(company);
     setProfile(next);
-    setLocationInput(next.companyLocation || "LAD, UAE");
+    setLocationInput(next.companyLocation || "");
     setSavedAt(null);
     setLocationSaved(false);
-  }, [companyId]);
+  }, [company]);
 
   const completeness = computeProfileCompleteness(profile);
   const offerCompleteness = computeOfferCompleteness(profile);
+  const companyInitials = company.company_name
+    .split(/\s+/)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 3)
+    .toUpperCase();
 
   const updateField = (key: keyof BusinessProfile, value: string) => {
     setProfile((prev) => ({ ...prev, [key]: value }));
     setSavedAt(null);
   };
 
-  const handleSaveLocation = () => {
-    setProfile((prev) => ({ ...prev, companyLocation: locationInput }));
-    setLocationSaved(true);
-    setTimeout(() => setLocationSaved(false), 2500);
-    onSaveNotification?.("Company location updated successfully.");
-  };
-
-  const handleGlobalSave = () => {
+  const persistProfile = async (nextProfile: BusinessProfile, successMessage: string) => {
     setIsSaving(true);
-    setTimeout(() => {
-      setIsSaving(false);
+    try {
+      const updated = await updateCompanyProfile(company.company_id, profileToPayload(nextProfile));
+      setProfile(companyToProfile(updated));
+      setLocationInput(companyToProfile(updated).companyLocation || "");
+      onCompanyChange?.(updated);
       setSavedAt(Date.now());
-      onSaveNotification?.(`Business Profile for ${profile.companyName || "Company"} saved.`);
-    }, 600);
-  };
-
-  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const url = URL.createObjectURL(file);
-      setLogoPreview(url);
-      setProfile((prev) => ({ ...prev, companyLogoUrl: url }));
-      onSaveNotification?.("Company logo uploaded successfully.");
+      onSaveNotification?.(successMessage);
+      return updated;
+    } catch (err) {
+      onErrorNotification?.(err instanceof Error ? err.message : "Could not save the business profile.");
+      throw err;
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleApplyAiData = (data: Record<string, string>) => {
-    setProfile((prev) => ({ ...prev, ...data }));
-    setLocationInput(data.companyLocation || locationInput);
-    setSavedAt(Date.now());
-    onSaveNotification?.("AI Auto-fill applied 14 business signals successfully!");
+  const handleSaveLocation = async () => {
+    const nextProfile = { ...profile, companyLocation: locationInput };
+    setProfile(nextProfile);
+    try {
+      await persistProfile(nextProfile, "Company location saved to the backend.");
+      setLocationSaved(true);
+      setTimeout(() => setLocationSaved(false), 2500);
+    } catch {}
+  };
+
+  const handleGlobalSave = async () => {
+    try {
+      await persistProfile(profile, `Business Profile for ${profile.companyName || "Company"} saved to the backend.`);
+    } catch {}
   };
 
   const inputClasses =
@@ -168,32 +260,22 @@ export const BusinessProfileView: React.FC<BusinessProfileViewProps> = ({
           {/* Company Logo Sub-block */}
           <div className="flex items-center gap-4 p-4 rounded-xl bg-slate-50/80 dark:bg-[#14233a]/60 border border-slate-200 dark:border-blue-900/30">
             <div className="size-14 rounded-full overflow-hidden bg-white dark:bg-[#0B1957] border-2 border-slate-200 dark:border-[#2B7CFF]/40 grid place-items-center shrink-0 shadow-xs">
-              {logoPreview || profile.companyLogoUrl ? (
+              {profile.companyLogoUrl ? (
                 <img
-                  src={logoPreview || profile.companyLogoUrl}
+                  src={profile.companyLogoUrl}
                   alt="Company logo"
                   className="size-full object-cover"
                 />
               ) : (
-                <span className="text-[#0B1957] dark:text-[#2B7CFF] font-black text-base">Mrl</span>
+                <span className="text-[#0B1957] dark:text-[#2B7CFF] font-black text-base">{companyInitials}</span>
               )}
             </div>
             <div>
               <span className="text-xs font-bold text-slate-900 dark:text-slate-200 block mb-1">
                 Company logo
               </span>
-              <label className="inline-flex items-center gap-1.5 px-3 h-8.5 rounded-xl border border-slate-200 dark:border-blue-900/40 bg-white dark:bg-[#1A2A43] text-xs font-semibold text-[#0B1957] dark:text-[#2B7CFF] hover:bg-slate-100 dark:hover:bg-[#2B7CFF]/15 transition cursor-pointer">
-                <Upload className="size-3.5" />
-                <span>Upload</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleLogoChange}
-                />
-              </label>
               <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                PNG or JPG, up to 2MB.
+                Logo URL is read from the saved company profile.
               </span>
             </div>
           </div>
@@ -227,28 +309,6 @@ export const BusinessProfileView: React.FC<BusinessProfileViewProps> = ({
           </div>
         </div>
 
-        {/* Auto-fill with AI Banner */}
-        <div className="rounded-xl border border-blue-200 dark:border-[#2B7CFF]/30 bg-blue-50/70 dark:bg-[#0B1957]/50 p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
-          <div className="flex items-center gap-3">
-            <div className="size-8.5 rounded-lg bg-blue-100 dark:bg-[#2B7CFF]/20 border border-blue-200 dark:border-[#2B7CFF]/50 grid place-items-center text-[#0B1957] dark:text-[#2B7CFF] shrink-0">
-              <Sparkles className="size-4" />
-            </div>
-            <div>
-              <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100">Auto-fill with AI</h4>
-              <p className="text-[11px] text-slate-600 dark:text-slate-300">
-                Automatically fill fields by analyzing your website or LinkedIn profile
-              </p>
-            </div>
-          </div>
-          <Button
-            size="sm"
-            onClick={() => setIsAiModalOpen(true)}
-            className="h-8.5 px-4 text-xs font-semibold text-[#0B1957] dark:text-[#2B7CFF] bg-white dark:bg-[#1A2A43] border border-blue-200 dark:border-[#2B7CFF]/50 hover:bg-blue-50 dark:hover:bg-[#2B7CFF]/20 rounded-xl whitespace-nowrap shadow-2xs"
-          >
-            <Sparkles className="size-3 mr-1.5 text-[#0B1957] dark:text-[#2B7CFF]" />
-            <span>Fill</span>
-          </Button>
-        </div>
       </div>
 
       {/* 3. Company Section Card */}
@@ -766,13 +826,6 @@ export const BusinessProfileView: React.FC<BusinessProfileViewProps> = ({
         </Button>
       </div>
 
-      {/* AI Auto-fill Modal */}
-      <AiAutoFillModal
-        isOpen={isAiModalOpen}
-        onClose={() => setIsAiModalOpen(false)}
-        onApply={handleApplyAiData}
-        companyName={profile.companyName || "MR LAD"}
-      />
     </div>
   );
 };

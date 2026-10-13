@@ -82,6 +82,9 @@ export interface CompanyWorkingState {
 
 export interface Company {
   company_id: string;
+  /** Present when the workflow was loaded from a template-scoped endpoint. */
+  template_id?: string;
+  template_name?: string;
   company_name: string;
   industry: string | null;
   location: string | null;
@@ -90,6 +93,7 @@ export interface Company {
   phone: string | null;
   data: CompanyData;
   pricing_spec: string;
+  sample_lead_text?: string;
   working_state: CompanyWorkingState | null;
   briefing_locked?: boolean;
   quotation_filename?: string | null;

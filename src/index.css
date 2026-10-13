@@ -6,9 +6,13 @@
 
 @custom-variant dark (&:is(.dark *));
 
+:root {
+    --font-indic-fallback: 'Noto Sans Telugu', 'Noto Sans Devanagari', 'Noto Sans Tamil', 'Noto Sans Kannada', 'Noto Sans Malayalam', 'Noto Sans Gujarati', 'Noto Sans Bengali', 'Noto Sans Gurmukhi', 'Noto Sans Oriya', 'Noto Sans Arabic';
+}
+
 @theme inline {
-    --font-heading: var(--font-sans);
-    --font-sans: 'Inter Variable', sans-serif;
+    --font-heading: 'Space Grotesk', var(--font-indic-fallback), system-ui, sans-serif;
+    --font-sans: 'Inter', var(--font-indic-fallback), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
@@ -125,6 +129,30 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-sans);
+    font-size: 0.9375rem;
+    font-weight: 450;
+    line-height: 1.5;
+    letter-spacing: -0.006em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  button,
+  input,
+  textarea,
+  select {
+    font-family: inherit;
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  .font-heading {
+    font-family: var(--font-heading);
+    letter-spacing: -0.022em;
+    line-height: 1.22;
   }
   button:not(:disabled), [role="button"]:not(:disabled) {
     cursor: pointer;
@@ -140,7 +168,49 @@
   100% { transform: translateX(100%); }
 }
 
+@keyframes stage-arrival {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 18px, 0) scale(0.985);
+  }
+  60% {
+    opacity: 1;
+    transform: translate3d(0, -2px, 0) scale(1.002);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
 @layer utilities {
+  .text-xs {
+    font-size: 0.8125rem;
+    line-height: 1.4;
+  }
+
+  .text-\[11px\] {
+    font-size: 0.75rem;
+    line-height: 1.4;
+  }
+
+  .text-\[10px\] {
+    font-size: 0.6875rem;
+    line-height: 1.35;
+  }
+
+  .stage-arrival {
+    animation: stage-arrival 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    transform-origin: top center;
+    will-change: opacity, transform;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .stage-arrival {
+      animation: none;
+    }
+  }
+
   /* Subtle glassmorphism */
   .glass-panel {
     background: color-mix(in srgb, var(--card) 85%, transparent);

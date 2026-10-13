@@ -53,14 +53,16 @@ type VariablePatch = Partial<
 
 const GROUPS: { category: VariableCategory; label: string }[] = [
   { category: "customer_input", label: "Customer inputs" },
+  { category: "fixed", label: "Fixed & auto-filled" },
   { category: "pricing", label: "Pricing" },
   { category: "paragraph", label: "Paragraphs" },
 ];
 
 const CATEGORY_OPTIONS = [
-  { value: "customer_input", label: "Customer input" },
-  { value: "pricing", label: "Pricing" },
-  { value: "paragraph", label: "Paragraph" },
+  { value: "customer_input", label: "Customer input", dotColor: "bg-blue-500", description: "Supplied by the lead or client" },
+  { value: "fixed", label: "Fixed & auto-filled", dotColor: "bg-amber-500", description: "Constant business values" },
+  { value: "pricing", label: "Pricing", dotColor: "bg-emerald-500", description: "Calculated via pricing engine" },
+  { value: "paragraph", label: "Paragraph", dotColor: "bg-purple-500", description: "Dynamic generated text block" },
 ];
 
 // ponytail: the backend is one opaque call, so the trace advances on a timer, not on events.
@@ -68,11 +70,16 @@ const CATEGORY_OPTIONS = [
 const SCAN_TRACE = [
   "Reading the quotation",
   "Finding what changes per client",
-  "Sorting into customer inputs, pricing and paragraphs",
+  "Sorting into customer inputs, fixed, pricing and paragraphs",
   "Checking for repeating tables",
 ];
 const TRACE_STEP_MS = 1800;
-const GHOST_ROWS = [[88, 64, 112, 72], [96, 120, 80, 68, 104, 76], [140, 92, 116]];
+const GHOST_ROWS = [
+  [88, 64, 112, 72],
+  [80, 96, 72],
+  [96, 120, 80, 68, 104, 76],
+  [140, 92, 116],
+];
 
 const tableKey = (t: CompoundTable) => `table:${t.table_id}`;
 
@@ -772,6 +779,7 @@ const VariableTray: React.FC<VariableTrayProps> = ({
             <Fact label="Template tag">
               <Tag>{`{${v.variable_name}}`}</Tag>
             </Fact>
+            {v.data_type && <Fact label="Data type">{v.data_type}</Fact>}
             {v.is_custom && <Fact label="Source">Added by you</Fact>}
           </div>
           {d.description && <p className="text-xs text-muted-foreground">{d.description}</p>}

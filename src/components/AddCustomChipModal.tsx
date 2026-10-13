@@ -129,6 +129,7 @@ export const AddCustomChipModal: React.FC<AddCustomChipModalProps> = ({
               {(
                 [
                   { id: "customer_input", label: "Customer Input" },
+                  { id: "fixed", label: "Fixed & Auto-filled" },
                   { id: "pricing", label: "Pricing" },
                   { id: "paragraph", label: "Paragraph" },
                 ] as const

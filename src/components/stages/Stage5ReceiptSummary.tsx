@@ -18,7 +18,8 @@ interface Stage5ReceiptSummaryProps {
   simulation: InboundLeadSimulation;
   receipt: ProposalReceipt;
   onDownload: () => void;
-  onSendEmail: () => void;
+  onSendEmail: () => void | Promise<void>;
+  isSending?: boolean;
 }
 
 export const Stage5ReceiptSummary: React.FC<Stage5ReceiptSummaryProps> = ({
@@ -26,11 +27,12 @@ export const Stage5ReceiptSummary: React.FC<Stage5ReceiptSummaryProps> = ({
   receipt,
   onDownload,
   onSendEmail,
+  isSending = false,
 }) => {
   const [activeViewMode, setActiveViewMode] = useState<"receipt" | "docx_preview">("receipt");
 
   return (
-    <div className="rounded-xl border border-border/80 bg-card/60 dark:bg-card/40 p-5 space-y-6 animate-in fade-in duration-200">
+    <div className="stage-arrival rounded-xl border border-border/80 bg-card/60 dark:bg-card/40 p-5 space-y-6">
       {/* Header Sub-banner with View Mode Switcher */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/50 pb-4">
         <div className="flex items-start gap-3.5">
@@ -89,6 +91,7 @@ export const Stage5ReceiptSummary: React.FC<Stage5ReceiptSummaryProps> = ({
           simulation={simulation}
           onDownload={onDownload}
           onSendEmail={onSendEmail}
+          isSending={isSending}
         />
       ) : (
         /* Standard 2-Column Receipt & Lead Simulation View */
@@ -237,7 +240,7 @@ export const Stage5ReceiptSummary: React.FC<Stage5ReceiptSummaryProps> = ({
               {receipt.payment_milestones && receipt.payment_milestones.length > 0 && (
                 <div className="space-y-1.5 pt-1">
                   <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
-                    Payment Milestones (50/50 Split)
+                    Payment Milestones
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     {receipt.payment_milestones.map((m, idx) => (
@@ -294,12 +297,13 @@ export const Stage5ReceiptSummary: React.FC<Stage5ReceiptSummaryProps> = ({
               </Button>
 
               <Button
-                onClick={onSendEmail}
+                onClick={() => void onSendEmail()}
+                disabled={isSending}
                 size="sm"
                 className="h-8 px-5 text-xs font-semibold bg-[#0B1957] hover:bg-[#152a8a] dark:bg-[#2B7CFF] dark:hover:bg-[#2563eb] text-white dark:text-[#000724] rounded-xl shadow-xs flex items-center gap-2"
               >
                 <Send className="size-3.5" />
-                <span>Send from Connected Inbox</span>
+                <span>{isSending ? "Sending proposal…" : "Send from Connected Inbox"}</span>
               </Button>
             </div>
           </div>
