@@ -1,10 +1,12 @@
 # AGENTS.md — Auto-Proposal Prototype (`new-auto-proposal`)
 
-Self-contained proof of concept for zero-configuration proposal generation: a real Word quotation + natural-language pricing notes in, client-ready `.docx` + PDF proposals out.
+Self-contained proof of concept for zero-configuration proposal generation: an uploaded or AI-generated sample Word quotation + natural-language pricing notes in, client-ready `.docx` + PDF proposals out.
 
 **This prototype is standalone.** TypeScript + ESM + SQLite, a flat `backend/src/services/`, no multi-tenancy, no Postgres. The root guardrails describe the main backend and do not apply here — only the commit format and the documentation policy carry over.
 
 ## Context Pointers
+
+- **Generated sample proposals:** [docs/generated-sample-proposals.md](docs/generated-sample-proposals.md) - automatic sample pricing, custom sections, frontend-only accuracy notes and Word compatibility.
 
 - **UI/UX design spec:** [docs/design.md](docs/design.md) — front-end layouts, component structure, tonal styling, ambient drawers.
 - **Architecture & pipeline blueprint:** [docs/plan.md](docs/plan.md) — the 5-stage pipeline, mutation flow, variable taxonomy, execution order.
@@ -19,6 +21,7 @@ Self-contained proof of concept for zero-configuration proposal generation: a re
 ## Architectural Guardrails
 
 ### 1. Deterministic math
+- Sample generation may use explicitly identified estimates for missing seller inputs; code calculates complete prices and records estimate notes in the frontend. Estimates do not change the authoritative pricing brief or Stage 5 missing-data rules.
 - All arithmetic — totals, discounts, taxes — runs in pure JavaScript (`pricing-calculator.ts`).
 - The model reads and writes prose: parameter extraction, rule compilation, narrative drafting. Every number comes from code.
 - Check totals against [Mock Data/verification_guide.md](Mock%20Data/verification_guide.md).
@@ -31,6 +34,7 @@ Self-contained proof of concept for zero-configuration proposal generation: a re
 - Mutation mechanics — loop collapse, tier matrix, paragraph sub-spans, ordering: [docs/plan.md](docs/plan.md) §4.2–4.3.
 
 ### 3. Lossless Word mutation
+- Serialize generated samples and mutated templates through `wordDocumentBuffer` so ZIP headers remain compatible with LibreOffice. Keep sample review notes in `working_state_json.sample_review_notes`, outside document content.
 - Parse with `@firecrawl/anydoc`; verify a modified `.docx` by converting it back to Markdown, never by reading binary XML.
 - `docxmlater` mutates in place so styling, typography and page layout survive. Variables apply longest `sample_text` first, so overlapping values stay intact.
 - Every variable yields a `details[]` entry, and every placed tag is re-checked after mutation: `applied`, `covered` (the value lives inside a drafted paragraph or loop, so the drafter receives it as input), or a reported miss. A variable is always accounted for.

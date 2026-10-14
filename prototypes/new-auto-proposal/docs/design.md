@@ -1,5 +1,9 @@
 # Auto-Proposal Prototype — UI/UX & Interaction Design Specification (`DESIGN.md`)
 
+## Generated sample proposals (14 October 2026)
+
+The briefing now offers an AI-generated sample Word document tailored to the selected template and current pricing brief, alongside manual upload. Code calculates complete sample prices; missing seller inputs use explicit estimates with frontend-only accuracy notes. Users can edit the sample and add handwritten or AI-generated sections. Styled Word output includes a LibreOffice compatibility fix. The normal Send, variable review, template mutation and lead-pricing stages still follow. See [Generated sample proposals](generated-sample-proposals.md) for the workflow, pricing safeguards, endpoints, persistence, file inventory, tests and limitations. This supersedes earlier descriptions requiring an uploaded quotation.
+
 ## Current combined workflow (8 October 2026)
 
 The library now persists a company's editable lead email and its AI/manual template assignment. **Route email** considers all company templates, and the assigned email prefills **Check & Generate Proposal**. The merged Stage 5 generates template-scoped Word/PDF proposals; the latest date changes add Stage 2 format previews and Stage 4 date formulas using `date-fns`. Profiles and dev pricing/sample emails now come from separate dataset and seed files. See [the complete routing and merge record](icp-template-library.md#10-saved-email-routing-and-editing) for APIs, persistence, file changes, migrations, tests and limitations. Earlier snapshot statements that Stage 5 is absent or pricing lives inside the profile dataset are superseded.

@@ -65,6 +65,7 @@ export interface CompanySummary {
 }
 
 export interface CompanyWorkingState {
+  sample_review_notes?: string[];
   stage?: string;
   template_generated?: boolean;
   template_generated_at?: string;

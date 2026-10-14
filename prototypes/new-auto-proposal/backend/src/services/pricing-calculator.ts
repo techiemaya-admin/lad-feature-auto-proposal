@@ -1,4 +1,94 @@
 import { addDays, addMonths, format, isValid, parseISO } from "date-fns";
+
+export interface SampleCalculation {
+  id: string;
+  op: string;
+  value: number;
+  args: string[];
+}
+
+/** Bounded data-only arithmetic for the selected sample, never executable model code. */
+export function calculateSampleValues(steps: SampleCalculation[]): Map<string, number> {
+  if (!Array.isArray(steps) || steps.length > 80) throw new Error("Invalid sample calculations");
+  const values = new Map<string, number>([["zero", 0], ["one", 1], ["hundred", 100], ["months_per_year", 12]]);
+  for (const step of steps) {
+    if (!step || typeof step.id !== "string" || !/^[a-z][a-z0-9_]{0,59}$/.test(step.id) || values.has(step.id)
+      || !Array.isArray(step.args) || step.args.length > 12) throw new Error("Invalid sample calculation");
+    const args = step.args.map(ref => {
+      if (!values.has(ref)) throw new Error("Missing or circular sample calculation reference");
+      return values.get(ref)!;
+    });
+    let value: number;
+    if (step.op === "literal" && args.length === 0) value = step.value;
+    else if (step.op === "add" && args.length) value = args.reduce((a, b) => a + b, 0);
+    else if (step.op === "mul" && args.length) value = args.reduce((a, b) => a * b, 1);
+    else if (step.op === "min" && args.length) value = Math.min(...args);
+    else if (step.op === "max" && args.length) value = Math.max(...args);
+    else if (step.op === "sub" && args.length === 2) value = args[0] - args[1];
+    else if (step.op === "div" && args.length === 2 && args[1] !== 0) value = args[0] / args[1];
+    else throw new Error("Unsupported sample calculation");
+    if (typeof value !== "number" || !Number.isFinite(value) || Math.abs(value) > 1e12) throw new Error("Invalid sample calculation result");
+    values.set(step.id, value);
+  }
+  return values;
+}
+
+/** Illustrative sample arithmetic only; Stage 4 still compiles the business's full rules. */
+export function calculateSampleLine(row: Record<string, unknown>) {
+  const decimal = (key: string, max: number) => {
+    const value = row[key];
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > max
+      || Math.abs(value * 100 - Math.round(value * 100)) > 0.000001) throw new Error(`Invalid ${key}`);
+    return value;
+  };
+  const quantity = decimal("quantity", 10000);
+  if (!Number.isInteger(quantity) || quantity < 1) throw new Error("Invalid quantity");
+  const rateCents = Math.round(decimal("rate", 1000000) * 100);
+  const discountPercent = decimal("discount", 100), taxPercent = decimal("tax", 100);
+  const subtotal = quantity * rateCents;
+  const percentage = (cents: number, percent: number) => Number((BigInt(cents) * BigInt(Math.round(percent * 100)) + 5000n) / 10000n);
+  const discountCents = percentage(subtotal, discountPercent);
+  const net = subtotal - discountCents;
+  const taxCents = percentage(net, taxPercent);
+  return { quantity, rateCents, discountPercent, taxPercent, discountCents, taxCents, totalCents: net + taxCents };
+}
+
+export function roundSampleRate(value: number): number {
+  if (!Number.isFinite(value) || value < 0 || value > 1000000) throw new Error("Invalid sample rate");
+  return Math.round(value * 100) / 100;
+}
+
+export function calculateSampleTotals(lines: { period: string; totalCents: number }[]) {
+  return ["one-time", "monthly", "annual"].flatMap(period => {
+    const group = lines.filter(line => line.period === period);
+    return group.length ? [{ period, totalCents: group.reduce((sum, line) => sum + line.totalCents, 0) }] : [];
+  });
+}
+
+/** Unknown inputs stay unknown; temporary validation defaults are never printed. */
+export function calculatePartialSampleLine(row: Record<string, unknown>) {
+  const checked = calculateSampleLine({ ...row,
+    quantity: row.quantity === null ? 1 : row.quantity,
+    rate: row.rate === null ? 0 : row.rate,
+    discount: row.discount === null ? 0 : row.discount,
+    tax: row.tax === null ? 0 : row.tax,
+  });
+  const complete = [row.quantity, row.rate, row.discount, row.tax].every(value => value !== null);
+  return { quantity: row.quantity === null ? null : checked.quantity,
+    rateCents: row.rate === null ? null : checked.rateCents,
+    discountPercent: row.discount === null ? null : checked.discountPercent,
+    taxPercent: row.tax === null ? null : checked.taxPercent,
+    taxCents: complete ? checked.taxCents : null,
+    totalCents: complete ? checked.totalCents : null };
+}
+
+export function calculatePartialSampleTotals(lines: { period: string; totalCents: number | null }[]) {
+  return [...new Set(lines.map(line => line.period))].map(period => {
+    const group = lines.filter(line => line.period === period);
+    return { period, totalCents: !period || group.some(line => line.totalCents === null)
+      ? null : group.reduce((sum, line) => sum + line.totalCents!, 0) };
+  }).sort((a, b) => ["one-time", "monthly", "annual", ""].indexOf(a.period) - ["one-time", "monthly", "annual", ""].indexOf(b.period));
+}
 import { DEFAULT_DATE_FORMAT, dateFormatOf, hasDay, isDateVariable, sampleDate, writeDate } from "./dates.js";
 import {
   buildTierMatrixPayload,

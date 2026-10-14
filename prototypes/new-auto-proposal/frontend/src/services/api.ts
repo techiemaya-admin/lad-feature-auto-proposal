@@ -78,7 +78,7 @@ export async function resetCompany(id: string): Promise<Company> {
 export async function submitBriefing(
   companyId: string,
   prompt: string,
-  file: File | null | undefined, templateId: string): Promise<{
+  file: File | null | undefined, templateId: string, notes?: string[]): Promise<{
   company: Company;
   markdown: string;
   metadata: {
@@ -90,6 +90,7 @@ export async function submitBriefing(
 }> {
   const formData = new FormData();
   formData.append("prompt", prompt);
+  if (notes !== undefined) formData.append("sample_review_notes", JSON.stringify(notes));
   if (file) {
     formData.append("file", file);
   }

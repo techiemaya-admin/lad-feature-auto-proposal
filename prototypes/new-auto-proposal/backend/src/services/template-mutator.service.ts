@@ -1,4 +1,5 @@
 import { templateDirectory } from "./template-storage.js";
+import { wordDocumentBuffer } from "./word-document-buffer.js";
 import { Document, Paragraph, TableCell, TableRow } from "docxmlater";
 import fs from "node:fs";
 import path from "node:path";
@@ -451,7 +452,7 @@ export async function mutateDocumentTemplate(companyId: string, templateId = `de
   }
 
   const { details, tier_matrix } = applyTemplate(doc, variables, loops);
-  fs.writeFileSync(targetFilePath, await doc.toBuffer());
+  fs.writeFileSync(targetFilePath, await wordDocumentBuffer(doc));
 
   const applied = details.filter((e) => e.applied);
   return {
