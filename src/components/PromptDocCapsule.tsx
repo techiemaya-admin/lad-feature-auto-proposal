@@ -16,11 +16,12 @@ import type { Company } from "../types/company";
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
+import { SampleProposalBuilder } from "./SampleProposalBuilder";
 
 interface PromptDocCapsuleProps {
   company: Company;
   isSubmitting?: boolean;
-  onSubmit: (prompt: string, file: File | null) => Promise<void>;
+  onSubmit: (prompt: string, file: File | null, notes?: string[]) => Promise<void>;
   onUnlock: () => Promise<void>;
 }
 
@@ -40,6 +41,21 @@ export const PromptDocCapsule: React.FC<PromptDocCapsuleProps> = ({
 }) => {
   const [promptText, setPromptText] = useState(company.pricing_spec || "");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [sampleOpen, setSampleOpen] = useState(false);
+  const [generatedBrief, setGeneratedBrief] = useState<string | null>(null);
+  const [reviewNotes, setReviewNotes] = useState<string[]>(company.working_state?.sample_review_notes ?? []);
+  const [selectedFileUrl, setSelectedFileUrl] = useState("");
+
+  useEffect(() => {
+    if (!selectedFile) {
+      setSelectedFileUrl("");
+      return;
+    }
+    const url = URL.createObjectURL(selectedFile);
+    setSelectedFileUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [selectedFile]);
+
   const [isDragging, setIsDragging] = useState(false);
   const [showResetModal, setShowResetModal] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
@@ -71,7 +87,12 @@ export const PromptDocCapsule: React.FC<PromptDocCapsuleProps> = ({
   const hasExistingDoc = Boolean(company.document_metadata?.filename);
   const hasDocument = Boolean(selectedFile) || hasExistingDoc;
   const isPromptValid = promptText.trim().length > 0;
-  const canSubmit = isPromptValid && hasDocument && !isSubmitting;
+  const canSubmit =
+    isPromptValid &&
+    hasDocument &&
+    !isSubmitting &&
+    !sampleOpen &&
+    (generatedBrief === null || generatedBrief === promptText);
 
   // Realistic placeholders matching the company's domain
   const getPlaceholder = () => {
@@ -106,6 +127,8 @@ export const PromptDocCapsule: React.FC<PromptDocCapsuleProps> = ({
       const file = e.dataTransfer.files[0];
       if (file.name.toLowerCase().endsWith(".docx")) {
         setSelectedFile(file);
+        setGeneratedBrief(null);
+        setReviewNotes([]);
       } else {
         alert("Please upload a Microsoft Word document (.docx)");
       }
@@ -117,6 +140,8 @@ export const PromptDocCapsule: React.FC<PromptDocCapsuleProps> = ({
       const file = e.target.files[0];
       if (file.name.toLowerCase().endsWith(".docx")) {
         setSelectedFile(file);
+        setGeneratedBrief(null);
+        setReviewNotes([]);
       } else {
         alert("Please upload a Microsoft Word document (.docx)");
       }
@@ -126,6 +151,8 @@ export const PromptDocCapsule: React.FC<PromptDocCapsuleProps> = ({
   const handleClearFile = (e: React.MouseEvent) => {
     e.stopPropagation();
     setSelectedFile(null);
+    setGeneratedBrief(null);
+    setReviewNotes(company.working_state?.sample_review_notes ?? []);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -133,7 +160,7 @@ export const PromptDocCapsule: React.FC<PromptDocCapsuleProps> = ({
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
-    await onSubmit(promptText.trim(), selectedFile);
+    await onSubmit(promptText.trim(), selectedFile, reviewNotes);
   };
 
   const handleConfirmUnlock = async () => {
@@ -180,6 +207,22 @@ export const PromptDocCapsule: React.FC<PromptDocCapsuleProps> = ({
         </CardHeader>
 
         <CardContent className="p-5 pt-3 space-y-3">
+          <p className="text-xs text-muted-foreground">
+            To add custom sections, click Edit / Reset above, regenerate the sample proposal, and choose Add Section.
+          </p>
+          {reviewNotes.length > 0 && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-xs space-y-1.5">
+              <p className="font-semibold text-amber-700 dark:text-amber-400">Information to confirm</p>
+              <ul className="list-disc space-y-1 pl-4 text-foreground/80">
+                {reviewNotes.map((note, i) => (
+                  <li key={i}>{note}</li>
+                ))}
+              </ul>
+              <p className="text-[11px] text-muted-foreground pt-1">
+                These review notes are not included in the Word proposal document.
+              </p>
+            </div>
+          )}
           {/* Document Status Chip */}
           <div className="flex flex-wrap items-center gap-2.5">
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/60 text-xs font-mono text-foreground select-none border border-border/40">
@@ -411,6 +454,36 @@ export const PromptDocCapsule: React.FC<PromptDocCapsuleProps> = ({
           )}
         </div>
       </div>
+
+      {selectedFile && selectedFileUrl && (
+        <p className="pt-2.5 text-xs text-muted-foreground flex items-center gap-1.5">
+          <span>Review before sending:</span>
+          <a
+            className="text-primary underline font-medium hover:text-primary/80 inline-flex items-center gap-1"
+            href={selectedFileUrl}
+            download={selectedFile.name}
+          >
+            <span>Download attached Word document</span>
+          </a>
+        </p>
+      )}
+
+      {company.template_id && (
+        <div className="pt-3">
+          <SampleProposalBuilder
+            key={company.template_id}
+            company={company}
+            pricingBrief={promptText}
+            disabled={isSubmitting}
+            onFile={(file, notes) => {
+              setSelectedFile(file);
+              setGeneratedBrief(promptText);
+              setReviewNotes(notes);
+            }}
+            onOpenChange={setSampleOpen}
+          />
+        </div>
+      )}
     </div>
   );
 };

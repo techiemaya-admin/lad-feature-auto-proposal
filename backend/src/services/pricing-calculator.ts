@@ -1,0 +1,1151 @@
+import { addDays, addMonths, format, isValid, parseISO } from "date-fns";
+
+export interface SampleCalculation {
+  id: string;
+  op: string;
+  value: number;
+  args: string[];
+}
+
+/** Bounded data-only arithmetic for the selected sample, never executable model code. */
+export function calculateSampleValues(steps: SampleCalculation[]): Map<string, number> {
+  if (!Array.isArray(steps) || steps.length > 80) throw new Error("Invalid sample calculations");
+  const values = new Map<string, number>([["zero", 0], ["one", 1], ["hundred", 100], ["months_per_year", 12]]);
+  for (const step of steps) {
+    if (!step || typeof step.id !== "string" || !/^[a-z][a-z0-9_]{0,59}$/.test(step.id) || values.has(step.id)
+      || !Array.isArray(step.args) || step.args.length > 12) throw new Error("Invalid sample calculation");
+    const args = step.args.map(ref => {
+      if (!values.has(ref)) throw new Error("Missing or circular sample calculation reference");
+      return values.get(ref)!;
+    });
+    let value: number;
+    if (step.op === "literal" && args.length === 0) value = step.value;
+    else if (step.op === "add" && args.length) value = args.reduce((a, b) => a + b, 0);
+    else if (step.op === "mul" && args.length) value = args.reduce((a, b) => a * b, 1);
+    else if (step.op === "min" && args.length) value = Math.min(...args);
+    else if (step.op === "max" && args.length) value = Math.max(...args);
+    else if (step.op === "sub" && args.length === 2) value = args[0] - args[1];
+    else if (step.op === "div" && args.length === 2 && args[1] !== 0) value = args[0] / args[1];
+    else throw new Error("Unsupported sample calculation");
+    if (typeof value !== "number" || !Number.isFinite(value) || Math.abs(value) > 1e12) throw new Error("Invalid sample calculation result");
+    values.set(step.id, value);
+  }
+  return values;
+}
+
+/** Illustrative sample arithmetic only; Stage 4 still compiles the business's full rules. */
+export function calculateSampleLine(row: Record<string, unknown>) {
+  const decimal = (key: string, max: number) => {
+    const value = row[key];
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > max
+      || Math.abs(value * 100 - Math.round(value * 100)) > 0.000001) throw new Error(`Invalid ${key}`);
+    return value;
+  };
+  const quantity = decimal("quantity", 10000);
+  if (!Number.isInteger(quantity) || quantity < 1) throw new Error("Invalid quantity");
+  const rateCents = Math.round(decimal("rate", 1000000) * 100);
+  const discountPercent = decimal("discount", 100), taxPercent = decimal("tax", 100);
+  const subtotal = quantity * rateCents;
+  const percentage = (cents: number, percent: number) => Number((BigInt(cents) * BigInt(Math.round(percent * 100)) + 5000n) / 10000n);
+  const discountCents = percentage(subtotal, discountPercent);
+  const net = subtotal - discountCents;
+  const taxCents = percentage(net, taxPercent);
+  return { quantity, rateCents, discountPercent, taxPercent, discountCents, taxCents, totalCents: net + taxCents };
+}
+
+export function roundSampleRate(value: number): number {
+  if (!Number.isFinite(value) || value < 0 || value > 1000000) throw new Error("Invalid sample rate");
+  return Math.round(value * 100) / 100;
+}
+
+export function calculateSampleTotals(lines: { period: string; totalCents: number }[]) {
+  return ["one-time", "monthly", "annual"].flatMap(period => {
+    const group = lines.filter(line => line.period === period);
+    return group.length ? [{ period, totalCents: group.reduce((sum, line) => sum + line.totalCents, 0) }] : [];
+  });
+}
+
+/** Unknown inputs stay unknown; temporary validation defaults are never printed. */
+export function calculatePartialSampleLine(row: Record<string, unknown>) {
+  const checked = calculateSampleLine({ ...row,
+    quantity: row.quantity === null ? 1 : row.quantity,
+    rate: row.rate === null ? 0 : row.rate,
+    discount: row.discount === null ? 0 : row.discount,
+    tax: row.tax === null ? 0 : row.tax,
+  });
+  const complete = [row.quantity, row.rate, row.discount, row.tax].every(value => value !== null);
+  return { quantity: row.quantity === null ? null : checked.quantity,
+    rateCents: row.rate === null ? null : checked.rateCents,
+    discountPercent: row.discount === null ? null : checked.discountPercent,
+    taxPercent: row.tax === null ? null : checked.taxPercent,
+    taxCents: complete ? checked.taxCents : null,
+    totalCents: complete ? checked.totalCents : null };
+}
+
+export function calculatePartialSampleTotals(lines: { period: string; totalCents: number | null }[]) {
+  return [...new Set(lines.map(line => line.period))].map(period => {
+    const group = lines.filter(line => line.period === period);
+    return { period, totalCents: !period || group.some(line => line.totalCents === null)
+      ? null : group.reduce((sum, line) => sum + line.totalCents!, 0) };
+  }).sort((a, b) => ["one-time", "monthly", "annual", ""].indexOf(a.period) - ["one-time", "monthly", "annual", ""].indexOf(b.period));
+}
+import { DEFAULT_DATE_FORMAT, dateFormatOf, hasDay, isDateVariable, sampleDate, writeDate } from "./dates.js";
+import {
+  buildTierMatrixPayload,
+  type TierMatrix,
+} from "./template-mutator.service.js";
+import type {
+  Cell,
+  Cond,
+  Evaluation,
+  Formula,
+  PricingRules,
+  Row,
+  RuleTable,
+  RuleVariable,
+  SampleCheckEntry,
+  Stage2Context,
+  Stage2Variable,
+  Unit,
+  ValidationError,
+  Value,
+  Where,
+} from "./pricing-rules.types.js";
+
+/**
+ * Pure evaluator for PricingRules (docs/plans/05-pricing-engine.md §1).
+ * No I/O, no LLM: the sheet is data, this file is the arithmetic.
+ *
+ * Guarantees: topological evaluation (declaration order breaks ties, so the ledger is stable);
+ * money rounded to cents right after each money variable; percent kept as a fraction; text compares
+ * whitespace-normalised + case-insensitive; a null cell means "unbounded" (+∞) in numeric compares;
+ * a `condition_flag` on a variable is a skip guard (value zeroed, present=false, no review fired);
+ * splits get the rounding remainder on the last row; missing required input / lookup miss / ÷0 /
+ * matching review rule → needs_review, never a silent 0. The first three also mark the value `broken`,
+ * and so is everything computed from it (even through a condition): present=false, printed as BLANK.
+ * A skipped value is not broken — a hidden add-on still leaves its total printed.
+ * Dates are ISO strings built from the reserved input `today` with add_days / add_months; a day count
+ * that is not a whole number breaks the date, never throws.
+ */
+
+const norm = (s: string) =>
+  s
+    .replace(/\u00A0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+/** Half-up to cents. ponytail: no banker's rounding; every benchmark is exact so it never matters here. */
+const cents = (x: number) => Math.round((x + Number.EPSILON) * 100) / 100;
+
+const ZERO: Record<Unit, Value> = {
+  money: 0,
+  percent: 0,
+  integer: 0,
+  text: "",
+  boolean: false,
+  date: null,
+  rows: [],
+};
+
+/** Arithmetic view of a value: booleans count as 1/0, null (unbounded) and text as 0. */
+const num = (v: Value | Cell | Cell[] | undefined): number => {
+  if (typeof v === "number") return v;
+  if (typeof v === "boolean") return v ? 1 : 0;
+  if (typeof v === "string") {
+    const n = Number(v.replace(/[$,%\s]/g, ""));
+    return Number.isNaN(n) ? 0 : n;
+  }
+  return 0;
+};
+
+/** `left <op> right` with the sheet's semantics: null = +∞, text loose, "in" against a list. */
+function compare(
+  left: Value | Cell | undefined,
+  op: string,
+  right: Value | Cell | Cell[] | undefined,
+): boolean {
+  if (op === "in") {
+    const list = Array.isArray(right) ? (right as Cell[]) : [right as Cell];
+    return list.some((r) => compare(left, "eq", r));
+  }
+  if (op === "eq" || op === "neq") {
+    let same: boolean;
+    if (typeof left === "string" || typeof right === "string")
+      same = norm(String(left ?? "")) === norm(String(right ?? ""));
+    else if (typeof left === "boolean" || typeof right === "boolean")
+      same = Boolean(left) === Boolean(right);
+    else same = num(left) === num(right);
+    return op === "eq" ? same : !same;
+  }
+  const l = left === null || left === undefined ? Infinity : num(left);
+  const r = right === null || right === undefined ? Infinity : num(right);
+  switch (op) {
+    case "gte":
+      return l >= r;
+    case "gt":
+      return l > r;
+    case "lte":
+      return l <= r;
+    case "lt":
+      return l < r;
+  }
+  return false;
+}
+
+/** Names a variable depends on (condition_flag ∪ every referenced name; col: refs excluded). */
+export function dependencies(v: RuleVariable): string[] {
+  const out = new Set<string>();
+  if (v.condition_flag) out.add(v.condition_flag);
+  const fromWhere = (w?: (Where | Cond)[]) =>
+    w?.forEach((c) => {
+      if ("var" in c && c.var) out.add(c.var);
+      if (c.value_var) out.add(c.value_var);
+    });
+  const fromFormula = (f: Formula) =>
+    f.args.forEach((a) => {
+      if (typeof a === "string" && !a.startsWith("col:")) out.add(a);
+    });
+  switch (v.kind) {
+    case "lookup":
+      fromWhere(v.where);
+      break;
+    case "formula":
+      fromFormula(v);
+      break;
+    case "condition":
+      fromWhere(v.all);
+      break;
+    case "aggregate":
+      fromWhere(v.where);
+      if (v.selected_var) out.add(v.selected_var);
+      break;
+    case "rows":
+      fromWhere(v.where);
+      if (v.selected_var) out.add(v.selected_var);
+      Object.values(v.map).forEach((m) => {
+        if (typeof m !== "string") fromFormula(m);
+      });
+      break;
+  }
+  out.delete(v.name);
+  return [...out];
+}
+
+/** Kahn's sort; ties go to declaration order so the ledger reads top-down. Leftovers are in a cycle. */
+export function topoOrder(variables: RuleVariable[]): {
+  order: string[];
+  cyclic: string[];
+} {
+  const names = new Set(variables.map((v) => v.name));
+  const deps = new Map(
+    variables.map((v) => [v.name, dependencies(v).filter((d) => names.has(d))]),
+  );
+  const done = new Set<string>();
+  const order: string[] = [];
+  // ponytail: O(n²) scan — a sheet has tens of variables, not thousands.
+  for (;;) {
+    const next = variables.find(
+      (v) => !done.has(v.name) && deps.get(v.name)!.every((d) => done.has(d)),
+    );
+    if (!next) break;
+    done.add(next.name);
+    order.push(next.name);
+  }
+  return {
+    order,
+    cyclic: variables.map((v) => v.name).filter((n) => !done.has(n)),
+  };
+}
+
+const tableOf = (rules: PricingRules, id: string) =>
+  rules.tables.find((t) => t.id === id);
+const columnUnit = (t: RuleTable | undefined, key: string) =>
+  t?.columns.find((c) => c.key === key)?.unit;
+
+/** The choices a choice / multi_choice input accepts: inline options or a table column. */
+export function inputOptions(
+  v: Extract<RuleVariable, { kind: "input" }>,
+  rules: PricingRules,
+): string[] {
+  if (v.options?.length) return v.options;
+  const t = v.options_table ? tableOf(rules, v.options_table) : undefined;
+  return t && v.options_column
+    ? t.rows.map((r) => String(r[v.options_column!] ?? ""))
+    : [];
+}
+
+/** What each table option is, aligned with inputOptions: its row's other text cells ("Standard" → "4-hour response, …"). */
+export function optionNotes(v: Extract<RuleVariable, { kind: "input" }>, rules: PricingRules): string[] {
+  const t = v.options?.length || !v.options_table ? undefined : tableOf(rules, v.options_table);
+  if (!t || !v.options_column) return [];
+  const text = t.columns.filter((c) => c.unit === "text" && c.key !== v.options_column).map((c) => c.key);
+  const name = (r: Record<string, unknown>) => String(r[v.options_column!] ?? "").toLowerCase();
+  // A cell that only restates the option ("Copywriting add-on" for "Copywriting") says nothing about it.
+  return t.rows.map((r) => text.map((k) => String(r[k] ?? "")).filter((x) => x && !x.toLowerCase().includes(name(r))).join("; "));
+}
+
+/** A lead's answer, coerced by input type; choices are canonicalised to the option's own spelling. */
+function coerceInput(
+  v: Extract<RuleVariable, { kind: "input" }>,
+  raw: Value | undefined,
+  rules: PricingRules,
+): Value | undefined {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  const canon = (s: string) =>
+    inputOptions(v, rules).find((o) => norm(o) === norm(s));
+  switch (v.input_type) {
+    case "integer":
+      return Math.round(num(raw));
+    case "boolean":
+      return typeof raw === "string"
+        ? /^(true|yes|1)$/i.test(raw)
+        : Boolean(raw);
+    case "region":
+    case "choice":
+      // A region is open: no match means the lead is somewhere the seller's table does not list,
+      // which is a real answer (often "not taxed here"), so their own words are kept.
+      return canon(String(raw).trim()) ?? String(raw).trim();
+    case "multi_choice":
+      return (Array.isArray(raw) ? raw : [raw]).map(
+        (x) => canon(String(x)) ?? String(x),
+      );
+  }
+}
+
+export function evaluate(
+  rules: PricingRules,
+  inputs: Record<string, Value>,
+): Evaluation {
+  // `today` is reserved: supplied by the caller like any input, never defined by the sheet.
+  const values: Record<string, Value> = { today: inputs.today ?? null };
+  const present: Record<string, boolean> = {};
+  const broken: Record<string, boolean> = {};
+  const needs_review: Evaluation["needs_review"] = [];
+  const review = (reason: string, source: string) => {
+    needs_review.push({ reason, source });
+    broken[source] = true;
+  };
+  const { order } = topoOrder(rules.variables);
+  const byName = new Map(rules.variables.map((v) => [v.name, v]));
+
+  const resolveRight = (c: Where | Cond) =>
+    c.value_var ? values[c.value_var] : c.op === "in" ? c.values : c.value;
+  const rowMatches = (row: Row, where?: Where[]) =>
+    (where ?? []).every((w) => compare(row[w.column], w.op, resolveRight(w)));
+  const holds = (conds: Cond[]) =>
+    conds.every((c) => compare(values[c.var], c.op, resolveRight(c)));
+
+  /** Rows of a table: all (optionally filtered) or the ones whose key_column matches the selected choice(s). */
+  const selectRows = (
+    v: Extract<RuleVariable, { kind: "aggregate" | "rows" }>,
+  ): Row[] => {
+    const t = tableOf(rules, v.table);
+    if (!t) return [];
+    let rows = t.rows.filter((r) => rowMatches(r, v.where));
+    if (v.rows === "selected") {
+      const sel = v.selected_var ? values[v.selected_var] : undefined;
+      const chosen = (Array.isArray(sel) ? sel : [sel]).filter(
+        (x) => x !== undefined && x !== "",
+      ) as Cell[];
+      rows = rows.filter((r) =>
+        chosen.some((c) => compare(r[v.key_column], "eq", c)),
+      );
+    }
+    return rows;
+  };
+
+  const formula = (f: Formula, name: string, row?: Row): number | string | undefined => {
+    if (f.op === "add_days" || f.op === "add_months") {
+      const [date, n] = f.args.map((a) => (typeof a === "number" ? a : values[a]));
+      if (typeof date !== "string") {
+        if (!broken[name]) review(`${name}: no date to count from (${f.args[0]} is not set)`, name);
+        return undefined;
+      }
+      if (typeof n !== "number" || !Number.isInteger(n)) {
+        review(`${name}: ${f.args[1]} is not a whole number of ${f.op === "add_days" ? "days" : "months"}`, name);
+        return undefined;
+      }
+      // addMonths clamps month ends: Jan 31 + 1 month = Feb 28.
+      return format((f.op === "add_days" ? addDays : addMonths)(parseISO(date), n), "yyyy-MM-dd");
+    }
+    const args = f.args.map((a) =>
+      typeof a === "number"
+        ? a
+        : a.startsWith("col:")
+          ? num(row?.[a.slice(4)])
+          : num(values[a]),
+    );
+    switch (f.op) {
+      case "add":
+        return args.reduce((s, x) => s + x, 0);
+      case "mul":
+        return args.reduce((s, x) => s * x, 1);
+      case "min":
+        return Math.min(...args);
+      case "max":
+        return Math.max(...args);
+      case "sub":
+        return args[0] - args[1];
+      case "div":
+        if (args[1] === 0) {
+          review(`${name}: division by zero`, name);
+          return undefined;
+        }
+        return args[0] / args[1];
+    }
+  };
+
+  for (const name of order) {
+    const v = byName.get(name)!;
+    let value: Value | undefined;
+    let isPresent = true;
+    if (dependencies(v).some((d) => broken[d])) broken[name] = true;
+
+    if (v.condition_flag && !values[v.condition_flag]) {
+      values[name] = ZERO[v.unit];
+      present[name] = false;
+      continue;
+    }
+
+    switch (v.kind) {
+      case "input":
+        value = coerceInput(v, inputs[name], rules);
+        if (value === undefined) {
+          if (v.required)
+            review(`${v.label || name} is required but was not provided`, name);
+          isPresent = false;
+        }
+        break;
+      case "constant":
+        value = v.value;
+        break;
+      case "lookup": {
+        const t = tableOf(rules, v.table);
+        const row = t?.rows.find((r) => rowMatches(r, v.where));
+        if (row) value = row[v.take];
+        else if (v.fallback !== undefined) value = v.fallback;
+        else {
+          review(
+            `${v.label || name}: no row in ${t?.label ?? v.table} matches`,
+            name,
+          );
+          isPresent = false;
+        }
+        break;
+      }
+      case "formula":
+        value = formula(v, name);
+        if (value === undefined) isPresent = false;
+        break;
+      case "condition":
+        value = holds(v.all);
+        break;
+      case "aggregate": {
+        const rows = selectRows(v);
+        value =
+          v.fn === "count"
+            ? rows.length
+            : rows.reduce((s, r) => s + num(r[v.column ?? ""]), 0);
+        break;
+      }
+      case "rows": {
+        const t = tableOf(rules, v.table);
+        const rows = selectRows(v).map((r) => {
+          const out: Row = {};
+          for (const [tag, m] of Object.entries(v.map)) {
+            if (typeof m === "string") out[tag] = r[m] ?? null;
+            else {
+              const x = formula(m, name, r);
+              out[tag] = x === undefined ? null : cents(num(x));
+            }
+          }
+          return out;
+        });
+        // A split must add up to its total: the last row absorbs the cents lost to rounding.
+        if (t?.kind === "splits" && rows.length) {
+          for (const [tag, m] of Object.entries(v.map)) {
+            if (typeof m === "string" || m.op !== "mul") continue;
+            const totalVar = m.args.find(
+              (a): a is string =>
+                typeof a === "string" && !a.startsWith("col:"),
+            );
+            if (!totalVar) continue;
+            const total = cents(num(values[totalVar]));
+            const sum = cents(rows.reduce((s, r) => s + num(r[tag]), 0));
+            const last = rows[rows.length - 1];
+            last[tag] = cents(num(last[tag]) + (total - sum));
+          }
+        }
+        value = rows;
+        break;
+      }
+    }
+
+    if (value === undefined || value === null) {
+      values[name] = value === null ? null : ZERO[v.unit];
+    } else if (v.unit === "money" && typeof value !== "object") {
+      values[name] = cents(num(value));
+    } else if (v.unit === "integer" && typeof value !== "object") {
+      values[name] = Math.round(num(value));
+    } else {
+      values[name] = value;
+    }
+    present[name] = isPresent && !broken[name];
+  }
+
+  for (const r of rules.review_rules)
+    if (holds(r.when)) needs_review.push({ reason: r.reason, source: "review_rules" }); // flags, blanks nothing
+
+  return { values, present, broken, needs_review, order };
+}
+
+// ---------------------------------------------------------------------------
+// Formatting: values are written back in the quotation's own notation.
+// ---------------------------------------------------------------------------
+
+const SAMPLE_NUMBER = /^(.*?)(\d[\d,]*(?:\.(\d+))?)(.*)$/s;
+
+// Seen live: the quotation says "two clinic locations", so the sample is a word and the check
+// failed forever on "computed 2, quotation says two". Read and write small counts the same way.
+const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
+const numberWord = (sample: string): number | null => {
+  const i = NUMBER_WORDS.indexOf((sample ?? "").trim().toLowerCase());
+  return i < 0 ? null : i;
+};
+
+const fixed = (v: number, d: number, grouping: boolean) =>
+  v.toLocaleString("en-US", {
+    minimumFractionDigits: d,
+    maximumFractionDigits: d,
+    useGrouping: grouping,
+  });
+
+/** Render `value` the way `sample` is written: "$3,000/mo" → "$", thousands, 0 dp, "/mo"; "8.25%" → ×100, 2 dp. */
+export function formatLike(
+  sample: string,
+  value: Value | Cell | undefined,
+): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return "";
+  if (numberWord(sample) !== null && Number.isInteger(value) && value >= 0 && value < NUMBER_WORDS.length) {
+    const w = NUMBER_WORDS[value];
+    return /^[A-Z]/.test(sample.trim()) ? w[0].toUpperCase() + w.slice(1) : w;
+  }
+  const m = SAMPLE_NUMBER.exec(sample ?? "");
+  if (!m) return String(value);
+  const [, pre, numStr, frac = "", post] = m;
+  const percent = post.trimStart().startsWith("%");
+  const v = percent ? value * 100 : value;
+  // Keep the sample's decimals unless they would lose precision ("10%" vs 8.25%), then the fewest that don't (≤ 4).
+  let decimals = frac.length;
+  while (decimals < 4 && Math.abs(Number(v.toFixed(decimals)) - v) > 1e-9)
+    decimals++;
+  return `${pre}${fixed(v, decimals, numStr.includes(","))}${post}`;
+}
+
+/** Inverse of formatLike for the sample check: "$36,000.00" → 36000, "8.25%" → 0.0825, "two" → 2, "Growth" → null. */
+export function parseSampleNumber(sample: string): number | null {
+  const m = SAMPLE_NUMBER.exec(sample ?? "");
+  if (!m) return numberWord(sample);
+  const n = Number(m[2].replace(/,/g, ""));
+  if (Number.isNaN(n)) return null;
+  return m[4].trimStart().startsWith("%") ? n / 100 : n;
+}
+
+/** A date value in its document's own style (the Stage 2 format once it passes the check). */
+const printDate = (value: Value | undefined, s?: Stage2Variable): string =>
+  typeof value === "string" && value ? writeDate(value, s ? dateFormatOf(s) : DEFAULT_DATE_FORMAT) : "";
+
+/**
+ * The sample's `today`: the sample date of the variable defined as add_days(today, 0), so the sample
+ * check is anchored where the sheet says the proposal is dated.
+ */
+export function sampleToday(rules: PricingRules, stage2: Stage2Context): string | undefined {
+  const s2 = new Map(stage2.variables.map((v) => [v.variable_name, v]));
+  const anchor = rules.variables.find((v) => v.kind === "formula" && v.op === "add_days" && v.args[0] === "today" && v.args[1] === 0);
+  const own = anchor && s2.get(anchor.name) ? sampleDate(s2.get(anchor.name)!) : null;
+  if (own) return own;
+  // ponytail: no such date → the earliest readable day-precision sample. A template whose earliest date is
+  // before the proposal date ("RFP received Aug 30") needs the proposal date defined as add_days(today, 0).
+  return stage2.variables
+    .filter((v) => isDateVariable(v) && hasDay(dateFormatOf(v)))
+    .map(sampleDate)
+    .filter((d): d is string => d !== null)
+    .sort()[0];
+}
+
+/** Default notation for cells that have no sample to imitate (loop rows). */
+const formatUnit = (unit: string, value: Cell): string => {
+  if (value === null || value === undefined) return "";
+  if (unit === "money") return `$${fixed(num(value), 2, true)}`;
+  if (unit === "percent") return formatLike("0%", num(value));
+  if (unit === "boolean") return value ? "Yes" : "No";
+  return String(value);
+};
+
+/**
+ * Per-variable ✓/✗ against the sample quotation: every document variable must reproduce its
+ * Stage 2 sample under `sample_inputs`, every flag must hold, every loop must have the sample's row count.
+ */
+export function sampleCheck(
+  rules: PricingRules,
+  evaluation: Evaluation,
+  stage2: Stage2Context,
+): SampleCheckEntry[] {
+  const out: SampleCheckEntry[] = [];
+  const s2 = new Map(stage2.variables.map((v) => [v.variable_name, v]));
+  const byName = new Map(rules.variables.map((v) => [v.name, v]));
+  const { values, present } = evaluation;
+
+  for (const name of evaluation.order) {
+    const v = byName.get(name)!;
+    const s = s2.get(name);
+    if (!v.in_document || !s || v.unit === "rows") continue;
+    // An unreadable date sample ("TBC") has nothing to check against; Variable Review already warns on it.
+    if (v.unit === "date" && sampleDate(s) === null) continue;
+    const value = values[name];
+    const expected = s.sample_value;
+    // A date is compared as it prints, so it is checked at the precision its document shows (a day, or a month).
+    const computed = v.unit === "date" ? printDate(value, s) : formatLike(expected, value);
+    let ok: boolean;
+    const target = parseSampleNumber(expected);
+    if (v.unit === "date") {
+      ok = computed === expected.trim();
+    } else if (
+      (v.unit === "money" || v.unit === "percent" || v.unit === "integer") &&
+      target !== null &&
+      typeof value === "number"
+    ) {
+      ok =
+        Math.abs(value - target) <=
+        (v.unit === "money" ? 0.005 : v.unit === "percent" ? 1e-6 : 0);
+    } else {
+      ok = norm(computed) === norm(expected);
+    }
+    const entry: SampleCheckEntry = { name, computed, expected, ok };
+    if (!present[name]) {
+      entry.ok = false;
+      entry.note = v.condition_flag
+        ? `hidden: ${v.condition_flag} is false under the sample inputs`
+        : "not computed under the sample inputs";
+    }
+    out.push(entry);
+  }
+
+  for (const s of stage2.variables) {
+    if (s.category === "pricing" && !byName.has(s.variable_name))
+      out.push({
+        name: s.variable_name,
+        computed: "—",
+        expected: s.sample_value,
+        ok: false,
+        note: "no definition",
+      });
+  }
+  for (const flag of new Set(
+    stage2.variables
+      .map((v) => v.condition_flag)
+      .filter((f): f is string => Boolean(f)),
+  )) {
+    const holds = values[flag] === true;
+    out.push({
+      name: flag,
+      computed: String(values[flag] ?? "—"),
+      expected: "true",
+      ok: holds,
+      note: holds ? undefined : "this flag must be true for the sample lead",
+    });
+  }
+  for (const loop of stage2.loop_tables) {
+    const rows = values[loop.loop_tag];
+    const n = Array.isArray(rows) ? rows.length : 0;
+    out.push({
+      name: loop.loop_tag,
+      computed: `${n} rows`,
+      expected: `${loop.row_labels.length} rows`,
+      ok: n === loop.row_labels.length,
+    });
+  }
+  return out;
+}
+
+/** Printed where a broken value would go: visible in the PDF, searchable in Word, never $0.00. */
+export const BLANK = "[to confirm]";
+
+/**
+ * What Stage 5 hands to easy-template-x: document variables in the quotation's notation (""
+ * when hidden, BLANK when broken), loops as formatted row arrays, every condition as a boolean
+ * (a broken one is false), plus the tier matrix.
+ */
+export function buildProposalPayload(
+  rules: PricingRules,
+  evaluation: Evaluation,
+  stage2: Stage2Context,
+  tierMatrix?: TierMatrix,
+): Record<string, string | boolean | Row[]> {
+  const payload: Record<string, string | boolean | Row[]> = {};
+  const s2 = new Map(stage2.variables.map((v) => [v.variable_name, v]));
+  const { values, present, broken } = evaluation;
+
+  for (const v of rules.variables) {
+    const value = values[v.name];
+    if (v.kind === "condition") {
+      payload[v.name] = value === true && !broken[v.name];
+    } else if (v.kind === "rows") {
+      const t = tableOf(rules, v.table);
+      payload[v.name] = (Array.isArray(value) ? (value as Row[]) : []).map(
+        (row) => {
+          const out: Row = {};
+          for (const [tag, m] of Object.entries(v.map))
+            out[tag] = broken[v.name] && typeof m !== "string" ? BLANK : formatUnit(
+              typeof m === "string" ? (columnUnit(t, m) ?? "text") : "money",
+              row[tag] ?? null,
+            );
+          return out;
+        },
+      );
+    } else if (v.in_document) {
+      const sample = s2.get(v.name)?.sample_value;
+      payload[v.name] = broken[v.name]
+        ? BLANK
+        : !present[v.name]
+        ? ""
+        : v.unit === "date"
+          ? printDate(value, s2.get(v.name))
+          : sample !== undefined
+          ? formatLike(sample, value)
+          : formatUnit(v.unit, value as Cell);
+    }
+  }
+  if (tierMatrix)
+    Object.assign(
+      payload,
+      buildTierMatrixPayload(
+        tierMatrix,
+        String(values[tierMatrix.selector] ?? ""),
+      ),
+    );
+  return payload;
+}
+
+const IDENT = /^[a-z][a-z0-9_]*$/;
+const UNITS = new Set([
+  "money",
+  "percent",
+  "integer",
+  "text",
+  "boolean",
+  "date",
+  "rows",
+]);
+const NUMERIC_UNITS = new Set(["money", "percent", "integer"]);
+const OPS = new Set(["eq", "neq", "gte", "lte", "gt", "lt", "in"]);
+const INPUT_TYPES = new Set(["integer", "choice", "multi_choice", "boolean", "region"]);
+const DATE_OPS = new Set(["add_days", "add_months"]);
+const FORMULA_OPS = new Set(["add", "sub", "mul", "div", "min", "max", ...DATE_OPS]);
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Structural + domain checks. Every message names the variable and what is wrong, so the
+ * compiler can hand the list straight back to the model and the deck can show it inline.
+ */
+export function validate(
+  rules: PricingRules,
+  stage2: Stage2Context,
+): ValidationError[] {
+  const errors: ValidationError[] = [];
+  const err = (path: string, message: string) => errors.push({ path, message });
+  const tables = new Map<string, RuleTable>();
+  const vars = new Map<string, RuleVariable>();
+
+  (rules.tables ?? []).forEach((t, i) => {
+    const p = `tables[${i}]`;
+    if (!t.id || !IDENT.test(t.id))
+      err(`${p}.id`, `table id "${t.id}" must be a snake_case identifier`);
+    if (tables.has(t.id)) err(`${p}.id`, `duplicate table id "${t.id}"`);
+    tables.set(t.id, t);
+    const keys = new Set<string>();
+    (t.columns ?? []).forEach((c, j) => {
+      if (!c.key || !IDENT.test(c.key))
+        err(
+          `${p}.columns[${j}].key`,
+          `column key "${c.key}" in table "${t.id}" must be a snake_case identifier`,
+        );
+      if (keys.has(c.key))
+        err(
+          `${p}.columns[${j}].key`,
+          `duplicate column key "${c.key}" in table "${t.id}"`,
+        );
+      keys.add(c.key);
+      if ((c.unit as string) === "date")
+        err(`${p}.columns[${j}].unit`, `column "${c.key}" in table "${t.id}": a table cell cannot be a date — build dates with add_days / add_months`);
+      else if (!UNITS.has(c.unit) || (c.unit as string) === "rows")
+        err(
+          `${p}.columns[${j}].unit`,
+          `column "${c.key}" in table "${t.id}" has unknown unit "${c.unit}"`,
+        );
+    });
+  });
+
+  (rules.variables ?? []).forEach((v, i) => {
+    const p = `variables[${i}]`;
+    if (!v.name || !IDENT.test(v.name))
+      err(
+        `${p}.name`,
+        `variable name "${v.name}" must be a snake_case identifier`,
+      );
+    if (vars.has(v.name))
+      err(`${p}.name`, `duplicate variable name "${v.name}"`);
+    if (v.name === "today")
+      err(`${p}.name`, `"today" is reserved — the engine supplies it; build the proposal date as add_days(today, 0)`);
+    vars.set(v.name, v);
+    if (!UNITS.has(v.unit))
+      err(`${p}.unit`, `${v.name}: unknown unit "${v.unit}"`);
+  });
+
+  const column = (
+    p: string,
+    v: RuleVariable,
+    tableId: string,
+    key: string | undefined,
+    what: string,
+  ) => {
+    const t = tables.get(tableId);
+    if (t && key !== undefined && !t.columns.some((c) => c.key === key))
+      err(
+        p,
+        `${v.name}: ${what} column "${key}" does not exist in table "${tableId}"`,
+      );
+  };
+  const table = (p: string, v: RuleVariable, id: string) => {
+    if (!tables.get(id)) err(p, `${v.name}: table "${id}" does not exist`);
+    return tables.get(id);
+  };
+  /** A date (or `today`) — usable only inside add_days / add_months. */
+  const isDate = (name: string) => name === "today" || vars.get(name)?.unit === "date";
+  // num("2026-10-02") is 0, so a date in number maths or a comparison would print a plausible figure with no error.
+  const notInMaths = (p: string, v: RuleVariable, name: string) =>
+    err(p, `${v.name}: "${name}" is a date — a date only goes into add_days / add_months, never into number maths or a comparison`);
+  const ref = (p: string, v: RuleVariable, name: string) => {
+    if (!vars.has(name))
+      err(p, `${v.name}: refers to "${name}", which is not a defined variable`);
+  };
+  const conds = (
+    p: string,
+    v: RuleVariable,
+    list: (Where | Cond)[] | undefined,
+    tableId?: string,
+  ) =>
+    (list ?? []).forEach((c, j) => {
+      const cp = `${p}[${j}]`;
+      if (!OPS.has(c.op))
+        err(`${cp}.op`, `${v.name}: unknown operator "${c.op}"`);
+      if ("var" in c && c.var !== undefined) {
+        if (isDate(c.var)) notInMaths(`${cp}.var`, v, c.var);
+        else ref(`${cp}.var`, v, c.var);
+      }
+      if ("column" in c && tableId)
+        column(`${cp}.column`, v, tableId, c.column, "filter");
+      if (c.value_var) {
+        if (isDate(c.value_var)) notInMaths(`${cp}.value_var`, v, c.value_var);
+        else ref(`${cp}.value_var`, v, c.value_var);
+        // Seen live: a region input compared against a column holding a different spelling of the same
+        // place ("TX" vs "Texas"), so no row ever matches. An input that declares where its answers come
+        // from is comparable by construction; it just has to be pointed at that same column.
+        const src = vars.get(c.value_var);
+        if (src?.kind === "input" && src.input_type === "region" && "column" in c && src.options_table && (src.options_table !== tableId || src.options_column !== c.column))
+          err(`${cp}.column`, `${v.name}: "${c.value_var}" is answered from ${src.options_table}.${src.options_column} but compared against ${tableId}.${c.column} — compare the column its answers come from`);
+      } else if (c.op === "in" && !Array.isArray(c.values))
+        err(`${cp}.values`, `${v.name}: "in" needs a values list`);
+      else if (c.op !== "in" && c.value === undefined)
+        err(`${cp}.value`, `${v.name}: comparison needs a value or value_var`);
+      else if ("var" in c) {
+        // Seen live on co3: the $22,000 scoping review compared selected_tier to "Custom Web App" by name, so
+        // renaming that row on the deck would switch the safety rule off with no error. A literal compared to a
+        // choice must be one of its options — the deck save then fails loudly instead.
+        const src = vars.get(c.var);
+        const opts = src?.kind === "input" && (src.input_type === "choice" || src.input_type === "region") ? inputOptions(src, rules) : [];
+        const bad = (c.op === "in" ? c.values ?? [] : [c.value]).filter((x) => opts.length && !opts.some((o) => norm(o) === norm(String(x))));
+        if (bad.length)
+          err(`${cp}.value`, `${v.name}: ${c.var} is compared to ${bad.map((x) => JSON.stringify(x)).join(", ")}, which is not one of its options (${opts.join(", ")}) — this test can never be true`);
+      }
+    });
+  const formula = (
+    p: string,
+    v: RuleVariable,
+    f: Formula,
+    allowCol: string | undefined,
+  ) => {
+    if (!FORMULA_OPS.has(f.op))
+      err(`${p}.op`, `${v.name}: unknown formula op "${f.op}"`);
+    const n = f.args?.length ?? 0;
+    if (DATE_OPS.has(f.op)) {
+      const [date, count] = f.args ?? [];
+      if (allowCol) err(`${p}.op`, `${v.name}: "${f.op}" cannot be used inside a rows map`);
+      if (n !== 2) return err(`${p}.args`, `${v.name}: "${f.op}" takes exactly 2 arguments (a date, a whole number), got ${n}`);
+      if (typeof date !== "string" || !isDate(date))
+        err(`${p}.args[0]`, `${v.name}: "${f.op}" counts from a date variable or today, not ${JSON.stringify(date)}`);
+      if (typeof count === "number") {
+        if (!Number.isInteger(count)) err(`${p}.args[1]`, `${v.name}: ${count} is not a whole number`);
+      } else if (!vars.has(count)) ref(`${p}.args[1]`, v, count);
+      else if (vars.get(count)!.unit !== "integer")
+        err(`${p}.args[1]`, `${v.name}: "${count}" must be a whole number (unit integer), it is ${vars.get(count)!.unit}`);
+      return;
+    }
+    if ((f.op === "sub" || f.op === "div") && n !== 2)
+      err(
+        `${p}.args`,
+        `${v.name}: "${f.op}" takes exactly 2 arguments, got ${n}`,
+      );
+    else if (n < 1)
+      err(`${p}.args`, `${v.name}: "${f.op}" needs at least one argument`);
+    const units = new Map<string, string>();
+    (f.args ?? []).forEach((a, j) => {
+      if (typeof a === "number") return; // a bare number carries no unit, so it fits anywhere
+      if (a.startsWith("col:")) {
+        if (!allowCol)
+          err(
+            `${p}.args[${j}]`,
+            `${v.name}: "col:" references are only allowed inside a rows map`,
+          );
+        else {
+          column(`${p}.args[${j}]`, v, allowCol, a.slice(4), "map");
+          const cu = columnUnit(tables.get(allowCol), a.slice(4));
+          if (cu) units.set(`the row's ${a.slice(4)}`, cu);
+        }
+        return;
+      }
+      if (isDate(a)) return notInMaths(`${p}.args[${j}]`, v, a);
+      ref(`${p}.args[${j}]`, v, a);
+      const u = vars.get(a)?.unit;
+      if (u === "text" || u === "rows")
+        err(`${p}.args[${j}]`, `${v.name}: "${a}" is ${u}, not a number`);
+      else if (u) units.set(a, u);
+    });
+    // Adding money to a percentage is not a number, it is a category error, and it computes a plausible
+    // figure that nothing else catches. Seen live on co3: a rush add-on priced at 20% of base sat in the
+    // add-ons table beside fixed fees, and the loop's amount was add(col:amount, col:percent_of_base) —
+    // so the proposal printed "$0.20" for a $1,900 line. Scaling ops (mul/div) mix units by design.
+    if (f.op === "add" || f.op === "sub" || f.op === "min" || f.op === "max") {
+      const kinds = [...new Set(units.values())];
+      if (kinds.length > 1)
+        err(
+          `${p}.args`,
+          `${v.name}: "${f.op}" mixes ${kinds.join(" and ")} — ${[...units].map(([n, u]) => `${n} is ${u}`).join(", ")}. Convert first (a percentage becomes money by multiplying what it is a percentage of), then add.`,
+        );
+    }
+  };
+
+  (rules.variables ?? []).forEach((v, i) => {
+    const p = `variables[${i}]`;
+    const dateOp = v.kind === "formula" && DATE_OPS.has(v.op);
+    if (v.unit === "date" && !dateOp && v.kind !== "constant")
+      err(`${p}.kind`, `${v.name}: a date is built with add_days / add_months (or set as a fixed date) — never ${v.kind === "input" ? "asked from the lead" : `a ${v.kind}`}`);
+    else if (dateOp && v.unit !== "date")
+      err(`${p}.unit`, `${v.name}: "${(v as Formula).op}" gives a date, so the unit must be "date"`);
+    else if (v.unit === "date" && v.kind === "constant" && !(typeof v.value === "string" && ISO_DATE.test(v.value) && isValid(parseISO(v.value))))
+      err(`${p}.value`, `${v.name}: a fixed date must be written YYYY-MM-DD, not ${JSON.stringify(v.value)}`);
+    if (v.condition_flag) {
+      const f = vars.get(v.condition_flag);
+      if (!f)
+        err(
+          `${p}.condition_flag`,
+          `${v.name}: condition_flag "${v.condition_flag}" is not a defined variable`,
+        );
+      else if (f.kind !== "condition")
+        err(
+          `${p}.condition_flag`,
+          `${v.name}: condition_flag "${v.condition_flag}" is not a condition variable`,
+        );
+    }
+    switch (v.kind) {
+      case "input":
+        // Seen live: the model makes client_name / proposal dates "text" inputs. Names are Stage 5's facts; dates are the sheet's, built from today.
+        if (!INPUT_TYPES.has(v.input_type))
+          err(
+            `${p}.input_type`,
+            `${v.name}: input_type "${v.input_type}" is not one of integer | choice | multi_choice | boolean | region — names and free text are not lead inputs (remove the variable), and a date is never one (define it with unit "date" as add_days(today, N))`,
+          );
+        // A region declares where its answers come from for the same reason a choice does: it is the only
+        // thing that makes the lead's words and the table's column comparable. It differs from a choice in
+        // what happens OFF the list — a region may match nothing (an untaxed buyer), a choice may not.
+        if (v.input_type === "choice" || v.input_type === "multi_choice" || v.input_type === "region") {
+          if (v.options_table) {
+            table(`${p}.options_table`, v, v.options_table);
+            column(
+              `${p}.options_column`,
+              v,
+              v.options_table,
+              v.options_column ?? "",
+              "options",
+            );
+          } else if (!v.options?.length)
+            err(
+              `${p}.options`,
+              `${v.name}: a ${v.input_type} input needs options or an options_table + options_column`,
+            );
+        }
+        if (v.default !== undefined) {
+          // The default is fed to the calculator untouched by the model, so it must already be a clean answer.
+          const d = coerceInput(v, v.default, rules);
+          const opts = inputOptions(v, rules);
+          const listed = (x: unknown) => opts.some((o) => norm(o) === norm(String(x)));
+          // Never guess an answer that feeds tax: a wrong tax figure is a legal error in a document the
+          // client signs. Keyed on what the input DOES — any kind of read of a taxes table — not on where
+          // the seller happens to trade. A seller-set lookup `fallback` is the sanctioned way to cover a
+          // buyer the table does not list: that is the seller stating their own policy, not a guess.
+          const taxRead = (rules.variables ?? []).some((x) => "table" in x && tables.get(x.table)?.kind === "taxes" && (x.where ?? []).some((w) => w.value_var === v.name));
+          const bad =
+            taxRead ? true
+            : v.input_type === "integer" ? typeof v.default !== "number"
+            : v.input_type === "boolean" ? typeof v.default !== "boolean"
+            : v.input_type === "choice" || v.input_type === "region" ? !listed(d)
+            : !Array.isArray(d) || d.length === 0 || !d.every(listed);
+          if (bad)
+            err(
+              `${p}.default`,
+              taxRead
+                ? `${v.name}: tax is worked out from this — it is never assumed, the lead must say it (to cover a buyer your table does not list, set a fallback on the tax lookup instead)`
+                : `${v.name}: default ${JSON.stringify(v.default)} is not a valid ${v.input_type} answer${opts.length ? ` (one of ${opts.join(" | ")})` : ""}`,
+            );
+        }
+        break;
+      case "constant":
+        break;
+      case "lookup":
+        if (table(`${p}.table`, v, v.table)) {
+          conds(`${p}.where`, v, v.where, v.table);
+          column(`${p}.take`, v, v.table, v.take, "take");
+        }
+        if (v.fallback !== undefined && NUMERIC_UNITS.has(v.unit) && typeof v.fallback !== "number")
+          err(`${p}.fallback`, `${v.name}: the fallback used when no row matches must be a ${v.unit} value, not ${JSON.stringify(v.fallback)}`);
+        break;
+      case "formula":
+        formula(p, v, v, undefined);
+        break;
+      case "condition":
+        conds(`${p}.all`, v, v.all);
+        break;
+      case "aggregate":
+      case "rows": {
+        const t = table(`${p}.table`, v, v.table);
+        if (!t) break;
+        conds(`${p}.where`, v, v.where, v.table);
+        // key_column only matters when rows are picked by the lead; models leave it "" for rows: "all".
+        if (v.rows === "selected" || v.key_column)
+          column(`${p}.key_column`, v, v.table, v.key_column, "key");
+        if (v.rows === "selected") {
+          const s = v.selected_var ? vars.get(v.selected_var) : undefined;
+          if (!v.selected_var)
+            err(
+              `${p}.selected_var`,
+              `${v.name}: rows "selected" needs a selected_var`,
+            );
+          else if (!s) ref(`${p}.selected_var`, v, v.selected_var);
+          else if (
+            s.kind !== "input" ||
+            !["choice", "multi_choice"].includes(s.input_type)
+          )
+            err(
+              `${p}.selected_var`,
+              `${v.name}: selected_var "${v.selected_var}" must be a choice or multi_choice input`,
+            );
+        }
+        if (v.kind === "aggregate") {
+          if (v.fn === "sum") {
+            if (!v.column) err(`${p}.column`, `${v.name}: sum needs a column`);
+            else column(`${p}.column`, v, v.table, v.column, "sum");
+          } else if (v.fn !== "count")
+            err(`${p}.fn`, `${v.name}: unknown aggregate "${v.fn}"`);
+        } else {
+          Object.entries(v.map ?? {}).forEach(([tag, m]) => {
+            if (typeof m === "string")
+              column(`${p}.map.${tag}`, v, v.table, m, "map");
+            else formula(`${p}.map.${tag}`, v, m, v.table);
+          });
+        }
+        break;
+      }
+      default:
+        err(
+          `${p}.kind`,
+          `${(v as RuleVariable).name}: unknown kind "${(v as RuleVariable).kind}"`,
+        );
+    }
+  });
+
+  (rules.review_rules ?? []).forEach((r, i) =>
+    conds(
+      `review_rules[${i}].when`,
+      { name: "review rule" } as RuleVariable,
+      r.when,
+    ),
+  );
+
+  const { cyclic } = topoOrder(rules.variables ?? []);
+  if (cyclic.length) {
+    const i = rules.variables.findIndex((v) => v.name === cyclic[0]);
+    err(
+      `variables[${i}]`,
+      `circular definition: ${cyclic.join(", ")} cannot be computed because they depend on each other (directly or through one another)`,
+    );
+  }
+
+  // The sheet must cover the document: every Stage 2 pricing cell, flag, and loop.
+  const s2 = stage2.variables.filter((v) => v.category !== "table_loop");
+  for (const v of s2) {
+    if (v.category !== "pricing") continue;
+    const d = vars.get(v.variable_name);
+    if (!d)
+      err(
+        "variables",
+        `${v.variable_name}: this document variable has no definition`,
+      );
+    else if (!d.in_document)
+      err(
+        `variables[${rules.variables.indexOf(d)}].in_document`,
+        `${v.variable_name} is in the document and must have in_document: true`,
+      );
+  }
+  // Every document date is a sheet value too: Stage 5 has no other source for it.
+  for (const v of s2.filter(isDateVariable)) {
+    const d = vars.get(v.variable_name);
+    if (!d || d.unit !== "date")
+      err(
+        d ? `variables[${rules.variables.indexOf(d)}].unit` : "variables",
+        `${v.variable_name}: this document date must be defined with unit "date" (from today: add_days(today, N) / add_months(…))`,
+      );
+    else if (!d.in_document)
+      err(`variables[${rules.variables.indexOf(d)}].in_document`, `${v.variable_name} is in the document and must have in_document: true`);
+  }
+  for (const flag of new Set(
+    s2.map((v) => v.condition_flag).filter((f): f is string => Boolean(f)),
+  )) {
+    const d = vars.get(flag);
+    if (!d || d.kind !== "condition")
+      err(
+        "variables",
+        `${flag}: this document flag must be defined as a condition variable`,
+      );
+  }
+  for (const loop of stage2.loop_tables) {
+    const d = vars.get(loop.loop_tag);
+    if (!d || d.kind !== "rows") {
+      err(
+        "variables",
+        `${loop.loop_tag}: this document loop has no rows definition`,
+      );
+      continue;
+    }
+    const missing = loop.columns.filter((c) => !(c in d.map));
+    const extra = Object.keys(d.map).filter((c) => !loop.columns.includes(c));
+    if (missing.length || extra.length)
+      err(
+        `variables[${rules.variables.indexOf(d)}].map`,
+        `${loop.loop_tag}: map keys must be exactly [${loop.columns.join(", ")}]${missing.length ? `; missing ${missing.join(", ")}` : ""}${extra.length ? `; unexpected ${extra.join(", ")}` : ""}`,
+      );
+  }
+  return errors;
+}

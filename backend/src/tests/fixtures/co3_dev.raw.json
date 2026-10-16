@@ -1,0 +1,242 @@
+{
+  "document_summary": "A one-off project proposal from Fieldstone Studio for Rosewood Home Goods, covering an E-commerce build (up to 100 products) with two selected add-ons (copywriting and basic SEO setup), a phase/milestone table, an add-on menu with selected and unselected options, an itemised investment table with bundle discount and total, a 50/50 payment schedule, and proposal validity dates.",
+  "variables": [
+    {
+      "variable_name": "client_company_name",
+      "natural_name": "Client company name",
+      "category": "customer_input",
+      "data_type": "string",
+      "sample_text": "Rosewood Home Goods",
+      "description": "Name of the prospective client the proposal is prepared for; appears in the proposal header and in the introductory prose.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "proposal_date",
+      "natural_name": "Proposal date",
+      "category": "customer_input",
+      "data_type": "string",
+      "sample_text": "September 7, 2026",
+      "description": "Date the proposal was prepared/issued.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "proposal_valid_until",
+      "natural_name": "Proposal valid until date",
+      "category": "customer_input",
+      "data_type": "string",
+      "sample_text": "September 21, 2026",
+      "description": "Date until which the quoted pricing and terms remain valid.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "proposal_validity_days",
+      "natural_name": "Proposal validity window in days",
+      "category": "customer_input",
+      "data_type": "number",
+      "sample_text": "14",
+      "description": "Number of days the proposal remains valid, shown in parentheses after the validity date.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "selected_tier",
+      "natural_name": "Selected package/tier",
+      "category": "pricing",
+      "data_type": "enum",
+      "sample_text": "E-Commerce",
+      "description": "The fixed package chosen for this project; drives the scope heading, the base-fee line item label and the base template summary.",
+      "context_text": "",
+      "condition_flag": "",
+      "enum_options": [
+        "Landing Page",
+        "Business Website",
+        "E-Commerce",
+        "Custom Web App"
+      ]
+    },
+    {
+      "variable_name": "intro_paragraph",
+      "natural_name": "Client situation intro paragraph",
+      "category": "paragraph",
+      "data_type": "paragraph",
+      "sample_text": "You reached out about moving Rosewood Home Goods into e-commerce — roughly 60 products, wanting product copy written for you and basic SEO set up rather than handling both in-house. That's a clean fit for our E-commerce template, with two add-ons layered in below. Here's exactly what happens, phase by phase, and what it costs.",
+      "description": "Opening prose describing this client's situation, why the recommended template fits, and which add-ons were layered on. Rewritten for every lead.",
+      "context_text": "",
+      "condition_flag": "",
+      "paragraph_config": {
+        "mode": "ai_generated",
+        "purpose": "Introduce the client's stated needs (their product count, the work they want done vs. handled in-house) and confirm the recommended package plus the add-ons selected.",
+        "tone": "warm, consultative, professional",
+        "length_guideline": "3–4 sentences"
+      }
+    },
+    {
+      "variable_name": "product_count",
+      "natural_name": "Number of products",
+      "category": "customer_input",
+      "data_type": "number",
+      "sample_text": "60",
+      "description": "Number of products to be loaded/migrated; appears in the intro prose and in the build phase deliverable.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "base_template_summary",
+      "natural_name": "Base template inclusion summary",
+      "category": "paragraph",
+      "data_type": "paragraph",
+      "sample_text": "Base template: up to 100 products, Shopify or custom cart, typical delivery in 4–6 weeks.",
+      "description": "One-line summary of what the chosen base template includes (limits, cart options, typical timeline). Tier-dependent, so it is rewritten when the package changes.",
+      "context_text": "",
+      "condition_flag": "",
+      "paragraph_config": {
+        "mode": "ai_generated",
+        "purpose": "Summarize the standard inclusions and typical delivery timeline of the selected base template as sold to this client.",
+        "tone": "concise, factual, plain",
+        "length_guideline": "1 sentence"
+      }
+    },
+    {
+      "variable_name": "addon_menu",
+      "natural_name": "Add-on menu with selections",
+      "category": "paragraph",
+      "data_type": "paragraph",
+      "sample_text": "**✓** Copywriting — product & category page copy written for you ($600)\n**✓** Basic SEO Setup — metadata, sitemap, on-page basics ($450)\n**○** *CMS Integration — not needed, Shopify's built-in CMS covers this*\n**○** *Extra Revision Round — not selected, 1 round already included*\n**○** *Rush Delivery — not selected, standard 4–6 week timeline confirmed*",
+      "description": "The full add-on menu block with ✓ marks on the add-ons chosen for this client and ○ on the ones declined, each with a short reason. Fully rewritten per client.",
+      "context_text": "",
+      "condition_flag": "",
+      "paragraph_config": {
+        "mode": "ai_generated",
+        "purpose": "Present the entire add-on menu, marking selected options with ✓ (with their prices) and unselected options with ○ plus a brief client-specific reason each was not selected.",
+        "tone": "scannable, plain, helpful",
+        "length_guideline": "one line per add-on, 5 lines total"
+      }
+    },
+    {
+      "variable_name": "selected_tier_rate",
+      "natural_name": "Base template price for selected tier",
+      "category": "pricing",
+      "data_type": "currency",
+      "sample_text": "$9,500.00",
+      "description": "Base fee for the chosen package/tier, shown on the first line item of the investment table.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "addon_subtotal",
+      "natural_name": "Add-on subtotal",
+      "category": "pricing",
+      "data_type": "currency",
+      "sample_text": "$1,050.00",
+      "description": "Sum of the selected add-ons before any bundle discount.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "bundle_discount_rate",
+      "natural_name": "Bundle discount percentage",
+      "category": "pricing",
+      "data_type": "string",
+      "sample_text": "10%",
+      "description": "Percentage discount applied to the add-on subtotal when two or more add-ons are selected.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "bundle_discount_amount",
+      "natural_name": "Bundle discount amount",
+      "category": "pricing",
+      "data_type": "currency",
+      "sample_text": "$105.00",
+      "description": "Dollar amount of the bundle discount taken off the add-on subtotal; only applies when two or more add-ons are selected.",
+      "context_text": "",
+      "condition_flag": "has_bundle_discount"
+    },
+    {
+      "variable_name": "total_investment",
+      "natural_name": "Total project investment",
+      "category": "pricing",
+      "data_type": "currency",
+      "sample_text": "$10,445.00",
+      "description": "Final total project price after add-ons and bundle discount.",
+      "context_text": "",
+      "condition_flag": ""
+    },
+    {
+      "variable_name": "tax_note",
+      "natural_name": "Sales tax note",
+      "category": "paragraph",
+      "data_type": "paragraph",
+      "sample_text": "*No sales tax applies to this engagement under our standard services treatment.*",
+      "description": "Note below the investment table stating the sales-tax treatment for this engagement, which depends on the client's jurisdiction and the nature of the services.",
+      "context_text": "",
+      "condition_flag": "",
+      "paragraph_config": {
+        "mode": "ai_generated",
+        "purpose": "State the sales-tax treatment that applies to this engagement given the client's location and the services sold.",
+        "tone": "reassuring, plain, factual",
+        "length_guideline": "1 sentence"
+      }
+    }
+  ],
+  "loop_tables": [
+    {
+      "loop_tag": "milestones",
+      "natural_name": "Project phase/milestone table",
+      "header_texts": [
+        "Phase",
+        "Milestone",
+        "Deliverable"
+      ],
+      "column_tags": [
+        "phase_number",
+        "milestone_name",
+        "deliverable"
+      ],
+      "row_labels": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ]
+    },
+    {
+      "loop_tag": "addon_items",
+      "natural_name": "Selected add-on line items",
+      "header_texts": [
+        "Line Item",
+        "Amount"
+      ],
+      "column_tags": [
+        "addon_item",
+        "amount"
+      ],
+      "row_labels": [
+        "Copywriting add-on",
+        "Basic SEO Setup add-on"
+      ]
+    },
+    {
+      "loop_tag": "payment_milestones",
+      "natural_name": "Payment schedule table",
+      "header_texts": [
+        "Milestone",
+        "Trigger",
+        "Amount"
+      ],
+      "column_tags": [
+        "milestone",
+        "trigger",
+        "amount"
+      ],
+      "row_labels": [
+        "Deposit (50%)",
+        "Final payment (50%)"
+      ]
+    }
+  ]
+}

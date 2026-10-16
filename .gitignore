@@ -20,6 +20,18 @@ dist-ssr
 .env.test.local
 .env.production.local
 !.env.example
+backend/.env
+backend/.env.*.local
+!backend/.env.example
+
+# Backend storage & build artifacts
+backend/node_modules
+backend/dist
+backend/storage/*.sqlite*
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
 
 # Editor directories and files
 .vscode/*

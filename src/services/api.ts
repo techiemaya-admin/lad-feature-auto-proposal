@@ -97,7 +97,8 @@ export async function submitBriefing(
   companyId: string,
   prompt: string,
   file?: File | null,
-  templateId?: string
+  templateId?: string,
+  notes?: string[]
 ): Promise<{
   company: Company;
   markdown: string;
@@ -110,6 +111,9 @@ export async function submitBriefing(
 }> {
   const formData = new FormData();
   formData.append("prompt", prompt);
+  if (notes !== undefined && notes.length > 0) {
+    formData.append("sample_review_notes", JSON.stringify(notes));
+  }
   if (file) {
     formData.append("file", file);
   }
@@ -130,6 +134,89 @@ export async function submitBriefing(
     markdown: data.markdown,
     metadata: data.metadata,
   };
+}
+
+export async function generateSampleDraft(
+  companyId: string,
+  templateId: string,
+  pricingSpec: string,
+  sections?: import("../types/sample-proposal").SampleSection[]
+): Promise<import("../types/sample-proposal").SampleDraftResponse> {
+  const res = await fetch(workflowUrl(companyId, templateId, "briefing/sample-draft"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pricing_spec: pricingSpec, sections }),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(errorData.error || "Could not generate sample proposal draft.");
+  }
+
+  return res.json();
+}
+
+export async function generateSampleDocument(
+  companyId: string,
+  templateId: string,
+  payload: {
+    draft: import("../types/sample-proposal").SampleDraft;
+    customer: string;
+    currency: string;
+    confirmed: boolean;
+    scenario?: string;
+    questions?: string[];
+    sections?: import("../types/sample-proposal").SampleSection[];
+    lines: Array<{
+      period: string;
+      quantity: number | null;
+      rate: number | null;
+      discount: number | null;
+      tax: number | null;
+    }>;
+  }
+): Promise<Blob> {
+  const res = await fetch(workflowUrl(companyId, templateId, "briefing/sample-document"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(errorData.error || "Could not generate sample document.");
+  }
+
+  return res.blob();
+}
+
+export async function generateSampleSection(
+  companyId: string,
+  templateId: string,
+  payload: {
+    pricing_spec: string;
+    scenario: string;
+    scope: string;
+    sections?: import("../types/sample-proposal").SampleSection[];
+    section: {
+      title: string;
+      position: string;
+      instructions?: string;
+    };
+  }
+): Promise<import("../types/sample-proposal").SampleSectionResponse> {
+  const res = await fetch(workflowUrl(companyId, templateId, "briefing/sample-section"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(errorData.error || "Could not draft custom section.");
+  }
+
+  return res.json();
 }
 
 export async function unlockBriefing(companyId: string, templateId?: string): Promise<Company> {

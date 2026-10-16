@@ -523,12 +523,12 @@ export function App({
   // -------------------------------------------------------------
   // Stage 1: Briefing Submit & Real Document Upload via AnyDoc
   // -------------------------------------------------------------
-  const handleBriefingSubmit = async (prompt: string, file: File | null) => {
+  const handleBriefingSubmit = async (prompt: string, file: File | null, notes?: string[]) => {
     if (!activeCompanyId) return;
     setIsSubmittingBriefing(true);
 
     try {
-      const result = await api.submitBriefing(activeCompanyId, prompt, file, templateId);
+      const result = await api.submitBriefing(activeCompanyId, prompt, file, templateId, notes);
       setCurrentCompany(result.company);
       setIsBriefingLocked(true);
       markStageComplete(1);

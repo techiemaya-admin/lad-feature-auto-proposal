@@ -1,0 +1,258 @@
+import { DatabaseSync } from "node:sqlite";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { migrateTemplates } from "./templates-migration.js";
+import { seedAllCompanies } from "./seed.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+let instance: DatabaseSync | null = null;
+
+export function getStorageDir(): string {
+  const custom = process.env.STORAGE_DIR;
+  if (custom) {
+    if (path.isAbsolute(custom)) {
+      if (!fs.existsSync(custom)) fs.mkdirSync(custom, { recursive: true });
+      return custom;
+    }
+    const candidates = [
+      path.resolve(__dirname, "../../", custom),
+      path.resolve(process.cwd(), "backend", custom),
+      path.resolve(process.cwd(), custom),
+    ];
+    const found = candidates.find((c) => fs.existsSync(c));
+    if (found) return found;
+
+    const resolved = path.resolve(__dirname, "../../", custom);
+    if (!fs.existsSync(resolved)) fs.mkdirSync(resolved, { recursive: true });
+    return resolved;
+  }
+
+  const defaultDir = path.resolve(__dirname, "../../storage");
+  if (!fs.existsSync(defaultDir)) {
+    fs.mkdirSync(defaultDir, { recursive: true });
+  }
+  return defaultDir;
+}
+
+const COMPANY_VARIABLES_DDL = `
+    CREATE TABLE IF NOT EXISTS company_variables (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      template_id TEXT,
+      variable_name TEXT NOT NULL,
+      natural_name TEXT NOT NULL,
+      category TEXT NOT NULL CHECK (category IN ('customer_input', 'fixed', 'pricing', 'paragraph', 'table_loop', 'comparison_matrix', 'compound_table')),
+      data_type TEXT NOT NULL CHECK (data_type IN ('string', 'number', 'currency', 'enum', 'date', 'paragraph', 'table')),
+      is_custom INTEGER DEFAULT 0,
+      is_deleted INTEGER DEFAULT 0,
+      sort_order INTEGER DEFAULT 0,
+      descriptor_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (company_id) REFERENCES company_sessions(company_id) ON DELETE CASCADE,
+      FOREIGN KEY (template_id) REFERENCES proposal_templates(template_id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_company_variables_lookup
+    ON company_variables (company_id, category, is_deleted);
+`;
+
+export function initDatabase(dbPath?: string): DatabaseSync {
+  let finalPath: string;
+
+  if (dbPath) {
+    finalPath = dbPath;
+  } else if (process.env.DB_PATH) {
+    if (path.isAbsolute(process.env.DB_PATH)) {
+      finalPath = process.env.DB_PATH;
+    } else {
+      const candidates = [
+        path.resolve(__dirname, "../../storage/database.sqlite"),
+        path.resolve(process.cwd(), "backend/storage/database.sqlite"),
+        path.resolve(process.cwd(), process.env.DB_PATH),
+      ];
+      finalPath = candidates.find((c) => fs.existsSync(c)) || path.resolve(__dirname, "../../storage/database.sqlite");
+    }
+  } else {
+    finalPath = path.join(getStorageDir(), "database.sqlite");
+  }
+
+  const dir = path.dirname(finalPath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  const db = new DatabaseSync(finalPath);
+
+  // Enable WAL mode and foreign keys for performance and reliability
+  db.exec("PRAGMA journal_mode = WAL;");
+  db.exec("PRAGMA foreign_keys = ON;");
+
+  // Create company_sessions table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS company_sessions (
+      company_id TEXT PRIMARY KEY,
+      company_name TEXT NOT NULL,
+      industry TEXT,
+      location TEXT,
+      email TEXT,
+      website TEXT,
+      phone TEXT,
+      data_json TEXT NOT NULL,
+      pricing_spec TEXT NOT NULL,
+      working_state_json TEXT,
+      quotation_filename TEXT,
+      quotation_filesize INTEGER,
+      quotation_markdown TEXT,
+      quotation_parsed_at TEXT,
+      briefing_locked INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS proposal_templates (
+      template_id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      pricing_spec TEXT NOT NULL DEFAULT '',
+      quotation_filename TEXT,
+      quotation_filesize INTEGER,
+      quotation_markdown TEXT,
+      quotation_parsed_at TEXT,
+      briefing_locked INTEGER NOT NULL DEFAULT 0,
+      working_state_json TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (company_id)
+        REFERENCES company_sessions(company_id)
+        ON DELETE CASCADE
+    );
+
+    ${COMPANY_VARIABLES_DDL}
+
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value_json TEXT NOT NULL
+    );
+
+    -- Per-company drafter preferences + mock email link. Typed columns (not a JSON blob) so the
+    -- real build maps it 1:1 onto a tenant_proposal_settings table. Reseed is an upsert on
+    -- company_sessions, so the cascade never fires on "Import Settings".
+    CREATE TABLE IF NOT EXISTS company_configurations (
+      company_id TEXT PRIMARY KEY,
+      style_notes TEXT NOT NULL DEFAULT '',
+      reference_proposal_text TEXT NOT NULL DEFAULT '',
+      clarification_notes TEXT NOT NULL DEFAULT '',
+      email_connected INTEGER NOT NULL DEFAULT 0,
+      email_address TEXT,
+      email_connected_at TEXT,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (company_id) REFERENCES company_sessions(company_id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_templates_company
+      ON proposal_templates(company_id);
+  `);
+
+  // Non-destructive column migrations for existing databases
+  const tableInfo = db.prepare("PRAGMA table_info(company_sessions)").all() as Array<{ name: string }>;
+  const columnNames = new Set(tableInfo.map((col) => col.name));
+
+  if (!columnNames.has("quotation_filename")) {
+    db.exec("ALTER TABLE company_sessions ADD COLUMN quotation_filename TEXT;");
+  }
+  if (!columnNames.has("quotation_filesize")) {
+    db.exec("ALTER TABLE company_sessions ADD COLUMN quotation_filesize INTEGER;");
+  }
+  if (!columnNames.has("quotation_markdown")) {
+    db.exec("ALTER TABLE company_sessions ADD COLUMN quotation_markdown TEXT;");
+  }
+  if (!columnNames.has("quotation_parsed_at")) {
+    db.exec("ALTER TABLE company_sessions ADD COLUMN quotation_parsed_at TEXT;");
+  }
+  if (!columnNames.has("briefing_locked")) {
+    db.exec("ALTER TABLE company_sessions ADD COLUMN briefing_locked INTEGER DEFAULT 0;");
+  }
+
+  // SQLite cannot alter a CHECK: databases created before the `fixed` category (or the older `date` data_type) get the table rebuilt in place.
+  const variablesDdl = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'company_variables'").get() as { sql: string } | undefined;
+  if (variablesDdl && !variablesDdl.sql.includes("'fixed'")) {
+    // Standard SQLite rebuild recipe: FK checks off (must be outside the transaction) so the copy never trips on them.
+    const oldColumns = db.prepare("PRAGMA table_info(company_variables)").all() as Array<{ name: string }>;
+    const copyColumns = oldColumns.map(c => c.name).join(", ");
+    db.exec(`
+      PRAGMA foreign_keys = OFF;
+      BEGIN;
+      DROP INDEX IF EXISTS idx_company_variables_lookup;
+      ALTER TABLE company_variables RENAME TO company_variables_old;
+      ${COMPANY_VARIABLES_DDL}
+      INSERT INTO company_variables (${copyColumns}) SELECT ${copyColumns} FROM company_variables_old;
+      DROP TABLE company_variables_old;
+      COMMIT;
+      PRAGMA foreign_keys = ON;
+    `);
+  }
+
+  // Auto-seed if table is empty
+  const countStmt = db.prepare("SELECT count(*) as count FROM company_sessions");
+  const row = countStmt.get() as { count: number };
+  if (row && row.count === 0) {
+    seedAllCompanies(db);
+  }
+
+  migrateTemplates(db, getStorageDir(), Boolean(row && row.count > 0));
+
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_variables_template_lookup ON company_variables(company_id, template_id, category, is_deleted);
+    CREATE TRIGGER IF NOT EXISTS variable_template_insert BEFORE INSERT ON company_variables
+    WHEN NEW.template_id IS NULL OR NOT EXISTS (SELECT 1 FROM proposal_templates WHERE company_id = NEW.company_id AND template_id = NEW.template_id)
+    BEGIN SELECT RAISE(ABORT, 'Variable requires a template belonging to its company'); END;
+    CREATE TRIGGER IF NOT EXISTS variable_template_update BEFORE UPDATE OF company_id, template_id ON company_variables
+    WHEN NEW.template_id IS NULL OR NOT EXISTS (SELECT 1 FROM proposal_templates WHERE company_id = NEW.company_id AND template_id = NEW.template_id)
+    BEGIN SELECT RAISE(ABORT, 'Variable requires a template belonging to its company'); END;`);
+  const templateColumns = db.prepare("PRAGMA table_info(proposal_templates)").all() as Array<{ name: string }>;
+  if (!templateColumns.some(c => c.name === "description")) {
+    db.exec("ALTER TABLE proposal_templates ADD COLUMN description TEXT NOT NULL DEFAULT ''");
+  }
+
+  db.exec(`CREATE VIEW IF NOT EXISTS template_workflows AS
+    SELECT c.company_name, c.industry, c.location, c.email, c.website, c.phone, c.data_json, t.*
+    FROM proposal_templates t JOIN company_sessions c ON c.company_id = t.company_id`);
+  db.exec(`CREATE TABLE IF NOT EXISTS mock_email_routes (
+    company_id TEXT PRIMARY KEY REFERENCES company_sessions(company_id) ON DELETE CASCADE,
+    email_id TEXT NOT NULL UNIQUE,
+    email TEXT NOT NULL,
+    template_id TEXT REFERENCES proposal_templates(template_id) ON DELETE SET NULL,
+    reason TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT 'unassigned',
+    routed_at TEXT,
+    version INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE TRIGGER IF NOT EXISTS mock_email_owner_insert BEFORE INSERT ON mock_email_routes
+  WHEN NEW.template_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM proposal_templates WHERE template_id = NEW.template_id AND company_id = NEW.company_id)
+  BEGIN SELECT RAISE(ABORT, 'Email template must belong to its company'); END;
+  CREATE TRIGGER IF NOT EXISTS mock_email_owner_update BEFORE UPDATE OF template_id, company_id ON mock_email_routes
+  WHEN NEW.template_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM proposal_templates WHERE template_id = NEW.template_id AND company_id = NEW.company_id)
+  BEGIN SELECT RAISE(ABORT, 'Email template must belong to its company'); END;
+  CREATE TRIGGER IF NOT EXISTS mock_email_template_deleted BEFORE DELETE ON proposal_templates
+  BEGIN UPDATE mock_email_routes SET template_id = NULL, reason = 'Assigned template was deleted. Route this email again.',
+    source = 'unassigned', routed_at = NULL, version = version + 1 WHERE template_id = OLD.template_id; END;`);
+  instance = db;
+  return db;
+}
+
+export function getDatabase(): DatabaseSync {
+  if (!instance) {
+    instance = initDatabase();
+  }
+  return instance;
+}
+
+export function closeDatabase(): void {
+  if (instance) {
+    instance.close();
+    instance = null;
+  }
+}
