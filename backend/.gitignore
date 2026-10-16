@@ -2,3 +2,4 @@ node_modules
 dist
 storage/*.sqlite*
 .env
+storage/
