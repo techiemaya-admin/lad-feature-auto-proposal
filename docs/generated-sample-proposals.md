@@ -1,6 +1,6 @@
 # Generated sample proposals
 
-Current behavior as of 14 October 2026. Paths below are relative to `prototypes/new-auto-proposal`.
+Current behavior as of 14 October 2026. Paths below are relative to repo root.
 
 ## Purpose and workflow
 
