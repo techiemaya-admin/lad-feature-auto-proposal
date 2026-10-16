@@ -60,7 +60,7 @@ test("company configurations: defaults, save, isolation across companies, surviv
   }
 });
 
-// LOG_ROOT is the real repo logs/ dir with no env override, so the listing cannot be seeded from a
+// LOG_ROOT is the real backend/logs/ dir with no env override, so the listing cannot be seeded from a
 // test without writing there. Ordering and the single-artifact read are left to the eye; traversal is not.
 test("pipeline logs: refuses path traversal", async () => {
   const app = createApp();

@@ -4,9 +4,9 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// prototypes/new-auto-proposal/logs/<company_id>/<timestamp>-<name>
+// backend/logs/<company_id>[/<template_id>]/<timestamp>-<name>
 // (mirrors getStorageDir's __dirname-relative resolution so it works from dist/ and src/)
-export const LOG_ROOT = path.resolve(__dirname, "../../../logs");
+export const LOG_ROOT = path.resolve(__dirname, "../../logs");
 
 /** Local-time, filename-safe stamp: YYYY-MM-DD_hh-mm-ss-mmmAM */
 function localStamp(d = new Date()): string {
