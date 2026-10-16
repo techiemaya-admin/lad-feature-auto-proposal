@@ -18,7 +18,7 @@ import { toWire, type AiPricingRules, type PricingRules } from "../services/pric
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixturesDir = path.join(__dirname, "fixtures");
-const mockDataDir = path.resolve(__dirname, "../../Mock Data");
+const mockDataDir = path.resolve(__dirname, "../../../Mock Data");
 const fixture = (): PricingRules => JSON.parse(fs.readFileSync(path.join(fixturesDir, "co1_seo.rules.json"), "utf8"));
 
 test("Pricing rules routes", async (t) => {
@@ -30,7 +30,7 @@ test("Pricing rules routes", async (t) => {
   seedTemplateFixtures();
   const app = createApp();
   const cwd = process.cwd();
-  process.chdir(path.resolve(__dirname, "../..")); // resolveQuotationPath's Mock Data fallback
+  process.chdir(path.resolve(__dirname, "../../..")); // resolveQuotationPath's Mock Data fallback
 
   t.after(() => {
     setRulesModelCall(null);

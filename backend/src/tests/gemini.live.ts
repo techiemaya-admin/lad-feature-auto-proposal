@@ -26,7 +26,7 @@ test("Gemini extraction contract (live)", { skip: !process.env.GEMINI_API_KEY ||
   fs.mkdirSync(process.env.STORAGE_DIR, { recursive: true });
   initDatabase(process.env.DB_PATH);
   const app = createApp();
-  const mockDataDir = path.resolve(__dirname, "../../Mock Data/docx");
+  const mockDataDir = path.resolve(__dirname, "../../../Mock Data/docx");
   const northstarDocx = path.join(mockDataDir, "Co1_Proposal_Northstar_BloomAndCo.docx");
   const fortressDocx = path.join(mockDataDir, "Co2_Proposal_FortressIT_WhitfieldAssociates.docx");
   const fieldstoneDocx = path.join(mockDataDir, "Co3_Proposal_Fieldstone_RosewoodHomeGoods.docx");
@@ -93,10 +93,10 @@ const DOCX: Record<string, string> = {
 
 /** Stage 1 for real with the seed pricing notes, Stage 2 from the golden fixture (+ the model's own tips), Stage 3 for real. */
 async function seedThroughStage3(app: ReturnType<typeof createApp>, id: string): Promise<void> {
-  const seeds = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../Mock Data/test_seeds.json"), "utf8")).companies as any[];
+  const seeds = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../../Mock Data/test_seeds.json"), "utf8")).companies as any[];
   const spec = seeds.find((s) => s.company_id === id).pricing_spec as string;
   const submit = await request(app).post(`/api/companies/${id}/briefing/submit`).field("prompt", spec)
-    .attach("file", path.resolve(__dirname, "../../Mock Data/docx", DOCX[id]));
+    .attach("file", path.resolve(__dirname, "../../../Mock Data/docx", DOCX[id]));
   assert.equal(submit.status, 200, submit.text);
   const fx = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", `${id}.variables.json`), "utf8"));
   const raw = JSON.parse(fs.readFileSync(path.join(__dirname, "fixtures", `${id}.raw.json`), "utf8"));
@@ -156,7 +156,7 @@ test("Lead extraction + narrative contract (live, co1)", { skip: !process.env.DE
   initDatabase(process.env.DB_PATH);
   const app = createApp();
   const cwd = process.cwd();
-  process.chdir(path.resolve(__dirname, "../.."));
+  process.chdir(path.resolve(__dirname, "../../.."));
   t.after(() => {
     setRulesModelCall(null);
     setPdfConverter(null);

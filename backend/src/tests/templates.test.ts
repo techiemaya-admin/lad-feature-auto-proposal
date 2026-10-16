@@ -26,7 +26,7 @@ test("templates isolate documents, variables, state, resets, deletion and surviv
     assert.equal(a.status, 201); assert.equal(b.status, 201);
     const aid = a.body.company.template_id, bid = b.body.company.template_id;
     const ap = `${root}/${aid}`, bp = `${root}/${bid}`;
-    const doc = path.resolve(here, "../../Mock Data/docx/Co1_Proposal_Northstar_BloomAndCo.docx");
+    const doc = path.resolve(here, "../../../Mock Data/docx/Co1_Proposal_Northstar_BloomAndCo.docx");
     for (const [base, prompt] of [[ap, "IT pricing"], [bp, "Audit pricing"]]) {
       const result = await request(app).post(`${base}/briefing/submit`).field("prompt", prompt).attach("file", doc);
       assert.equal(result.status, 200, result.text);

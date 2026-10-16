@@ -25,7 +25,7 @@ test("Briefing & Quotation Ingestion Suite", async (t) => {
   seedTemplateFixtures();
   const app = createApp();
 
-  const northstarDocx = path.resolve(__dirname, "../../Mock Data/docx/Co1_Proposal_Northstar_BloomAndCo.docx");
+  const northstarDocx = path.resolve(__dirname, "../../../Mock Data/docx/Co1_Proposal_Northstar_BloomAndCo.docx");
 
   t.after(() => {
     closeDatabase();

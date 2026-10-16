@@ -25,7 +25,7 @@ import { buildClarifyPrompt, setClarifyModelCall } from "../services/clarificati
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixturesDir = path.join(__dirname, "fixtures");
-const mockDataDir = path.resolve(__dirname, "../../Mock Data");
+const mockDataDir = path.resolve(__dirname, "../../../Mock Data");
 const rulesOf = (id: string): PricingRules => JSON.parse(fs.readFileSync(path.join(fixturesDir, `${id}.rules.json`), "utf8"));
 const stage2Of = (id: string): Stage2Context => {
   const fx = JSON.parse(fs.readFileSync(path.join(fixturesDir, `${id}.variables.json`), "utf8"));
@@ -75,7 +75,7 @@ test("Proposal routes", async (t) => {
   seedTemplateFixtures();
   const app = createApp();
   const cwd = process.cwd();
-  process.chdir(path.resolve(__dirname, "../..")); // resolveQuotationPath's Mock Data fallback
+  process.chdir(path.resolve(__dirname, "../../..")); // resolveQuotationPath's Mock Data fallback
   const docxPath = path.join(process.env.STORAGE_DIR, "co1_seo", "default-co1_seo", "proposal.docx");
   const pdfPath = path.join(process.env.STORAGE_DIR, "co1_seo", "default-co1_seo", "proposal.pdf");
 

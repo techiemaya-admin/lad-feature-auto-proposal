@@ -26,7 +26,7 @@ test("Variables: custom-chip verification, edits, and cascade delete", async (t)
   seedTemplateFixtures();
   const app = createApp();
 
-  const northstarDocx = path.resolve(__dirname, "../../Mock Data/docx/Co1_Proposal_Northstar_BloomAndCo.docx");
+  const northstarDocx = path.resolve(__dirname, "../../../Mock Data/docx/Co1_Proposal_Northstar_BloomAndCo.docx");
 
   t.after(() => {
     setExtractionModelCall(null);

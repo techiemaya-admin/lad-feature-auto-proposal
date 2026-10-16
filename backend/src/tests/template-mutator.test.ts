@@ -24,7 +24,7 @@ import {
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const mockDocxDir = path.resolve(__dirname, "../../Mock Data/docx");
+const mockDocxDir = path.resolve(__dirname, "../../../Mock Data/docx");
 const fixturesDir = path.join(__dirname, "fixtures");
 
 const COMPANIES = {
@@ -186,7 +186,7 @@ test("mutateDocumentTemplate reads descriptors from SQLite and writes template.d
     insert.run("v3", "ignored", "Deleted", "pricing", "currency", 1, JSON.stringify({ sample_value: "$9,500.00" }), now, now);
     insert.run("t1", "milestones", "Milestones", "table_loop", "table", 0, JSON.stringify({ loop_tag: "milestones", header_texts: ["Phase", "Milestone", "Deliverable"], columns: ["phase_number", "milestone_title", "deliverable_summary"], row_labels: ["1", "2", "3", "4", "5"] }), now, now);
 
-    process.chdir(path.resolve(__dirname, "../..")); // so the Mock Data fallback resolves
+    process.chdir(path.resolve(__dirname, "../../..")); // so the Mock Data fallback resolves
     const result = await mutateDocumentTemplate("co3_dev");
     assert.equal(result.tags_placed_count, 1);
     assert.equal(result.conditional_rows_wrapped_count, 1);

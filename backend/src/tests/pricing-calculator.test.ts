@@ -317,7 +317,7 @@ const DOCX: Record<Id, string> = {
   co2_msp: "Co2_Proposal_FortressIT_WhitfieldAssociates.docx",
   co3_dev: "Co3_Proposal_Fieldstone_RosewoodHomeGoods.docx",
 };
-const mockDocxDir = path.resolve(__dirname, "../../Mock Data/docx");
+const mockDocxDir = path.resolve(__dirname, "../../../Mock Data/docx");
 
 for (const id of ids) {
   test(`${id}: proposal payload keys match the tags the template engine actually places`, async () => {
