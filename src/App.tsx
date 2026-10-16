@@ -15,6 +15,7 @@ import { TemplateLibraryView } from "./components/templates/TemplateLibraryView"
 import { Card } from "./components/ui/card";
 import { Button } from "./components/ui/button";
 import { CustomDropdown } from "./components/ui/custom-dropdown";
+import { ConfirmDialog } from "./components/ui/confirm-dialog";
 import * as api from "./services/api";
 import type { Company, CompanySummary } from "./types/company";
 import type { CompanyVariable, CompoundTable } from "./types/variable";
@@ -107,6 +108,8 @@ export function App({
   const [isTemplatesBusy, setIsTemplatesBusy] = useState<boolean>(false);
   const [isTemplatesGenerating, setIsTemplatesGenerating] = useState<boolean>(false);
   const [copiedLead, setCopiedLead] = useState<boolean>(false);
+  const [isBackConfirmOpen, setIsBackConfirmOpen] = useState<boolean>(false);
+  const [pendingDelete, setPendingDelete] = useState<ProposalTemplateSummary | null>(null);
 
   // Navigation tabs & AI models
   const [activeTab, setActiveTab] = useState<string>("proposals");
@@ -374,13 +377,11 @@ export function App({
   };
 
   const handleBackToLibrary = () => {
-    if (
-      !window.confirm(
-        "Return to templates? Saved work is kept. Unsaved edits will be discarded."
-      )
-    ) {
-      return;
-    }
+    setIsBackConfirmOpen(true);
+  };
+
+  const handleConfirmBackToLibrary = () => {
+    setIsBackConfirmOpen(false);
     setInternalTemplateId("");
     void loadCompanyData(activeCompanyId, "");
   };
@@ -494,15 +495,14 @@ export function App({
     }
   };
 
-  const handleDeleteTemplate = async (template: ProposalTemplateSummary) => {
-    if (!activeCompanyId) return;
-    if (
-      !window.confirm(
-        `Delete "${template.name}" and its saved documents, variables and pricing rules? This cannot be undone.`
-      )
-    ) {
-      return;
-    }
+  const handleRequestDeleteTemplate = async (template: ProposalTemplateSummary) => {
+    setPendingDelete(template);
+  };
+
+  const handleConfirmDeleteTemplate = async () => {
+    if (!activeCompanyId || !pendingDelete) return;
+    const template = pendingDelete;
+    setPendingDelete(null);
     setIsTemplatesBusy(true);
     try {
       await api.deleteProposalTemplate(activeCompanyId, template.template_id);
@@ -897,7 +897,7 @@ export function App({
                   onRouteEmail={handleRouteEmail}
                   onReassign={handleReassignEmail}
                   onCreateTemplate={handleCreateTemplate}
-                  onDeleteTemplate={handleDeleteTemplate}
+                  onDeleteTemplate={handleRequestDeleteTemplate}
                   isBusy={isTemplatesBusy}
                   isGenerating={isTemplatesGenerating}
                 />
@@ -1147,6 +1147,26 @@ export function App({
         templateStats={templateStats}
         pricingRules={pricingRulesState}
         onRulesChange={setPricingRulesState}
+      />
+
+      <ConfirmDialog
+        open={isBackConfirmOpen}
+        title="Return to templates?"
+        description="Saved work is kept. Unsaved edits in the current form will be discarded."
+        confirmLabel="Return to templates"
+        onConfirm={handleConfirmBackToLibrary}
+        onCancel={() => setIsBackConfirmOpen(false)}
+      />
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title={pendingDelete ? `Delete "${pendingDelete.name}"?` : "Delete template?"}
+        description="This deletes its saved documents, variables and pricing rules. This cannot be undone."
+        confirmLabel="Delete template"
+        variant="danger"
+        isBusy={isTemplatesBusy}
+        onConfirm={() => void handleConfirmDeleteTemplate()}
+        onCancel={() => setPendingDelete(null)}
       />
     </div>
   );

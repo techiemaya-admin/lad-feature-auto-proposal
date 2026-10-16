@@ -18,6 +18,7 @@ import {
   Wand2,
   Check,
   Loader2,
+  ChevronDown,
 } from "lucide-react";
 
 interface TemplateLibraryViewProps {
@@ -68,6 +69,7 @@ export const TemplateLibraryView: React.FC<TemplateLibraryViewProps> = ({
   const [isGeneratingBrief, setIsGeneratingBrief] = useState(false);
   const [descGeneratedSuccess, setDescGeneratedSuccess] = useState(false);
   const [briefGeneratedSuccess, setBriefGeneratedSuccess] = useState(false);
+  const [isRoutingOpen, setIsRoutingOpen] = useState(true);
 
   // Sync external email if it changes
   React.useEffect(() => {
@@ -345,155 +347,6 @@ export const TemplateLibraryView: React.FC<TemplateLibraryViewProps> = ({
       ) : (
         /* Active Template Library & Inbound Lead Routing */
         <section aria-label="Template library" className="space-y-8">
-          {/* Inbound Lead Routing Card */}
-          <Card className="rounded-2xl border border-border/80 bg-card p-6 shadow-xs space-y-5">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
-              <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-primary">
-                  Inbound Lead Routing
-                </span>
-                <h2 className="font-heading text-lg font-bold text-foreground">
-                  Route this lead to a template
-                </h2>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground font-mono">
-                  {localEmail.length} / 12,000 chars
-                </span>
-              </div>
-            </div>
-
-            {/* Lead Inquiry Email Textarea */}
-            <div className="space-y-2">
-              <Textarea
-                aria-label="Lead inquiry email"
-                value={localEmail}
-                onChange={(e) => setLocalEmail(e.target.value)}
-                disabled={isBusy}
-                maxLength={12000}
-                className="min-h-36 rounded-xl border-border/80 bg-background text-sm leading-relaxed p-3.5 focus:border-primary/50"
-                placeholder="Paste the inbound inquiry email you received..."
-              />
-              <p className="text-xs text-muted-foreground">
-                Starts with a sample email. Replace it with your own; saving an
-                edited email clears the previous routing assignment.
-              </p>
-            </div>
-
-            {/* Actions: Save & AI Route */}
-            <div className="flex flex-wrap items-center gap-3">
-              {emailDirty && (
-                <Button
-                  variant="outline"
-                  disabled={isBusy || !localEmail.trim() || !routing}
-                  onClick={() => void onSaveEmail(localEmail)}
-                  className="rounded-xl border-border/80"
-                >
-                  Save email
-                </Button>
-              )}
-              <Button
-                disabled={isBusy || !localEmail.trim() || !routing}
-                onClick={() => void onRouteEmail()}
-                className="rounded-xl gap-2 shadow-xs font-semibold"
-              >
-                <Sparkles className="size-4" />
-                {routingBusy
-                  ? "Matching email..."
-                  : routing?.template_id
-                  ? "Re-route email"
-                  : "Route email with AI"}
-              </Button>
-
-              {routingBusy && (
-                <span
-                  role="status"
-                  className="text-xs text-muted-foreground font-medium motion-safe:animate-pulse"
-                >
-                  Comparing this email with your saved templates...
-                </span>
-              )}
-            </div>
-
-            {/* Manual Assignment Option */}
-            <div className="space-y-1.5 pt-1">
-              <label className="block text-xs font-semibold text-muted-foreground">
-                Assign or move manually
-              </label>
-              <CustomDropdown
-                size="md"
-                value={routing?.template_id ?? ""}
-                onChange={(id) => void onReassign(id)}
-                options={templates.map((t) => ({
-                  value: t.template_id,
-                  label: t.name,
-                  description: t.description || undefined,
-                  icon: <FileText className="size-3.5" />,
-                }))}
-                placeholder="Select a template..."
-                disabled={isBusy || emailDirty}
-                aria-label="Assign email to template"
-                className="w-full max-w-md h-9.5 rounded-xl font-medium text-xs shadow-xs"
-              />
-            </div>
-
-            {/* Routing Result Banner */}
-            {routing && !emailDirty && (
-              <div
-                role="status"
-                className="rounded-xl border border-primary/25 bg-primary/5 p-4.5 space-y-2.5 animate-in fade-in"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="size-4 text-primary shrink-0" />
-                    <p className="font-heading font-bold text-sm text-foreground">
-                      {routing.template_id
-                        ? `Assigned to ${
-                            templates.find(
-                              (t) => t.template_id === routing.template_id
-                            )?.name ?? "template"
-                          }`
-                        : routing.source === "unassigned"
-                        ? "Not assigned"
-                        : "Needs review – no clear match"}
-                    </p>
-                  </div>
-                  {routing.routed_at && (
-                    <span className="rounded-full bg-background/80 border border-border/60 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-                      {routing.source === "manual"
-                        ? "Manual assignment"
-                        : "AI routing"}{" "}
-                      •{" "}
-                      {new Date(routing.routed_at).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                  )}
-                </div>
-
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  {routing.reason ||
-                    "Route this email automatically or select a template above."}
-                </p>
-
-                {routing.template_id && (
-                  <div className="pt-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onSelectTemplate(routing.template_id!)}
-                      className="rounded-xl border-primary/30 text-xs font-semibold gap-1.5 hover:bg-primary/10"
-                    >
-                      Open assigned template
-                      <ArrowUpRight className="size-3.5" />
-                    </Button>
-                  </div>
-                )}
-              </div>
-            )}
-          </Card>
-
           {/* Template Library Header */}
           <div className="flex flex-wrap items-end justify-between gap-4 border-b border-border/60 pb-4">
             <div>
@@ -787,6 +640,182 @@ export const TemplateLibraryView: React.FC<TemplateLibraryViewProps> = ({
               );
             })}
           </div>
+
+          {/* Inbound Lead Routing Card (collapsible) */}
+          <Card className="rounded-2xl border border-border/80 bg-card p-6 shadow-xs space-y-5">
+            <div
+              className={`flex flex-wrap items-center justify-between gap-3 ${
+                isRoutingOpen ? "border-b border-border/60 pb-4" : ""
+              }`}>
+              <button
+                type="button"
+                onClick={() => setIsRoutingOpen((prev) => !prev)}
+                aria-expanded={isRoutingOpen}
+                aria-controls="inbound-routing-body"
+                className="flex flex-1 items-center justify-between gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-lg cursor-pointer"
+              >
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wider text-primary">
+                    Inbound Lead Routing
+                  </span>
+                  <h2 className="font-heading text-lg font-bold text-foreground">
+                    Route this lead to a template
+                  </h2>
+                  {!isRoutingOpen && routing?.template_id && !emailDirty && (
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Assigned to{" "}
+                      {templates.find((t) => t.template_id === routing.template_id)?.name ?? "template"}
+                    </p>
+                  )}
+                </div>
+                <ChevronDown
+                  className={`size-5 shrink-0 text-muted-foreground transition-transform duration-200 ${
+                    isRoutingOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+            </div>
+
+            {isRoutingOpen && (
+              <div id="inbound-routing-body" className="space-y-5 animate-in fade-in duration-200">
+
+            {/* Lead Inquiry Email Textarea */}
+            <div className="space-y-2">
+              <div className="relative">
+                <Textarea
+                  aria-label="Lead inquiry email"
+                  value={localEmail}
+                  onChange={(e) => setLocalEmail(e.target.value)}
+                  disabled={isBusy}
+                  maxLength={12000}
+                  className="min-h-36 rounded-xl border-border/80 bg-background text-sm leading-relaxed p-3.5 pb-8 focus:border-primary/50"
+                  placeholder="Paste the inbound inquiry email you received..."
+                />
+                <span className="pointer-events-none absolute bottom-2.5 right-3 text-[11px] leading-none text-muted-foreground/80 font-mono tabular-nums">
+                  {localEmail.length} / 12,000
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Starts with a sample email. Replace it with your own; saving an
+                edited email clears the previous routing assignment.
+              </p>
+            </div>
+
+            {/* Actions: Save & AI Route */}
+            <div className="flex flex-wrap items-center gap-3">
+              {emailDirty && (
+                <Button
+                  variant="outline"
+                  disabled={isBusy || !localEmail.trim() || !routing}
+                  onClick={() => void onSaveEmail(localEmail)}
+                  className="rounded-xl border-border/80"
+                >
+                  Save email
+                </Button>
+              )}
+              <Button
+                disabled={isBusy || !localEmail.trim() || !routing}
+                onClick={() => void onRouteEmail()}
+                className="rounded-xl gap-2 shadow-xs font-semibold"
+              >
+                <Sparkles className="size-4" />
+                {routingBusy
+                  ? "Matching email..."
+                  : routing?.template_id
+                  ? "Re-route email"
+                  : "Route email with AI"}
+              </Button>
+
+              {routingBusy && (
+                <span
+                  role="status"
+                  className="text-xs text-muted-foreground font-medium motion-safe:animate-pulse"
+                >
+                  Comparing this email with your saved templates...
+                </span>
+              )}
+            </div>
+
+            {/* Manual Assignment Option */}
+            <div className="space-y-1.5 pt-1">
+              <label className="block text-xs font-semibold text-muted-foreground">
+                Assign or move manually
+              </label>
+              <CustomDropdown
+                size="md"
+                value={routing?.template_id ?? ""}
+                onChange={(id) => void onReassign(id)}
+                options={templates.map((t) => ({
+                  value: t.template_id,
+                  label: t.name,
+                  description: t.description || undefined,
+                  icon: <FileText className="size-3.5" />,
+                }))}
+                placeholder="Select a template..."
+                disabled={isBusy || emailDirty}
+                aria-label="Assign email to template"
+                className="w-full max-w-md h-9.5 rounded-xl font-medium text-xs shadow-xs"
+              />
+            </div>
+
+            {/* Routing Result Banner */}
+            {routing && !emailDirty && (
+              <div
+                role="status"
+                className="rounded-xl border border-primary/25 bg-primary/5 p-4.5 space-y-2.5 animate-in fade-in"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="size-4 text-primary shrink-0" />
+                    <p className="font-heading font-bold text-sm text-foreground">
+                      {routing.template_id
+                        ? `Assigned to ${
+                            templates.find(
+                              (t) => t.template_id === routing.template_id
+                            )?.name ?? "template"
+                          }`
+                        : routing.source === "unassigned"
+                        ? "Not assigned"
+                        : "Needs review – no clear match"}
+                    </p>
+                  </div>
+                  {routing.routed_at && (
+                    <span className="rounded-full bg-background/80 border border-border/60 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                      {routing.source === "manual"
+                        ? "Manual assignment"
+                        : "AI routing"}{" "}
+                      •{" "}
+                      {new Date(routing.routed_at).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                  )}
+                </div>
+
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  {routing.reason ||
+                    "Route this email automatically or select a template above."}
+                </p>
+
+                {routing.template_id && (
+                  <div className="pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onSelectTemplate(routing.template_id!)}
+                      className="rounded-xl border-primary/30 text-xs font-semibold gap-1.5 hover:bg-primary/10"
+                    >
+                      Open assigned template
+                      <ArrowUpRight className="size-3.5" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+            </div>
+            )}
+          </Card>
         </section>
       )}
     </div>
