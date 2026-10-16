@@ -1,5 +1,9 @@
 # ICP template library: workflow and implementation
 
+## Generated sample proposals (14 October 2026)
+
+The briefing now offers an AI-generated sample Word document tailored to the selected template and current pricing brief, alongside manual upload. Code calculates complete sample prices; missing seller inputs use explicit estimates with frontend-only accuracy notes. Users can edit the sample and add handwritten or AI-generated sections. Styled Word output includes a LibreOffice compatibility fix. The normal Send, variable review, template mutation and lead-pricing stages still follow. See [Generated sample proposals](generated-sample-proposals.md) for the workflow, pricing safeguards, endpoints, persistence, file inventory, tests and limitations. This supersedes earlier descriptions requiring an uploaded quotation.
+
 Reviewed against the working tree on **8 October 2026**. Paths are relative to `prototypes/new-auto-proposal` unless stated otherwise.
 
 This guide describes the ICP onboarding workflow added on top of the existing multiple-template feature, including the later custom-template submit-button fix. It supersedes the earlier dropdown-based entry flow described in [multiple-templates.md](multiple-templates.md). The underlying document, variable and pricing pipeline still applies.

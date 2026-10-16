@@ -178,11 +178,11 @@ export function TemplateWorkspace({ activeCompanyId, templateId, templateName, o
     };
   }, [activeCompanyId]);
 
-  const handleBriefingSubmit = async (prompt: string, file: File | null) => {
+  const handleBriefingSubmit = async (prompt: string, file: File | null, notes?: string[]) => {
     if (!currentCompany) return;
     setIsSubmittingBriefing(true);
     try {
-      const result = await submitBriefing(currentCompany.company_id, prompt, file, templateId);
+      const result = await submitBriefing(currentCompany.company_id, prompt, file, templateId, notes);
       setCurrentCompany(result.company);
       setNotification({
         type: "success",

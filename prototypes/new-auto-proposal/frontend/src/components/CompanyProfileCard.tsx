@@ -12,7 +12,7 @@ import { LeadSimulator } from "./LeadSimulator";
 interface CompanyProfileCardProps {
   company: Company;
   isSubmittingBriefing?: boolean;
-  onSubmitBriefing: (prompt: string, file: File | null) => Promise<void>;
+  onSubmitBriefing: (prompt: string, file: File | null, notes?: string[]) => Promise<void>;
   onUnlockBriefing: () => Promise<void>;
   onVariablesChange?: (variables: CompanyVariable[], tables: CompoundTable[]) => void;
   onVariablesEdited?: () => void;

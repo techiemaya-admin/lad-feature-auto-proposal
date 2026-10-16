@@ -7,8 +7,47 @@ import { toMarkdown } from "@firecrawl/anydoc";
 import { getDatabase } from "../db/database.js";
 import { formatCompanyResponse, CompanyRow } from "./companies.js";
 import { clearProposalFiles } from "../services/proposal-generator.service.js";
+import { buildSampleDocument, draftSampleProposal, sampleText, SampleProposalError } from "../services/sample-proposal.service.js";
+import { draftSampleSection, validateSampleSections, SampleSectionError } from "../services/sample-sections.service.js";
 
 const router = Router({ mergeParams: true });
+
+// Draft/build are previews: only the normal submit endpoint persists the reviewed document.
+for (const action of ["sample-draft", "sample-document", "sample-section"] as const) {
+  router.post(`/briefing/${action}`, async (req: Request, res: Response): Promise<void> => {
+    try {
+      const row = getDatabase().prepare(`SELECT w.*, t.description FROM template_workflows w
+        JOIN proposal_templates t ON t.template_id = w.template_id AND t.company_id = w.company_id
+        WHERE w.company_id = ? AND w.template_id = ?`).get(req.params.companyId, req.params.templateId) as unknown as (CompanyRow & { description: string }) | undefined;
+      if (!row) { res.status(404).json({ error: "Template not found" }); return; }
+      if (row.briefing_locked) { res.status(409).json({ error: "Unlock the briefing before creating a new sample." }); return; }
+      if (action === "sample-section") {
+        const pricingBrief = sampleText(req.body?.pricing_spec, "Pricing brief", 20000);
+        const scenario = sampleText(req.body?.scenario, "Sample customer requirements", 3000);
+        const sections = validateSampleSections(req.body?.sections);
+        const section = await draftSampleSection({ company_name: row.company_name, company: JSON.parse(row.data_json),
+          template: { name: row.name, description: row.description }, pricing_brief: pricingBrief, scenario,
+          scope: sampleText(req.body?.scope, "Sample scope", 6000), existing_sections: sections }, req.body?.section);
+        res.json({ section });
+      } else if (action === "sample-draft") {
+        const pricingBrief = sampleText(req.body?.pricing_spec, "Pricing brief", 20000);
+        const sections = validateSampleSections(req.body?.sections);
+        const sample = await draftSampleProposal({ company_name: row.company_name, company: JSON.parse(row.data_json),
+          template: { name: row.name, description: row.description }, pricing_brief: pricingBrief });
+        const document = await buildSampleDocument(row.company_name, { ...sample, sections, confirmed: true });
+        res.json({ ...sample, document_base64: document.toString("base64") });
+      } else {
+        const buffer = await buildSampleDocument(row.company_name, req.body);
+        res.type("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+          .attachment("generated_sample_proposal.docx").send(buffer);
+      }
+    } catch (error) {
+      res.status(error instanceof SampleProposalError || error instanceof SampleSectionError ? error.status : 500).json({
+        error: error instanceof SampleProposalError || error instanceof SampleSectionError ? error.message : "Unable to create the sample proposal. Please try again.",
+      });
+    }
+  });
+}
 
 // Configure Multer storage to route uploaded .docx files to storage/<company_id>/original_quotation.docx
 const storage = multer.diskStorage({
@@ -89,6 +128,14 @@ router.post("/briefing/submit", handleUpload, async (req: Request, res: Response
     }
 
     const companyDir = templateDirectory(id, templateId);
+    let sampleReviewNotes: string[] = [];
+    try {
+      const previousState = JSON.parse(existing.working_state_json || "{}");
+      const notes = req.body.sample_review_notes === undefined
+        ? (req.file ? [] : previousState.sample_review_notes ?? []) : JSON.parse(req.body.sample_review_notes);
+      if (!Array.isArray(notes) || notes.length > 80) throw new Error("Invalid notes");
+      sampleReviewNotes = notes.map(note => sampleText(note, "Review note", 1000));
+    } catch { res.status(400).json({ error: "Invalid sample review notes" }); return; }
     const targetFilePath = path.join(companyDir, "original_quotation.docx");
 
     let originalFilename = "";
@@ -136,6 +183,7 @@ router.post("/briefing/submit", handleUpload, async (req: Request, res: Response
       extracted_variables: null,
       template_generated: false,
       pricing_rules: null,
+      sample_review_notes: sampleReviewNotes,
     };
 
     const updateStmt = db.prepare(`
@@ -227,6 +275,7 @@ router.post("/briefing/unlock", (req: Request, res: Response): void => {
       extracted_variables: null,
       template_generated: false,
       pricing_rules: null,
+      sample_review_notes: JSON.parse(existing.working_state_json || "{}").sample_review_notes ?? [],
     };
 
     const updateStmt = db.prepare(`
