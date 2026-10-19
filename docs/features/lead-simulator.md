@@ -8,7 +8,7 @@ Paths relative to repo root. Pipeline overview: [../architecture.md](../architec
 
 ## Design decisions
 
-- Two endpoints, run back-to-back by the UI: `POST /lead/extract` (message → facts) and `POST /proposal/generate` (**structured facts** → document). `generate` never re-reads the email; production separates these steps too (a human or a clarification email sits between them).
+- The UI runs `POST /lead/extract` (message → facts) then `POST /proposal/generate` (**structured facts** → document) back-to-back; `generate` never re-reads the email (production separates these steps too — a human or a clarification email sits between them). Two optional helpers hang off the facts form: `POST /lead/clarify` drafts the ask email and `POST /lead/reply` has the model play the lead so the thread can be re-read.
 - Missing required fact → stop at the facts form (field highlighted) **and** draft a clarification email (`POST /lead/clarify`, a separate call so a rep who just types the fact never pays for it). Not sent — shown with a Copy button; the form stays editable so the demo can continue by hand.
 - A review flag does not block generation. A human sends every proposal, so the document is built, the reasons are shown to the human, and only the values a reason touches are left blank. No clarification email for this case.
 - Dev-only seeds (`pricing_spec`, `sample_lead_text`) live in `Mock Data/test_seeds.json`; `companies_dataset.json` keeps only what the main backend imports. `sample_lead_text` is not stored — the company response attaches it from the file and the Stage 5 textarea starts with it (as `PromptDocCapsule` starts with `pricing_spec`). "Reset to mock default" re-seeds from both files.
@@ -18,7 +18,7 @@ Paths relative to repo root. Pipeline overview: [../architecture.md](../architec
 - Extractor `assumptions[]` (range picked, number words, inferred devices) shown as an amber strip under the facts form.
 - PDF via LibreOffice headless (`soffice --headless --convert-to pdf` spawned directly with a persistent profile; `libreoffice-convert` was tried and dropped — a fresh profile per run costs 20–30 s and its harmless stderr "parser error" is mistaken for failure; the same binary runs in a Docker image in production). PDF failure never fails the run: `pdf: null` + reason, docx still returned.
 - Preview = the PDF in an `<iframe>`; `docx-preview` is not used on Stage 5. No benchmark banner / `sampleCheck` on Stage 5.
-- Left panel = facts form + numbers ledger only; prose is visible in the preview.
+- Layout: facts, assumptions, thread and numbers ledger sit above the result; the generated-proposal card splits narrative (left) and document preview (right).
 
 ## 1. Contracts
 
@@ -26,7 +26,7 @@ Paths relative to repo root. Pipeline overview: [../architecture.md](../architec
 
 Built per company, nothing hardcoded:
 
-- every `kind: "input"` variable of the rules (`name`, `input_type` integer | number | boolean | choice | multi_choice | region | text, `options`, `required`, `default?`, `assume_when?`);
+- every `kind: "input"` variable of the rules (`name`, `input_type` integer | choice | multi_choice | boolean | region | text, `options`, `required`, `default?`, `assume_when?`);
 - plus every Stage 2 `customer_input` (or `fixed`) variable that no rule variable defines (constants count) and is not a date (e.g. `client_name`) — required, `text`.
 
 Extractor response schema: one **required** property per field (`null` when the message does not say it), plus `assumptions: string[]` (required, may be empty). Rules in the prompt: number words → digits; a range → the higher end, noted in `assumptions`; never infer a state/jurisdiction that is not stated; choice values must be one of `options` (case-insensitive, the option's spelling is returned).
@@ -35,36 +35,41 @@ Extractor response schema: one **required** property per field (`null` when the 
 
 ### 1.2 Clarification email
 
-`POST /api/companies/:companyId/templates/:templateId/lead/clarify` body `{ lead_text, inputs, missing }` → `{ success, subject, body }`. Prompt inputs: company basics, `clarification_notes` + `style_notes` (Voice drawer; empty → built-in default), the natural names of the missing fields, the lead text. Logged as `clarify-raw`.
+`POST /api/companies/:companyId/templates/:templateId/lead/clarify` body `{ lead_text, inputs, missing, assumed? }` → `{ success, subject, body }`. Prompt inputs: company basics, `clarification_notes` + `style_notes` (Voice drawer; empty → built-in default), the natural names of the missing fields, the lead text. Logged as `clarify-raw`.
 
-### 1.3 Proposal generation
+### 1.3 Lead reply (simulator)
 
-`POST /api/companies/:companyId/templates/:templateId/proposal/generate` body `{ inputs, lead_text }` →
+`POST /api/companies/:companyId/templates/:templateId/lead/reply` body `{ lead_text }` (the thread so far, ending with our ask) → `{ success, subject, body }`. The model plays the lead; the caller appends the reply to the thread and re-extracts. Logged as `lead-reply-raw.json`.
+
+### 1.4 Proposal generation
+
+`POST /api/companies/:companyId/templates/:templateId/proposal/generate` body `{ inputs, lead_text, assumed? }` →
 
 ```
 { success: true, evaluation, payload, narrative: { [name]: { text, tags_placed: string[] } },
-  files: { docx: "/api/companies/:companyId/templates/:templateId/proposal/download?format=docx", pdf: <same with pdf> | null }, pdf_error?: string }
+  files: { docx: "/api/companies/:companyId/templates/:templateId/proposal/download?format=docx&client=…",
+           pdf: <same with pdf> | null }, pdf_error?: string }
 ```
 
-Always this shape: a non-empty `evaluation.needs_review` marks it a draft. 400 when required inputs are missing.
+Always this shape: a non-empty `evaluation.needs_review` marks it a draft. `generate` re-applies the server-side defaults and returns 400 with a `missing` list when required inputs are still absent.
 
 Steps inside `proposal-generator.service.ts`:
 
 1. `evaluate(rules, inputs)`; `needs_review` travels with the result.
 2. `buildProposalPayload(rules, evaluation, stage2, tier_matrix)` — the pricing half.
-3. Customer inputs: `payload[name] = inputs[name]` for the extracted text fields; dates come out of the sheet, evaluated with `today` (§1.4).
-4. Narrative: one `generateJson` call (§1.5); substitute `{tag}` → `payload[tag]` for known keys; unknown tags are stripped and reported in `tags_placed` diagnostics; `payload[paragraph_name] = text`.
+3. Customer inputs: `payload[name] = inputs[name]` for the extracted text fields; dates come out of the sheet, evaluated with `today` (§1.5).
+4. Narrative: one `generateJson` call (§1.6); substitute `{tag}` → `payload[tag]` for known keys; unknown tags are stripped and reported in `tags_placed` diagnostics; `payload[paragraph_name] = text`.
 5. `easy-template-x` `TemplateHandler.process(template.docx, payload)` → `backend/storage/<company>/<template>/proposal.docx`.
 6. headless `soffice` → `backend/storage/<company>/<template>/proposal.pdf`; on error `pdf: null`, `pdf_error`.
 7. Log `proposal-payload` and `narrative-raw` artifacts.
 
-`GET /api/companies/:companyId/templates/:templateId/proposal/download?format=docx|pdf[&download=1]` — the PDF is served `inline` (so the Stage 5 `<iframe>` renders it instead of downloading); `download=1`, and any `.docx`, get `Content-Disposition: attachment; filename="Proposal - <client_name>.<ext>"`. 404 with a message when the file is absent.
+`GET /api/companies/:companyId/templates/:templateId/proposal/download?format=docx|pdf[&client=…][&download=1]` — the PDF is served `inline` (so the Stage 5 `<iframe>` renders it instead of downloading); `download=1`, and any `.docx`, get `Content-Disposition: attachment; filename="Proposal - <client_name>.<ext>"`. 404 with a message when the file is absent.
 
-### 1.4 Dates
+### 1.5 Dates
 
 Dates are sheet values built from `today` — see [dates.md](dates.md).
 
-### 1.5 Narrative drafter
+### 1.6 Narrative drafter
 
 Prompt sections: company profile (name, value proposition, industry); voice (`style_notes`, optional `reference_proposal_text` as a few-shot); the lead message; the lead facts (natural names + values); AVAILABLE TAGS — every payload key with its formatted value, and the instruction "write `{tag}` wherever a number, price, tier name, count or date belongs; never type the value"; one block per `ai_generated` paragraph with its `sample_value` (structure reference), `purpose`, `tone`, `length_guideline`, `guidance`, and which tags were `covered` by it (must appear). Response schema `{ [paragraph_name]: string }`, all required. Fixed-mode paragraphs are not drafted (they are static text in the template).
 
@@ -78,7 +83,7 @@ Prompt sections: company profile (name, value proposition, industry); voice (`st
 
 ## 3. Backend services and routes
 
-`services/lead-extractor.service.ts` (schema builder + call + `missing`), `services/clarification-drafter.service.ts`, `services/narrative-drafter.service.ts` (prompt + substitution), `services/proposal-generator.service.ts` (steps §1.3, dates from the sheet per [dates.md](dates.md), docx + pdf), `routes/proposal.ts` (four routes above), registered in `app.ts`.
+`services/lead-extractor.service.ts` (schema builder + call + `missing`), `services/clarification-drafter.service.ts` (`draftClarification` + `draftLeadReply`), `services/narrative-drafter.service.ts` (prompt + substitution), `services/proposal-generator.service.ts` (steps §1.4, dates from the sheet per [dates.md](dates.md), docx + pdf), `routes/proposal.ts` (five routes above), registered in `app.ts`.
 
 - No new dependency: `execFile` on the soffice binary (`SOFFICE_PATH` env, documented in `.env.example`, then the platform default paths); persistent profile in the temp dir (storage/ has spaces in its path and soffice fails silently on a spaced profile URL).
 - Hard reset: `briefing/unlock`, `template` regeneration and `rules/compile` also delete that template's `proposal.docx|pdf` through one helper, `clearProposalFiles`.
@@ -89,8 +94,8 @@ Prompt sections: company profile (name, value proposition, industry); voice (`st
 - `stages/Stage5LeadSimulator.tsx`, rendered by the template workspace (`App.tsx`) once `working_state.stage === "lead_simulation"`.
 - Textarea (Stage 1 fluid pattern, starts with `company.sample_lead_text`) + `[ Generate proposal ➔ ]`. Shimmer bar (`.shimmer-bar`) during extract / clarify / generate; explicit error panel with retry, never a stuck shimmer.
 - Flow: extract → if `missing.length` → facts form with the missing fields highlighted + clarification email card (subject, body, Copy) → user fills → `[ Generate ]`; else auto-continue to generate.
-- Split view (`lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]`): left = facts form (inputs by type: integer, boolean switch, choice dropdown, multi-choice chips, state/text) + amber assumptions strip + numbers ledger (in-document money/percent/integer variables in `evaluation.order`, `font-mono tabular-nums`, last money value emphasised) or the red Draft box when `needs_review` is non-empty; right = `<iframe src={files.pdf}>` (inline; the download button appends `&download=1`) or "PDF preview unavailable — download the .docx" + `[ Download .docx ]` `[ Download .pdf ]` (`bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-xs btn-tactile`).
-- `services/api.ts`: `extractLead`, `draftClarification`, `generateProposal`; `types/proposal.ts` for the contracts. `DevDock.tsx` covers the `lead_simulation` stage label; the logs tab picks up the new artifacts automatically.
+- Above the result: the editable facts form (inputs by type: integer, boolean switch, choice dropdown, multi-choice chips, state/text) + amber assumptions strip + conversation/reply card. Then the numbers ledger (`NumbersLedger`, in-document money/percent/integer variables in `evaluation.order`, `font-mono tabular-nums`, last money value emphasised); when `needs_review` is non-empty the red Draft box (`ReviewNotice`) is shown beneath it. The generated-proposal card then splits `lg:grid-cols-[1.1fr_0.9fr]`: left = the proposal narrative paragraphs; right = the document preview, an `<iframe src={files.pdf}>` thumbnail (inline; the download button appends `&download=1`; click opens a full-screen modal) or "the backend did not return a PDF preview for this run" + `[ Download .docx ] [ Download .pdf ]` (`bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-xs btn-tactile`).
+- `services/api.ts`: `extractLead`, `draftClarification`, `draftLeadReply`, `generateProposal`; `types/proposal.ts` for the contracts. `DevDock.tsx` covers the `lead_simulation` stage label; the logs tab picks up the new artifacts automatically.
 
 ## 5. Assumptions & known ceilings
 

@@ -42,11 +42,11 @@ Stack: TypeScript + ESM, Express backend with SQLite (`backend/src/`), Vite + sh
 - Parse with `@firecrawl/anydoc`; verify a modified `.docx` by converting it back to Markdown, never by reading binary XML.
 - `docxmlater` mutates in place so styling, typography and page layout survive. Variables apply longest `sample_text` first, so overlapping values stay intact.
 - Every variable yields a `details[]` entry, and every placed tag is re-checked after mutation: `applied`, `covered` (the value lives inside a drafted paragraph or loop, so the drafter receives it as input), or a reported miss. A variable is always accounted for.
-- Hydrate with `easy-template-x`; convert to PDF with headless LibreOffice (`SOFFICE_PATH`). A PDF failure still returns the `.docx` (`pdf: null` + `pdf_error`). Stage 5 previews the PDF in an `<iframe>`; `docx-preview` is Stage 3 only.
+- Hydrate with `easy-template-x`; convert to PDF with headless LibreOffice (`SOFFICE_PATH`). A PDF failure still returns the `.docx` (`pdf: null` + `pdf_error`). Stage 5 previews the PDF in an `<iframe>`; `docx-preview` renders the Stage 3 thumbnail only.
 
 ### 4. Stage 5 never lets the model touch a number
 - The lead extractor only reads: `null` = not said, `assumptions[]` for its readings of the lead's own words. `evaluate` + `buildProposalPayload` produce every value.
-- Dates are sheet values: the compiler builds each from the reserved `today` with `add_days` / `add_months`, and code does the maths. Seller-owned values (validity days, payment terms) are compiled as constants, and a silent lead input follows its Stage 4 setting — Ask / Assume / Blank.
+- Dates are sheet values: the compiler builds each from the reserved `today` with `add_days` / `add_months`, and code does the maths. Seller-owned values (validity days, payment terms) are compiled as constants, and a silent lead input follows its Stage 4 rule, read off the input's `required` + `default` (ask / assume / leave blank) with `assume_when` as a reading hint.
 - Nothing reaches a lead on its own: a human reviews every proposal and sends it. `needs_review` flags what that human must check; the document is still built, with only the values a problem touches left blank to fill by hand: a broken value (and everything computed from it) prints `[to confirm]`; a review rule blanks nothing. Empty `needs_review` = ready; otherwise a Draft box lists the reasons.
 - The narrative drafter writes `{tag}` placeholders; code substitutes them from the payload.
 - Contracts, the Ask/Assume/Blank rules and the clarification reply loop: [docs/features/lead-simulator.md](docs/features/lead-simulator.md).
@@ -71,9 +71,9 @@ Stack: TypeScript + ESM, Express backend with SQLite (`backend/src/`), Vite + sh
 
 ### 8. Testing
 - `npm test` (in `backend/`) runs offline (`tsx --test`); route tests stub the model call. The live contracts (variable extraction, rules compile, lead + narrative) are `npm run test:live` (needs API key, never in CI).
-- Keep the golden test green: `backend/src/tests/template-mutator.test.ts` pins the engine against `Mock Data/templated_markdown/*.md`, using `tests/fixtures/*.variables.json` (ideal responses) and `*.raw.json` (real model logs, which catch model quirks the ideal fixtures miss). The offline suite must be green before a commit.
+- Keep the golden test green: `backend/src/tests/template-mutator.test.ts` pins the engine against `Mock Data/templated_markdown/*.md`, using `backend/src/tests/fixtures/*.variables.json` (ideal responses) and `*.raw.json` (real model logs, which catch model quirks the ideal fixtures miss). The offline suite must be green before a commit.
 - Tests assert observable behaviour and calculation accuracy — the three benchmark totals to the cent — rather than private helpers.
-- `tests/fixtures/*.raw.json` are captured model logs, not inputs to tune. A failing raw fixture means the engine must handle it; fix the engine, never the fixture.
+- `backend/src/tests/fixtures/*.raw.json` are captured model logs, not inputs to tune. A failing raw fixture means the engine must handle it; fix the engine, never the fixture.
 - Assert that a fact reached a prompt (a value, an option list, the lead's own words). Leave the prompt's wording to the eval — `npm run test:live`, run by a human before a demo and after any prompt change.
 - One check per behaviour, not per company or per function. A new test earns its place by failing for a reason no existing test covers; name that reason in its title. Extending a test beats adding a file.
 - Every assertion runs on every pass. A check inside `if (…)` reports green when it silently skips, so seed the state it needs or drop it and say in a comment what is left to the eye.

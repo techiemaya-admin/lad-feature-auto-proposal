@@ -17,7 +17,7 @@ import { draftNarrative, type NarrativeResult } from "./narrative-drafter.servic
 /**
  * Stage 5: lead facts + today → evaluate (dates included) → payload → narrative (model, placeholders only) →
  * proposal.docx (easy-template-x) → proposal.pdf (LibreOffice). Nothing is persisted: the two files
- * overwrite storage/<id>/proposal.* on every run. Plan: docs/plans/06-lead-simulator.md §1.3–1.5.
+ * overwrite storage/<id>/proposal.* on every run. Plan: docs/features/lead-simulator.md §1.4–1.6.
  */
 
 // ---------------------------------------------------------------------------

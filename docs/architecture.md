@@ -49,7 +49,7 @@ This project proves **zero-config quotation auto-generation**:
   └── [Proceed to Stage 5 ➔] (blocked while structural errors exist)
              │
              ▼
-[STAGE 5: LEAD & PROPOSAL]  Stage5LeadSimulator.tsx (+ Stage5ReceiptSummary.tsx)
+[STAGE 5: LEAD & PROPOSAL]  Stage5LeadSimulator.tsx
   Lead textarea prefilled with assigned/routed email or dev sample → [Generate proposal]
   ├── POST /lead/extract → read-only facts; required fact missing → clarification email
   │     + reply loop (the thread is re-read until nothing is missing)
@@ -65,7 +65,7 @@ AMBIENT SHELL:
 └── DevDock.tsx: AnyDoc MD, Variables JSON, Rule Schema JSON, logs (bottom HUD)
 ```
 
-Entry flow: header company tabs → `TemplateLibraryView` (import ICP / open card / routing) → keyed `TemplateWorkspace` (`App.tsx`) → `StageStepper` 1–5. `TemplatesApp.tsx` is a thin re-export of `App`.
+Entry flow: header company tabs → `TemplateLibraryView` (import ICP / open card / routing) → keyed `TemplateWorkspace` (`App.tsx`) → `StageStepper` 1–5. `TemplatesApp.tsx` is a thin re-export of `App`. `Stage5ReceiptSummary.tsx` is present but unrendered (dead code).
 
 ## 3. The 4-Tier Taxonomy
 

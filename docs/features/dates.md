@@ -28,8 +28,10 @@ The calculator, the compiler, Stage 2 and the lead extractor all need it; keepin
 - `writeDate(iso, format)` → text via date-fns `format`. A weekday token prints the new date's weekday.
 - `checkFormat(sample, format)` → `readDate` succeeds and `writeDate` gives the sample back exactly. Catches every wrong format tried during review: `MMMM D, YYYY` (throws), `MMMM dd, yyyy` ("September 07"), a duration left in the sample (no parse), a wrong weekday.
 - `dateFormatOf(v)` → `v.date_format` when `checkFormat` passes, else `DEFAULT_DATE_FORMAT`.
+- `sampleDate(v)` → the sample as an ISO date, or `null` when neither its format nor the default reads it ("TBC").
 - `hasDay(format)` → the format prints a day (`d`, `do`, `dd`, `E…`). A month-only date (`December 2026`) reads as the 1st of its month; the compiler gaps (§5) and `today` (§3) use this to treat it at month precision.
 - `isDateVariable(v)` = `isCustomerOrFixed(v) && v.data_type === "date"`.
+- `localToday()` → the server's local date as ISO; Stage 5 passes it as `today` (§3).
 
 `pricing-rules.types.ts`: `Unit` gains `"date"`; `FormulaOp` gains `"add_days" | "add_months"`.
 
@@ -38,7 +40,7 @@ The calculator, the compiler, Stage 2 and the lead extractor all need it; keepin
 - `evaluate`: `add_days` → `addDays(parseISO(a), n)`, `add_months` → `addMonths(...)` (month ends clamp: Jan 31 + 1 month = Feb 28). Result stored as ISO string. `ZERO.date = null`.
 - A day count that is not a finite whole number (14.5, NaN) marks the date `broken` with a `needs_review` reason, never a throw. Its dependants blank through the existing `broken` spread.
 - `today` is read from `inputs.today` like any input, never defined by the sheet.
-- `formatLike` / `buildProposalPayload`: a `date`-unit value prints through `dateFormatOf` of its Stage 2 variable. The date branch comes before `formatLike`'s `typeof value === "string"` return.
+- `buildProposalPayload`: a `date`-unit value prints through the module's `printDate` (`writeDate` with `dateFormatOf` of its Stage 2 variable), taking precedence over the generic `formatLike` path. `formatLike` itself has no date branch.
 - `sampleCheck`: a `date` value is compared as it prints, `writeDate(value, dateFormatOf(v)) === sample`, so each date is checked at the precision its document shows (the day, or only the month for `December 2026`). A sample that reads with neither its format nor the default (`TBC`) is **skipped**; Variable Review already warns on it.
 
 ## 3. Today

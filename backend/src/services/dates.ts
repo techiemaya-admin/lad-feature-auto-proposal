@@ -2,7 +2,7 @@ import { format, isValid, parse, parseISO } from "date-fns";
 import { isCustomerOrFixed, type Stage2Variable } from "./pricing-rules.types.js";
 
 /**
- * Dates as sheet values (docs/plans/07-date-type.md §1). A date value is its ISO string "2026-10-02";
+ * Dates as sheet values (docs/features/dates.md §1). A date value is its ISO string "2026-10-02";
  * a date's look in the document is its Stage 2 `date_format` (a date-fns pattern), checked against its sample.
  * Always `parseISO`, never `new Date(iso)`: that is UTC midnight, the previous day west of UTC.
  */

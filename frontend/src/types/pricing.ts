@@ -4,7 +4,7 @@
  * Every Stage 2 `pricing` variable gets one definition written in terms of other
  * variables; pricing-only helpers live here too with `in_document: false`. The
  * calculator (pricing-calculator.ts) evaluates the sheet; the AI only writes it.
-* Design: docs/plans/05-pricing-engine.md §1.
+* Design: docs/features/pricing-engine.md §1.
  * Mirror of backend/src/services/pricing-rules.types.ts (types only).
  */
 

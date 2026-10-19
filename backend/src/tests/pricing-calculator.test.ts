@@ -15,7 +15,7 @@ import { dateLines } from "../services/pricing-compiler.service.js";
 /**
  * The pure calculator against hand-written ideal rules (fixtures/*.rules.json), whose
  * names are the Stage 2 fixtures' (fixtures/*.variables.json). Ground truth is
- * Mock Data/verification_guide.md — the three worked examples and the §4 checklist.
+ * Mock Data/Verification Guide.md — the three worked examples and the §4 checklist.
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -387,7 +387,7 @@ test("fromWire types cells by column unit and is lenient to model spellings", ()
   assert.deepEqual((r.variables.find((v) => v.name === "base_investment_amount") as any).args, ["selected_tier_rate", "contract_months"]);
 });
 
-// --- Dates (docs/plans/07-date-type.md) ---------------------------------------------------------------
+// --- Dates (docs/features/dates.md) ---------------------------------------------------------------
 
 const dateVar = (name: string, op: "add_days" | "add_months", args: (string | number)[]): PricingRules["variables"][number] =>
   ({ name, label: name, in_document: true, unit: "date", condition_flag: "", kind: "formula", op, args });

@@ -16,26 +16,28 @@ Paths relative to repo root. Pipeline overview: [../architecture.md](../architec
 
 ## 1. The rules document (`PricingRules`)
 
-`backend/src/services/pricing-rules.types.ts` (backend) mirrored in `frontend/src/types/pricing.ts`.
+`backend/src/services/pricing-rules.types.ts` (backend) mirrored in `frontend/src/types/pricing.ts` (the frontend mirror also keeps a legacy `"us_state"` input type).
 
 ```ts
-type Unit = "money" | "percent" | "integer" | "text" | "boolean" | "rows";
+type Unit = "money" | "percent" | "integer" | "text" | "boolean" | "date" | "rows";
+type CellUnit = Exclude<Unit, "rows" | "date">;      // a table cell is neither a loop nor a date
 type CompareOp = "eq" | "neq" | "gte" | "lte" | "gt" | "lt" | "in";
 type Cell = string | number | boolean | null;        // null in an integer column = unbounded (cap ∞)
 type Row = Record<string, Cell>;
-type Value = number | string | boolean | string[] | Row[];
+type Value = number | string | boolean | string[] | Row[] | null;
 
 interface RuleTable { id; label; kind: "packages"|"bands"|"addons"|"taxes"|"splits"|"other";
-  columns: { key; label; unit: Exclude<Unit,"rows"> }[]; rows: Row[] }
+  columns: { key; label; unit: CellUnit }[]; rows: Row[] }
 interface Where { column; op: CompareOp; value_var?: string; value?: Cell; values?: Cell[] }   // values only for "in"
 interface Cond  { var;    op: CompareOp; value_var?: string; value?: Cell; values?: Cell[] }
-interface Formula { op: "add"|"sub"|"mul"|"div"|"min"|"max"; args: (string|number)[] }      // "col:<key>" allowed inside rows.map
+type FormulaOp = "add"|"sub"|"mul"|"div"|"min"|"max"|"add_days"|"add_months";
+interface Formula { op: FormulaOp; args: (string|number)[] }   // "col:<key>" allowed inside rows.map;
+                                                              // add_days / add_months take (a date or `today`, a whole number)
 
 type RuleVariable = { name; label; in_document: boolean; unit: Unit; condition_flag: string /* "" = none */ } & (
   | { kind: "input"; input_type: "integer"|"choice"|"multi_choice"|"boolean"|"region";
-      options_table?; options_column?; options?: string[]; required: boolean }   // region = a geography answer; declares
-                                                                                 // options_table/_column like a choice,
-                                                                                 // but may match no row (an untaxed buyer)
+      options_table?; options_column?; options?: string[]; required: boolean; default?: Cell|string[]; assume_when?: string }
+      // region = a geography answer; declares options_table/_column like a choice, but may match no row (an untaxed buyer)
   | { kind: "constant"; value: Cell }                                   // percent stored as fraction 0.0825
   | { kind: "lookup"; table; where: Where[]; take: string; fallback?: Cell } // first row in table order where ALL hold;
                                                                         // no row → fallback if set, else stop for review
@@ -51,6 +53,7 @@ interface PricingRules { version: 1; tables: RuleTable[]; variables: RuleVariabl
   sample_inputs: Record<string, Value> }
 
 interface Evaluation { values: Record<string,Value>; present: Record<string,boolean>;
+  broken: Record<string,boolean>;   // a problem made the value unknowable (and everything computed from it)
   needs_review: { reason: string; source?: string }[]; order: string[] }
 interface ValidationError { path: string; message: string }              // "variables[3].args[1]"
 interface SampleCheckEntry { name; computed: string; expected: string; ok: boolean; note?: string }
@@ -82,7 +85,7 @@ interface PricingRulesState { rules; compiled_at; validation_errors: ValidationE
 
 ## 2. Calculator, validator and fixtures
 
-**`backend/src/services/pricing-calculator.ts`** — pure; exports `evaluate`, `validate`, `formatLike`, `parseSampleNumber`, `sampleCheck`, `buildProposalPayload`. It reuses the one-line `norm` helper from `template-mutator.service.ts` and imports only `buildTierMatrixPayload`, keeping the calculator free of DB access.
+**`backend/src/services/pricing-calculator.ts`** — pure; exports `evaluate`, `validate`, `formatLike`, `parseSampleNumber`, `sampleCheck`, `sampleToday`, `buildProposalPayload`. It reuses the one-line `norm` helper from `template-mutator.service.ts` and imports only `buildTierMatrixPayload`, keeping the calculator free of DB access.
 
 **Fixtures** `backend/src/tests/fixtures/{co1_seo,co2_msp,co3_dev}.rules.json` — typed `PricingRules`, names aligned to the existing `*.variables.json` fixtures. Sketches:
 
@@ -95,7 +98,7 @@ interface PricingRulesState { rules; compiled_at; validation_errors: ValidationE
 **`backend/src/tests/pricing-calculator.test.ts`** (`node:test`, offline, picked up by `npm test`):
 - Adapter `.variables.json` → `Stage2Context` (`sample_value = sample_text`, `columns = column_tags`).
 - Benchmarks to the cent (all three, incl. split amounts `[5222.5, 5222.5]`).
-- verification_guide §4.1–4.3: co1 `{3}`→Growth, `{15}`→Authority, no `annual_prepay`→`present.annual_discount_amount===false` & subtotal 36,000, `"CA"`→no tax line; co2 `25`→−5, `50`→−10, `60`→−10 only, `7`→billed 10 (seat subtotal 650, setup 750), setup excluded from tax, no state→`needs_review` + no tax; co3 one add-on→no bundle, Copywriting+rush→no bundle & 2,500, `100`→no review, `140`→review, Custom Web App→review.
+- Verification Guide §4.1–4.3: co1 `{3}`→Growth, `{15}`→Authority, no `annual_prepay`→`present.annual_discount_amount===false` & subtotal 36,000, `"CA"`→no tax line; co2 `25`→−5, `50`→−10, `60`→−10 only, `7`→billed 10 (seat subtotal 650, setup 750), setup excluded from tax, no state→`needs_review` + no tax; co3 one add-on→no bundle, Copywriting+rush→no bundle & 2,500, `100`→no review, `140`→review, Custom Web App→review.
 - `validate`: cycle, unknown name, unknown table/column, Stage 2 pricing variable undefined, Stage 2 flag undefined, `sub` with 3 args, choice without options.
 - `formatLike`: `("$3,000/mo",3000)`, `("8.25%",0.0825)`, `("10%",0.1)`, `("10%",0.0825)→"8.25%"`, `("$36,000.00",35073)→"$35,073.00"`, `("42",42)`, text passthrough.
 - `sampleCheck` all `ok` for each fixture.
@@ -139,7 +142,7 @@ interface PricingRulesState { rules; compiled_at; validation_errors: ValidationE
 - `readable.ts`: `formula` → `base_investment_amount × annual_discount_percentage`; `lookup` → `Packages · first row where location_cap ≥ location_count → monthly_rate`; `condition` → `annual_prepay is true`; `aggregate` → `count of selected Add-ons where stackable = true`; `rows` → `one row per selected Add-ons`; `constant` → value formatted by unit.
 - State: local `rules` copy; every edit → `setRules` + 300 ms debounced `updatePricingRules`; response replaces `sample_check`/`evaluation`; a 400 shows its `errors` inline and keeps local edits.
 
-**Wiring:** `App.tsx` holds `pricingRules` and `rulesStatus`; loads them from `working_state.pricing_rules`; `handleGenerateTemplate` and `handleVariablesEdited` reset `pricingRules` to `null`; `handleProceedToPricing` compiles; `handleRulesChange` and `handleProceedToLeadSimulation` update state. `CompanyProfileCard.tsx` renders `<PricingEngineDeck>` after the checkpoint block when `templateStats && (pricingRules || rulesStatus.status !== "idle")`, passing the full `activeVariables` (sample values), not just `naturalNames`. `DevDock.tsx` takes a `pricingRules` prop; the rules tab is a textarea seeded with the rules JSON, `JSON.parse` on blur with error, "Apply" → PUT, and lists `validation_errors`; copy copies the rules JSON; stage labels read "Stage 4: Pricing Engine" and "Stage 5: Lead Simulation".
+**Wiring:** `App.tsx` holds `pricingRules` and `rulesStatus`; loads them from `working_state.pricing_rules`; `handleGenerateTemplate` and `handleVariablesEdited` reset `pricingRules` to `null`; `handleProceedToPricing` compiles; `handleRulesChange` and `handleProceedToLeadSimulation` update state. `CompanyProfileCard.tsx` renders `<PricingEngineDeck>` after the checkpoint block when `briefing_locked && templateStats && (pricingRules || rulesStatus.status !== "idle")`, passing the full `activeVariables` (sample values), not just `naturalNames`. `DevDock.tsx` takes a `pricingRules` prop; the rules tab is a textarea seeded with the rules JSON, `JSON.parse` on blur with error, "Apply" → PUT, and lists `validation_errors`; copy copies the rules JSON; stage labels read "Stage 4: Pricing Engine" and "Stage 5: Lead Simulation".
 
 ---
 
@@ -150,7 +153,7 @@ interface PricingRulesState { rules; compiled_at; validation_errors: ValidationE
 - Rush delivery has no row in the sample table → boolean input feeding the add-on subtotal; if a later Stage 2 run has a rush row the compiler binds it.
 - Bands are `volume` mode only (graduated/marginal not implemented; add a `mode` column and a per-band loop when a company needs it).
 - Rounding is half-up on cents (no half-even); all benchmark arithmetic is exact so no ambiguity in tests.
-- `PUT /variables` alone doesn't clear rules server-side; the UI hides the deck and `/template/generate` clears.
+- Editing and saving variables (`PUT /variables`) resets Stage 4 server-side: `invalidateTemplate` sets `stage: "variable_review"`, `pricing_rules: null` and `template_generated: false`, and deletes `template.docx` / `proposal.docx` / `proposal.pdf`. `/template/generate` clears again on regeneration.
 
 ## 6. Verification
 

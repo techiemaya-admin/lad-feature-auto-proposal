@@ -10,7 +10,7 @@ import type { Value } from "./pricing-rules.types.js";
 /**
  * Stage 5, missing-fact branch: a short reply asking the lead for what the message left out, and — for the
  * simulator — the lead's answer to it. Neither is sent; the thread of both is what the extractor re-reads
- * until nothing is missing. Plan: docs/plans/06-lead-simulator.md §1.2.
+ * until nothing is missing. Plan: docs/features/lead-simulator.md §1.2.
  */
 
 export interface ClarificationInput {

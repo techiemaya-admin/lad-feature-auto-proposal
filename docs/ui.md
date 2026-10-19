@@ -57,17 +57,17 @@ LadSettingsHeader (always visible)
 ### 3.4 Stage 4: Pricing Engine (`stages/Stage4PricingEngine.tsx` + `pricing/LedgerTray.tsx`)
 Rule schema and calculator contracts: [features/pricing-engine.md](features/pricing-engine.md).
 - Sections top→bottom: assumptions strip (amber) → one editable card per rule table (typed cells, `tabular-nums`, commit on blur/Enter, add/remove rows) → "What we ask the lead" chips → calculation ledger in evaluation order (label, plain-language definition, sample value, quotation value, ✓/✗) → editable "Held for review when" rules → footer (`N of M match`, Regenerate, Proceed).
-- Tapping a ledger row docks `LedgerTray` (kind / operator / operands / conditions editor). `CondRows` is shared inside `pricing/LedgerTray.tsx`.
-- Live check: 300 ms debounced `PUT /rules`; rejected edits show inline errors and keep the edit on screen. Proceed blocked while structural errors exist.
+- Tapping a ledger row docks `LedgerTray` (kind / operator / operands / conditions editor). `CondRows.tsx` is a shared component used by `LedgerTray.tsx` and the "Held for review when" editor.
+- Live check: 300 ms debounced `PUT /rules`; rejected edits show inline errors and keep the edit on screen. Proceed is blocked while structural errors exist or a review rule is unfinished.
 - Review rules are editable: each rule has conditions and a reason, added/edited/deleted in place, and a half-finished rule (no conditions or an empty reason) blocks Proceed — see [features/review-rules.md](features/review-rules.md). The raw JSON remains editable in the Dev Dock.
 
-### 3.5 Stage 5: Lead & Proposal (`stages/Stage5LeadSimulator.tsx` + `Stage5ReceiptSummary.tsx`)
+### 3.5 Stage 5: Lead & Proposal (`stages/Stage5LeadSimulator.tsx`)
 Extraction, clarification and generation contracts: [features/lead-simulator.md](features/lead-simulator.md).
 - Lead textarea (same fluid pattern as Stage 1) prefilled with the assigned/routed email → template's email, else dev sample. `[Generate proposal]` runs extract → generate back to back.
-- Facts panel (read-only; booleans Yes/No, `tabular-nums`): missing required fact highlights amber and stops the run; conversation card drafts the clarification ask (Copy) + reply box (`What the lead wrote back…`, model-as-lead filler, editable) → re-read loop until complete.
-- Assumptions strip (amber, read-between-the-lines). Numbers ledger (in-document money/percent/integer in calculation order, last money value emphasized).
-- Draft box when `needs_review` is non-empty (red, reasons listed; document still built, affected values print `[to confirm]`).
-- Split view: facts/assumptions/ledger left; PDF `<iframe>` (or unavailable-with-reason) + `[Download .docx] [Download .pdf]` right. `docx-preview` is not used here. (`Stage5ReceiptSummary.tsx` exists but is not rendered anywhere — dead code, do not reference it in new work.)
+- Editable facts form (booleans Yes/No, `tabular-nums`): editing a field in place re-generates when nothing is missing; missing required facts highlight amber and stop the run; the conversation card drafts the clarification ask (Copy) plus a reply box (`Type the lead's reply…`, "Draft lead reply" model-as-lead filler, editable) → re-read loop until complete.
+- Assumptions strip (amber, read-between-the-lines). Numbers ledger (`NumbersLedger`, in-document money/percent/integer in calculation order, last money value emphasized); when `needs_review` is non-empty the red Draft box appears beneath it (reasons listed; document still built, affected values print `[to confirm]`).
+- Generated-proposal card split `lg:grid-cols-[1.1fr_0.9fr]`: proposal narrative left; document preview right — a PDF `<iframe>` thumbnail (click → full-screen modal) or "the backend did not return a PDF preview" + `[Download .docx] [Download .pdf]`. `docx-preview` is not used here.
+- `stages/Stage5ReceiptSummary.tsx` exists but is not rendered anywhere — dead code, do not reference it in new work.
 
 ## 4. Library, Routing & Settings UI
 

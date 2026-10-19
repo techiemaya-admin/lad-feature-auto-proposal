@@ -113,7 +113,7 @@ import type {
 } from "./pricing-rules.types.js";
 
 /**
- * Pure evaluator for PricingRules (docs/plans/05-pricing-engine.md §1).
+ * Pure evaluator for PricingRules (docs/features/pricing-engine.md §1).
  * No I/O, no LLM: the sheet is data, this file is the arithmetic.
  *
  * Guarantees: topological evaluation (declaration order breaks ties, so the ledger is stable);

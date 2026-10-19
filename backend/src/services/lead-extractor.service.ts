@@ -12,7 +12,7 @@ import { isDateVariable } from "./dates.js";
  * company from the rules' `input` variables plus the Stage 2 customer inputs the rules do not define at all
  * (client name); dates are never asked — the sheet builds them from today. A silent lead follows the input's own setting:
  * required → asked, default → assumed by code (never by the model), neither → blank.
- * Plan: docs/plans/06-lead-simulator.md §1.1.
+ * Plan: docs/features/lead-simulator.md §1.1.
  */
 
 export interface LeadField {

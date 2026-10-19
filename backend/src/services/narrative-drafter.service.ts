@@ -12,7 +12,7 @@ import type { PricingRules, Stage2Context, Value } from "./pricing-rules.types.j
 /**
  * Stage 5 narrative: every ai_generated paragraph in ONE model call. The model writes `{tag}` placeholders
  * wherever a number, price, tier name, count or date belongs; code substitutes them from the payload, so a
- * model-typed number can never reach the document. Plan: docs/plans/06-lead-simulator.md §1.5.
+ * model-typed number can never reach the document. Plan: docs/features/lead-simulator.md §1.6.
  */
 
 export interface ParagraphTips {

@@ -26,7 +26,7 @@ The full `PricingRules` object (including `review_rules`) already round-trips th
 | New rule default | Empty condition (`when: []`), reason `""` |
 | UX expansion pattern | Click a rule row → inline tray expands below it (same as ledger variable rows) |
 | Always-show section | Yes — header + "Add rule" button visible even when `review_rules` is empty |
-| Downstream stale | Soft stale banner: the old Stage 5 result stays, flagged "rules changed — regenerate". No wipe, no rewind. |
+| Downstream result | Editing review rules does not clear the last Stage 5 result on screen; the next Generate uses the updated rules. No wipe, no rewind. |
 | Empty `when: []` | Stripped before PUT + Proceed blocked while one exists. A half-created rule can never Draft-block proposals. |
 | Empty `reason` | Required: `trim(reason) !== ""`, `maxLength={200}` attribute only, no counter UI. Empty → inline hint + Proceed blocked. |
 | Condition editor | Shared `CondRows` with a unit filter. No cross-import from `LedgerTray`. |
@@ -51,11 +51,11 @@ Every edit updates local state and starts the existing 300 ms debounce. Before `
 
 ### Blocking Proceed
 
-`proceedDisabled` is true while any rule has no conditions or an empty reason. The top validation band names the problem, the row gets a red border, and the tray auto-expands. A rule that is merely incomplete cannot reach the backend because it is stripped from the save payload.
+`reviewBlocked` is true while any rule has no conditions or an empty reason; Proceed is disabled while it (or a structural `errors` list) is non-empty. The top validation band names the problem, the row gets a red border, and the tray auto-expands. A rule that is merely incomplete cannot reach the backend because it is stripped from the save payload.
 
 ### Stage 5 after an edit
 
-Editing review rules invalidates only the last generate, not the template or variables. The previous proposal and its Draft box stay on screen with a "rules changed — regenerate" banner. Generating again shows the updated reasons.
+Editing review rules changes only the rules, not the template or variables. The app does not clear the last Stage 5 result, so the previous proposal and its Draft box stay on screen unchanged; generating again evaluates the review rules as they now are and shows the updated reasons.
 
 ### Backend validation
 
@@ -97,7 +97,7 @@ sequenceDiagram
 |---|---|
 | `frontend/src/components/pricing/CondRows.tsx` | Shared condition rows + `OPS`, with the unit filter that hides `text`/`rows` for review rules |
 | `frontend/src/components/pricing/LedgerTray.tsx` | Imports the shared `CondRows`; existing call sites unchanged |
-| `frontend/src/components/pricing/PricingEngineDeck.tsx` | Rule editor, client-only `_id`, save guards, row-error highlight, stale banner hook |
+| `frontend/src/components/pricing/PricingEngineDeck.tsx` | Rule editor, client-only `_id`, save guards, row-error highlight |
 
 No backend changes. No new dependencies. No new state machine, no counter UI, no persisted ids.
 
@@ -111,4 +111,4 @@ No backend changes. No new dependencies. No new state machine, no counter UI, no
 6. **Delete a rule** — the row disappears and the save fires.
 7. **Invalid reference** — add a condition naming a non-existent variable through the DevDock JSON; the validation error surfaces in the general errors band.
 8. **Stage 5 Draft box** — generate a proposal that triggers the rule and confirm the box shows the edited `reason`.
-9. **Stage 5 stale** — edit a rule after generating; the old proposal stays with the "rules changed — regenerate" banner.
+9. **Stage 5 after an edit** — edit a rule after generating; the old proposal stays on screen unchanged, and generating again applies the edited rule.
