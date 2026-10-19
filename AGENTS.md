@@ -7,14 +7,9 @@ Stack: TypeScript + ESM, Express backend with SQLite (`backend/src/`), Vite + sh
 ## Context Pointers
 
 - **Documentation index:** [docs/README.md](docs/README.md) — reading order, quick setup, and which document owns what.
-- **Generated sample proposals:** [docs/features/sample-proposals.md](docs/features/sample-proposals.md) — automatic sample pricing, custom sections, frontend-only accuracy notes, Word compatibility.
 - **Architecture & pipeline blueprint:** [docs/architecture.md](docs/architecture.md) — the 5-stage pipeline, mutation flow, variable taxonomy, execution order.
 - **UI/UX design spec:** [docs/ui.md](docs/ui.md) — layouts, component structure, theme tokens.
-- **Template library & email routing:** [docs/features/template-library.md](docs/features/template-library.md) — ICP import, custom templates, capacity, saved-email routing.
-- **Pricing engine:** [docs/features/pricing-engine.md](docs/features/pricing-engine.md) — rule schema, compiler, deterministic math.
-- **Lead simulator:** [docs/features/lead-simulator.md](docs/features/lead-simulator.md) — extraction, clarification loop, generation.
-- **Dates:** [docs/features/dates.md](docs/features/dates.md) — dates as sheet values (`today`, `add_days`/`add_months`).
-- **Review rules:** [docs/features/review-rules.md](docs/features/review-rules.md) — the Stage 4 review-rule editor (add / edit / delete a rule; a half-finished rule blocks Proceed).
+- **Feature contracts:** [docs/features/](docs/features/) — one file per feature: template library, sample proposals, pricing engine, lead simulator, dates, review rules.
 - **Pricing verification guide:** [Mock Data/Verification Guide.md](Mock%20Data/Verification%20Guide.md) — formulas and benchmark arithmetic.
 - **Demo inputs:** [Mock Data/Demo Inputs.md](Mock%20Data/Demo%20Inputs.md) — paste-ready pricing prompt, `.docx` and lead email per company.
 - **Mock dataset:** [Mock Data/companies_dataset.json](Mock%20Data/companies_dataset.json) — company profiles only (no pricing).
