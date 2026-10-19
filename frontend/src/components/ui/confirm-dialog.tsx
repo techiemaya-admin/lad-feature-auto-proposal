@@ -8,7 +8,7 @@ interface ConfirmDialogProps {
   title: string;
   description: string;
   confirmLabel: string;
-  cancelLabel?: string;
+  cancelLabel?: string | null;
   variant?: "danger" | "default";
   isBusy?: boolean;
   onConfirm: () => void;
@@ -81,15 +81,17 @@ export function ConfirmDialog({
         </div>
 
         <div className="flex justify-end gap-2.5 pt-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onCancel}
-            disabled={isBusy}
-            className="rounded-xl text-xs font-semibold"
-          >
-            {cancelLabel}
-          </Button>
+          {cancelLabel && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onCancel}
+              disabled={isBusy}
+              className="rounded-xl text-xs font-semibold"
+            >
+              {cancelLabel}
+            </Button>
+          )}
           <Button
             type="button"
             variant={isDanger ? "destructive" : "default"}

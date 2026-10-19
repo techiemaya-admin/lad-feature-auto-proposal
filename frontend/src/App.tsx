@@ -110,6 +110,8 @@ export function App({
   const [copiedLead, setCopiedLead] = useState<boolean>(false);
   const [isBackConfirmOpen, setIsBackConfirmOpen] = useState<boolean>(false);
   const [pendingDelete, setPendingDelete] = useState<ProposalTemplateSummary | null>(null);
+  const [pendingCompanyId, setPendingCompanyId] = useState<string | null>(null);
+  const [pendingSwitchTemplateId, setPendingSwitchTemplateId] = useState<string | null>(null);
 
   // Navigation tabs & AI models
   const [activeTab, setActiveTab] = useState<string>("proposals");
@@ -347,17 +349,7 @@ export function App({
     }
   };
 
-  // Tenant switcher from LadSettingsHeader
-  const handleSelectCompany = (id: string) => {
-    if (isTemplatesBusy || id === activeCompanyId) return;
-    if (
-      templateId &&
-      !window.confirm(
-        "Switch company? Saved work is kept. Unsaved edits in the current form will be discarded."
-      )
-    ) {
-      return;
-    }
+  const executeSelectCompany = (id: string) => {
     setInternalTemplateId("");
     if (controlledOnCompanyChange) {
       controlledOnCompanyChange(id);
@@ -368,6 +360,16 @@ export function App({
       "info",
       `Switched tenant to ${companies.find((c) => c.company_id === id)?.company_name || id}`
     );
+  };
+
+  // Tenant switcher from LadSettingsHeader
+  const handleSelectCompany = (id: string) => {
+    if (isTemplatesBusy || id === activeCompanyId) return;
+    if (templateId) {
+      setPendingCompanyId(id);
+      return;
+    }
+    executeSelectCompany(id);
   };
 
   // Template Navigation & Actions
@@ -945,13 +947,7 @@ export function App({
                       value={templateId}
                       onChange={(nextId) => {
                         if (!nextId || nextId === templateId) return;
-                        if (
-                          window.confirm(
-                            "Switch template workspace? Saved work is kept. Unsaved edits in the current form will be discarded."
-                          )
-                        ) {
-                          setInternalTemplateId(nextId);
-                        }
+                        setPendingSwitchTemplateId(nextId);
                       }}
                       options={templates.map((t) => ({
                         value: t.template_id,
@@ -1167,6 +1163,34 @@ export function App({
         isBusy={isTemplatesBusy}
         onConfirm={() => void handleConfirmDeleteTemplate()}
         onCancel={() => setPendingDelete(null)}
+      />
+
+      <ConfirmDialog
+        open={pendingCompanyId !== null}
+        title="Switch company?"
+        description="Saved work is kept. Unsaved edits in the current form will be discarded."
+        confirmLabel="Switch company"
+        onConfirm={() => {
+          if (pendingCompanyId) {
+            executeSelectCompany(pendingCompanyId);
+            setPendingCompanyId(null);
+          }
+        }}
+        onCancel={() => setPendingCompanyId(null)}
+      />
+
+      <ConfirmDialog
+        open={pendingSwitchTemplateId !== null}
+        title="Switch template workspace?"
+        description="Saved work is kept. Unsaved edits in the current form will be discarded."
+        confirmLabel="Switch template"
+        onConfirm={() => {
+          if (pendingSwitchTemplateId) {
+            setInternalTemplateId(pendingSwitchTemplateId);
+            setPendingSwitchTemplateId(null);
+          }
+        }}
+        onCancel={() => setPendingSwitchTemplateId(null)}
       />
     </div>
   );

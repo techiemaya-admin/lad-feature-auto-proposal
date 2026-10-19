@@ -5,6 +5,7 @@ import type { CompanyVariable, CompoundTable } from "../types/variable";
 import type { TemplateStats } from "../types/template";
 import type { PricingRulesState } from "../types/pricing";
 import { Button } from "./ui/button";
+import { ConfirmDialog } from "./ui/confirm-dialog";
 import { PromptDocCapsule } from "./PromptDocCapsule";
 import { VariableReviewDeck } from "./VariableReviewDeck";
 import { TemplateCheckpointCard } from "./TemplateCheckpointCard";
@@ -65,6 +66,7 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
 }) => {
   const [isImporting, setIsImporting] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+  const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
   // Chips and template warnings share names: tapping a warning opens that chip's tray
   const [naturalNames, setNaturalNames] = useState<Record<string, string>>({});
   const [focusRequest, setFocusRequest] = useState<{ target: string } | null>(null);
@@ -91,18 +93,13 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
     }
   };
 
-  const handleReset = async () => {
-    if (
-      window.confirm(
-        `Reset "${company.company_name}" to its saved backend defaults?`
-      )
-    ) {
-      setIsResetting(true);
-      try {
-        await onResetDefault();
-      } finally {
-        setIsResetting(false);
-      }
+  const handleConfirmReset = async () => {
+    setIsResetting(true);
+    try {
+      await onResetDefault();
+    } finally {
+      setIsResetting(false);
+      setIsResetConfirmOpen(false);
     }
   };
 
@@ -175,7 +172,7 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
           <Button
             variant="ghost"
             size="sm"
-            onClick={handleReset}
+            onClick={() => setIsResetConfirmOpen(true)}
             disabled={isResetting || isLoading}
             className="h-6 px-2 text-[11px] text-muted-foreground hover:text-destructive hover:bg-destructive/10 btn-tactile font-normal"
             title="Reset company settings to backend defaults"
@@ -243,6 +240,17 @@ export const CompanyProfileCard: React.FC<CompanyProfileCardProps> = ({
           isProceeding={isProceeding}
         />
       )}
+
+      <ConfirmDialog
+        open={isResetConfirmOpen}
+        title={`Reset "${company.company_name}"?`}
+        description="Reset company profile and settings to its saved backend defaults."
+        confirmLabel="Reset to defaults"
+        variant="danger"
+        isBusy={isResetting}
+        onConfirm={() => void handleConfirmReset()}
+        onCancel={() => setIsResetConfirmOpen(false)}
+      />
     </div>
   );
 };

@@ -10,7 +10,10 @@ import {
   ChevronRight,
   Plus,
   Loader2,
+  Calendar,
+  AlertCircle,
 } from "lucide-react";
+import { format } from "date-fns";
 import { Button } from "../ui/button";
 import { CustomDropdown } from "../ui/custom-dropdown";
 import { AddCustomChipModal } from "../AddCustomChipModal";
@@ -101,6 +104,43 @@ const SCAN_TRACE = [
 const TRACE_STEP_MS = 1800;
 
 const tableKey = (t: CompoundTable) => `table:${t.table_id}`;
+
+const DEFAULT_DATE_FORMAT = "MMMM d, yyyy";
+
+/** Today in `fmt`, the way the backend prints it (same date-fns tokens), or null when date-fns can't use it. */
+function previewToday(fmt: string): string | null {
+  // date-fns warns on the console and throws on D / YYYY (day of year, week year) — same guard as backend dates.ts.
+  if (/[DY]/.test(fmt.replace(/'[^']*'/g, ""))) return null;
+  try {
+    return format(new Date(), fmt);
+  } catch {
+    return null;
+  }
+}
+
+/** The format box, with today's date printed in what is typed so far. Saves on blur. */
+const DateFormatField: React.FC<{ v: CompanyVariable; onSave: (id: string, format: string) => void }> = ({ v, onSave }) => {
+  const [text, setText] = useState(v.descriptor?.date_format || "");
+  const preview = previewToday(text.trim() || DEFAULT_DATE_FORMAT);
+  return (
+    <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+      <input
+        type="text"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => onSave(v.id || v.variable_name, text.trim())}
+        onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+        placeholder={DEFAULT_DATE_FORMAT}
+        spellCheck={false}
+        aria-describedby={`${v.id}-date-format-preview${v.date_format_ok === false ? ` ${v.id}-date-format-warning` : ""}`}
+        className="w-full max-w-64 font-mono text-xs bg-background/60 border border-border/80 rounded-md px-2 py-1 focus:outline-hidden focus:border-border text-foreground"
+      />
+      <span id={`${v.id}-date-format-preview`} aria-live="polite" className="text-[11px] text-muted-foreground font-mono">
+        {preview !== null ? preview : <span className="text-amber-700 dark:text-amber-400">not a valid format</span>}
+      </span>
+    </div>
+  );
+};
 
 export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
   companyName,
@@ -253,6 +293,16 @@ export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
     );
     onVariablesChange(updated, compoundTables);
     flash("Text updated");
+  };
+
+  const handleDateFormat = (id: string, date_format: string) => {
+    const updated = variables.map((v) =>
+      (v.id === id || v.variable_name === id)
+        ? { ...v, descriptor: { ...v.descriptor, date_format } }
+        : v
+    );
+    onVariablesChange(updated, compoundTables);
+    flash("Date format saved");
   };
 
   const handleToggleLeaveOut = (id: string, is_deleted: boolean) => {
@@ -488,6 +538,14 @@ export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
                                   isSelected ? "bg-white" : "bg-amber-500 animate-pulse"
                                 }`}
                                 title="Didn't land in the last template"
+                              />
+                            )}
+                            {v.date_format_ok === false && !v.is_deleted && !needsAttention && (
+                              <span
+                                className={`size-1.5 rounded-full ${
+                                  isSelected ? "bg-white" : "bg-amber-500"
+                                }`}
+                                title="Date format doesn't match the quotation"
                               />
                             )}
                             {v.data_type && (
@@ -749,6 +807,32 @@ export const Stage2VariableLedger: React.FC<Stage2VariableLedgerProps> = ({
                     </div>
                   </div>
                 )}
+
+              {/* Date Format Configuration */}
+              {selectedVariable.data_type === "date" && (
+                <div className="p-3.5 rounded-xl bg-card border border-border/80 space-y-2 shadow-2xs">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                    <Calendar className="size-3 text-[#2B7CFF]" />
+                    <span>Date Format Pattern</span>
+                  </div>
+                  <DateFormatField
+                    key={`${selectedVariable.id || selectedVariable.variable_name}-date-format`}
+                    v={selectedVariable}
+                    onSave={handleDateFormat}
+                  />
+                  {selectedVariable.date_format_ok === false && (
+                    <p
+                      id={`${selectedVariable.id || selectedVariable.variable_name}-date-format-warning`}
+                      className="mt-1 flex items-start gap-1 text-[11px] text-amber-700 dark:text-amber-400"
+                    >
+                      <AlertCircle className="size-3 mt-px shrink-0" />
+                      <span>
+                        This format doesn&rsquo;t write the quotation&rsquo;s date back exactly, so proposals print dates like &ldquo;September 7, 2026&rdquo; instead. Use date-fns letters, e.g. <code className="font-mono">d MMMM yyyy</code> or <code className="font-mono">dd/MM/yyyy</code>.
+                      </span>
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Variable Metadata */}
               <div className="flex items-center gap-4 text-[11px] text-muted-foreground flex-wrap">

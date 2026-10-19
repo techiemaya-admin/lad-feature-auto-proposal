@@ -31,6 +31,8 @@ export interface VariableDescriptor {
   paragraph_config?: ParagraphConfig;
   /** Only when the same text appears elsewhere with a different meaning. */
   context_text?: string;
+  /** A date's date-fns format ("MMMM d, yyyy"); used only once it prints the sample back. */
+  date_format?: string;
 }
 
 export interface CompanyVariable {
@@ -44,6 +46,8 @@ export interface CompanyVariable {
   is_deleted: boolean;
   sort_order: number;
   descriptor: VariableDescriptor;
+  /** Dates only, worked out by the server on read: the format prints the sample back. false → the default format is used. */
+  date_format_ok?: boolean;
   created_at: string;
   updated_at: string;
 }

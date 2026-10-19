@@ -3,10 +3,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.resolve(__dirname, "../.env") });
-dotenv.config({ path: path.resolve(process.cwd(), "backend/.env") });
-dotenv.config({ path: path.resolve(process.cwd(), ".env") });
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, "../.env"), override: true });
+dotenv.config({ path: path.resolve(process.cwd(), "backend/.env"), override: true });
+dotenv.config({ path: path.resolve(process.cwd(), ".env"), override: true });
+dotenv.config({ override: true });
 
 import { createApp } from "./app.js";
 import { initDatabase } from "./db/database.js";

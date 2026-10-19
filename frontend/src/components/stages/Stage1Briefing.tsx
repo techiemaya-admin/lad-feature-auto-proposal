@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
+import { ConfirmDialog } from "../ui/confirm-dialog";
 import type { Company } from "../../types/company";
 import { SampleProposalBuilder } from "../SampleProposalBuilder";
 
@@ -58,6 +59,7 @@ export const Stage1Briefing: React.FC<Stage1BriefingProps> = ({
 
   const [isDragging, setIsDragging] = useState(false);
   const [isGeneratingPrompt, setIsGeneratingPrompt] = useState(false);
+  const [invalidFileAlertOpen, setInvalidFileAlertOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -113,7 +115,7 @@ export const Stage1Briefing: React.FC<Stage1BriefingProps> = ({
         setGeneratedBrief(null);
         setReviewNotes([]);
       } else {
-        alert("Please upload a Microsoft Word document (.docx)");
+        setInvalidFileAlertOpen(true);
       }
     }
   };
@@ -126,7 +128,7 @@ export const Stage1Briefing: React.FC<Stage1BriefingProps> = ({
         setGeneratedBrief(null);
         setReviewNotes([]);
       } else {
-        alert("Please upload a Microsoft Word document (.docx)");
+        setInvalidFileAlertOpen(true);
       }
     }
   };
@@ -568,6 +570,16 @@ export const Stage1Briefing: React.FC<Stage1BriefingProps> = ({
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={invalidFileAlertOpen}
+        title="Invalid file format"
+        description="Please upload a Microsoft Word document (.docx)."
+        confirmLabel="OK"
+        cancelLabel={null}
+        onConfirm={() => setInvalidFileAlertOpen(false)}
+        onCancel={() => setInvalidFileAlertOpen(false)}
+      />
     </div>
   );
 };

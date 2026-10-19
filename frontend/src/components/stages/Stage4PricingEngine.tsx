@@ -13,25 +13,57 @@ import {
   Loader2,
   Plus,
   ShieldAlert,
+  Trash2,
   X,
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { RuleTableCard } from "../pricing/RuleTableCard";
 import { LedgerTray } from "../pricing/LedgerTray";
+import { CondRows } from "../pricing/CondRows";
 import type {
+  Cond,
   PricingRules,
   PricingRulesState,
+  ReviewRule,
   RuleVariable,
   ValidationError,
 } from "../../types/pricing";
 import type { CompanyVariable, CompoundTable } from "../../types/variable";
 import { updatePricingRules, RulesValidationError } from "../../services/api";
-import { formatValue, readable, readableConds } from "../pricing/readable";
+import { formatValue, readable, readableConds, readableDefault } from "../pricing/readable";
 
 export interface RulesStatus {
   status: "idle" | "compiling" | "error";
   message?: string;
 }
+
+type EditableReviewRule = ReviewRule & { _id: string };
+
+const newRuleId = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+const withRuleIds = (list: ReviewRule[]): EditableReviewRule[] =>
+  list.map((r) =>
+    "_id" in (r as EditableReviewRule) && typeof (r as EditableReviewRule)._id === "string"
+      ? (r as EditableReviewRule)
+      : ({ ...r, _id: newRuleId() } as EditableReviewRule),
+  );
+
+const normalizeRules = (rs: PricingRules): PricingRules => ({ ...rs, review_rules: withRuleIds(rs.review_rules ?? []) });
+
+/** Strip client-only `_id` + `when: []` drafts: a half-created rule never reaches the backend. */
+const stripForPayload = (rs: PricingRules): PricingRules => ({
+  ...rs,
+  review_rules: (rs.review_rules ?? [])
+    .filter((r) => r.when.length > 0)
+    .map((r) => {
+      const { _id, ...rest } = r as EditableReviewRule;
+      void _id;
+      return rest as ReviewRule;
+    }),
+});
 
 interface Stage4PricingEngineProps {
   companyId: string;
@@ -53,6 +85,7 @@ const INPUT_TYPE_LABEL: Record<string, string> = {
   multi_choice: "multiple picks",
   boolean: "yes / no",
   us_state: "US state",
+  region: "region",
 };
 
 export const Stage4PricingEngine: React.FC<Stage4PricingEngineProps> = ({
@@ -68,9 +101,10 @@ export const Stage4PricingEngine: React.FC<Stage4PricingEngineProps> = ({
   onRegenerate,
   isProceeding = false,
 }) => {
-  const [rules, setRules] = useState<PricingRules | null>(state?.rules ?? null);
+  const [rules, setRules] = useState<PricingRules | null>(() => (state?.rules ? normalizeRules(state.rules) : null));
   const [errors, setErrors] = useState<ValidationError[]>(state?.validation_errors ?? []);
   const [selected, setSelected] = useState<string | null>(null);
+  const [selectedRule, setSelectedRule] = useState<string | null>(null); // client-only _id
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [isSavingRules, setIsSavingRules] = useState(false);
   const [lastSaved, setLastSaved] = useState<PricingRules | null>(null);
@@ -80,7 +114,7 @@ export const Stage4PricingEngine: React.FC<Stage4PricingEngineProps> = ({
   if (state?.rules !== syncedRules) {
     setSyncedRules(state?.rules);
     if (state?.rules !== lastSaved) {
-      setRules(state?.rules ?? null);
+      setRules(state?.rules ? normalizeRules(state.rules) : null);
       setErrors(state?.validation_errors ?? []);
     }
   }
@@ -88,14 +122,15 @@ export const Stage4PricingEngine: React.FC<Stage4PricingEngineProps> = ({
   // Auto-save debounced PUT on user edits (300ms debounce)
   useEffect(() => {
     if (!rules || rules === state?.rules) return;
+    if (state?.rules && JSON.stringify(stripForPayload(rules)) === JSON.stringify(stripForPayload(state.rules))) return;
     const timer = setTimeout(async () => {
       setIsSavingRules(true);
       try {
-        const next = await updatePricingRules(companyId, rules, templateId);
-        setRules(next.rules);
-        setLastSaved(next.rules);
+        const next = await updatePricingRules(companyId, stripForPayload(rules), templateId);
+        setRules(normalizeRules(next.rules));
+        setLastSaved(rules);
         setErrors(next.validation_errors);
-        onStateChange(next);
+        onStateChange({ ...next, rules });
         setSaveStatus("Recalculated & Saved");
         setTimeout(() => setSaveStatus(null), 1500);
       } catch (err) {
@@ -112,7 +147,11 @@ export const Stage4PricingEngine: React.FC<Stage4PricingEngineProps> = ({
   }, [rules, companyId, templateId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setSelected(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setSelected(null);
+      setSelectedRule(null);
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
@@ -148,6 +187,22 @@ export const Stage4PricingEngine: React.FC<Stage4PricingEngineProps> = ({
     setSelected(name);
   };
 
+  const editReviewRule = (id: string, r: EditableReviewRule) =>
+    rules && setRules({ ...rules, review_rules: rules.review_rules.map((x) => ((x as EditableReviewRule)._id === id ? r : x)) });
+
+  const deleteReviewRule = (id: string) => {
+    if (!rules) return;
+    setRules({ ...rules, review_rules: rules.review_rules.filter((x) => (x as EditableReviewRule)._id !== id) });
+    setSelectedRule(null);
+  };
+
+  const addReviewRule = () => {
+    if (!rules) return;
+    const r: EditableReviewRule = { _id: newRuleId(), when: [], reason: "" };
+    setRules({ ...rules, review_rules: [...rules.review_rules, r] });
+    setSelectedRule(r._id);
+  };
+
   const samples = useMemo(() => {
     const m: Record<string, string> = {};
     for (const v of variables) {
@@ -159,16 +214,23 @@ export const Stage4PricingEngine: React.FC<Stage4PricingEngineProps> = ({
     return m;
   }, [variables, compoundTables]);
 
-  const errorByPath = useMemo(() => {
+  const { errorByPath, reviewErrorByIndex } = useMemo(() => {
     const m = new Map<number, string[]>();
+    const rm = new Map<number, string[]>();
     for (const e of errors) {
       const i = /^variables\[(\d+)\]/.exec(e.path);
       if (i) m.set(Number(i[1]), [...(m.get(Number(i[1])) ?? []), e.message]);
+      const ri = /^review_rules\[(\d+)\]/.exec(e.path);
+      if (ri) rm.set(Number(ri[1]), [...(rm.get(Number(ri[1])) ?? []), e.message]);
     }
-    return m;
+    return { errorByPath: m, reviewErrorByIndex: rm };
   }, [errors]);
 
-  const generalErrors = errors.filter((e) => !/^variables\[\d+\]/.test(e.path));
+  const reviewBlocked = Boolean(
+    rules?.review_rules.some((r) => r.when.length === 0 || r.reason.trim() === "")
+  );
+
+  const generalErrors = errors.filter((e) => !/^variables\[\d+\]/.test(e.path) && !/^review_rules\[\d+\]/.test(e.path));
 
   const isCompiling = status.status === "compiling";
   const values = state?.evaluation?.values ?? {};
@@ -344,7 +406,14 @@ export const Stage4PricingEngine: React.FC<Stage4PricingEngineProps> = ({
               <div className="flex items-center justify-between text-xs font-bold text-slate-600 dark:text-slate-400 tracking-wider uppercase">
                 <span className="flex items-center gap-2">
                   <User className="size-4 text-[#0B1957] dark:text-[#2B7CFF]" />
-                  <span>Client Lead Inputs ({inputs.length})</span>
+                  <span>
+                    Client Lead Inputs ({inputs.length})
+                    {inputs.some((v) => v.default !== undefined) && (
+                      <span className="text-[11px] font-normal normal-case ml-1.5 text-amber-600 dark:text-amber-400">
+                        • {inputs.filter((v) => v.default !== undefined).length} assumed
+                      </span>
+                    )}
+                  </span>
                 </span>
                 <span className="text-[11px] font-mono normal-case">Click chip to inspect</span>
               </div>
@@ -377,6 +446,14 @@ export const Stage4PricingEngine: React.FC<Stage4PricingEngineProps> = ({
                           className={`size-1.5 rounded-full ${isSel ? "bg-white" : "bg-blue-600 dark:bg-blue-400"}`}
                           title="Required field"
                         />
+                      )}
+                      {v.default !== undefined && (
+                        <span
+                          className="text-[10px] px-1.5 py-px rounded bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 font-sans"
+                          title="Assumed when the lead does not say it"
+                        >
+                          assumes {readableDefault(v)}
+                        </span>
                       )}
                     </button>
                   );
@@ -559,29 +636,126 @@ export const Stage4PricingEngine: React.FC<Stage4PricingEngineProps> = ({
             )}
 
           {/* Held For Review Rules */}
-          {rules.review_rules && rules.review_rules.length > 0 && (
-            <div className="rounded-2xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/30 dark:bg-amber-950/20 p-4 space-y-2.5">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300">
                 <ShieldAlert className="size-4 text-amber-600 dark:text-amber-400" />
-                <span>Proposal Held for Manual Review When:</span>
+                <span>Held for Manual Review When ({rules.review_rules.length})</span>
               </div>
-              <ul className="space-y-1.5 text-xs text-slate-700 dark:text-slate-300">
-                {rules.review_rules.map((r, i) => (
-                  <li key={i} className="flex items-start gap-2">
-                    <span className="font-mono text-slate-500 shrink-0 text-xs">
-                      {readableConds(rules, r.when)}
-                    </span>
-                    <span className="font-sans font-medium text-slate-800 dark:text-slate-200">→ {r.reason}</span>
-                  </li>
-                ))}
-              </ul>
+              <button
+                type="button"
+                onClick={addReviewRule}
+                className="inline-flex items-center gap-1 text-xs text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
+              >
+                <Plus className="size-3.5" /> Add review rule
+              </button>
             </div>
-          )}
+
+            {rules.review_rules.length === 0 ? (
+              <p className="text-xs text-slate-500 italic px-1">
+                No review rules yet — the AI found none. Add one if a scenario needs a human check before sending.
+              </p>
+            ) : (
+              <div className="rounded-2xl border border-amber-200/80 dark:border-amber-900/50 overflow-hidden divide-y divide-amber-200/60 dark:divide-amber-900/30 bg-white dark:bg-[#000724]">
+                {(rules.review_rules as EditableReviewRule[]).map((r, i) => {
+                  const isSel = selectedRule === r._id;
+                  const noConditions = r.when.length === 0;
+                  const noReason = r.reason.trim() === "";
+                  const rowErrors = reviewErrorByIndex.get(i);
+                  return (
+                    <React.Fragment key={r._id}>
+                      {/* Row — click to toggle tray */}
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setSelectedRule(isSel ? null : r._id)}
+                        onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setSelectedRule(isSel ? null : r._id)}
+                        className={`flex items-start gap-2.5 px-4 py-2.5 cursor-pointer transition-colors text-xs
+                          ${isSel ? "bg-amber-50/70 dark:bg-amber-950/40" : "hover:bg-slate-50 dark:hover:bg-slate-800/40"}
+                          ${noConditions ? "bg-amber-500/10" : ""}
+                          ${rowErrors ? "bg-red-50/50 dark:bg-rose-950/20 ring-1 ring-inset ring-red-400/50" : ""}`}
+                      >
+                        {noConditions ? (
+                          <AlertTriangle className="size-3.5 shrink-0 text-amber-500 mt-0.5" />
+                        ) : (
+                          <ShieldAlert className="size-3.5 shrink-0 text-amber-600/70 mt-0.5" />
+                        )}
+                        <span className="text-slate-500 dark:text-slate-400 shrink-0 min-w-0 font-mono">
+                          {r.when.length
+                            ? readableConds(rules, r.when)
+                            : <span className="italic opacity-60">no conditions</span>}
+                        </span>
+                        <span className="text-slate-800 dark:text-slate-200 ml-1 font-medium">
+                          → {r.reason || <span className="italic opacity-60">no reason</span>}
+                        </span>
+                      </div>
+
+                      {/* Inline tray — expand-below pattern */}
+                      {isSel && (
+                        <div className="animate-in fade-in slide-in-from-top-1 duration-150">
+                          <div className="bg-slate-50/80 dark:bg-[#14233a] p-4 space-y-3.5 border-t border-amber-200/60 dark:border-amber-900/40">
+                            {noConditions && (
+                              <div className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400">
+                                <AlertTriangle className="size-3.5 shrink-0" />
+                                No conditions — this rule will flag every proposal until you add at least one condition.
+                              </div>
+                            )}
+
+                            <div className="space-y-1">
+                              <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">When (all conditions must hold)</div>
+                              <CondRows
+                                rules={rules}
+                                items={r.when as Cond[]}
+                                left="var"
+                                hideTextRows
+                                onChange={(when) => editReviewRule(r._id, { ...r, when: when as Cond[] })}
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Reason shown to the reviewer</div>
+                              <input
+                                type="text"
+                                value={r.reason}
+                                maxLength={200}
+                                onChange={(e) => editReviewRule(r._id, { ...r, reason: e.target.value })}
+                                placeholder="e.g. Franchise-scale — needs custom pricing approval"
+                                className="h-8 w-full rounded-lg border border-[#E2E8F0] dark:border-[#262831] bg-white dark:bg-[#000724] px-3 text-xs text-slate-900 dark:text-white outline-hidden focus:ring-2 focus:ring-[#2B7CFF]/30"
+                              />
+                              {noReason && (
+                                <p className="text-[11px] text-red-500 dark:text-rose-400">Reason required — shown to the reviewer in the Draft box.</p>
+                              )}
+                            </div>
+
+                            {rowErrors && (
+                              <div className="text-[11px] text-red-500 dark:text-rose-400">{rowErrors.join("; ")}</div>
+                            )}
+
+                            <div className="flex justify-end pt-1">
+                              <button
+                                type="button"
+                                onClick={() => deleteReviewRule(r._id)}
+                                className="inline-flex items-center gap-1 text-xs text-red-600 dark:text-rose-400 hover:text-red-700 transition-colors cursor-pointer"
+                              >
+                                <Trash2 className="size-3.5" /> Delete rule
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
           {/* Action Footer */}
           <div className="pt-4 border-t border-[#E2E8F0] dark:border-[#262831] flex flex-col sm:flex-row items-center justify-between gap-3">
-            <span className="text-xs text-slate-500">
-              {checks.length
+            <span className={`text-xs ${reviewBlocked ? "text-amber-600 dark:text-amber-400 font-semibold" : "text-slate-500"}`}>
+              {reviewBlocked
+                ? "Finish the review rules above to proceed"
+                : checks.length
                 ? `${matched} of ${checks.length} match quotation benchmark`
                 : errors.length
                 ? `${errors.length} validation item${errors.length === 1 ? "" : "s"} to review`
@@ -589,7 +763,7 @@ export const Stage4PricingEngine: React.FC<Stage4PricingEngineProps> = ({
             </span>
             <Button
               onClick={onProceed}
-              disabled={isProceeding || isSavingRules || hasUnsavedRules || errors.length > 0}
+              disabled={isProceeding || isSavingRules || hasUnsavedRules || errors.length > 0 || reviewBlocked}
               size="sm"
               className="h-10 px-6 text-xs font-semibold bg-[#0B1957] hover:bg-[#152a8a] dark:bg-[#2B7CFF] dark:hover:bg-[#2563eb] text-white dark:text-[#000724] rounded-xl shadow-xs cursor-pointer disabled:opacity-50 transition-all active:scale-98"
             >

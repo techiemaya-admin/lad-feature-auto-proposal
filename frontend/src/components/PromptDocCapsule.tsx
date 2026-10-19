@@ -16,6 +16,7 @@ import type { Company } from "../types/company";
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
+import { ConfirmDialog } from "./ui/confirm-dialog";
 import { SampleProposalBuilder } from "./SampleProposalBuilder";
 
 interface PromptDocCapsuleProps {
@@ -60,6 +61,7 @@ export const PromptDocCapsule: React.FC<PromptDocCapsuleProps> = ({
   const [showResetModal, setShowResetModal] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [isLockedExpanded, setIsLockedExpanded] = useState(false);
+  const [invalidFileAlertOpen, setInvalidFileAlertOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -130,7 +132,7 @@ export const PromptDocCapsule: React.FC<PromptDocCapsuleProps> = ({
         setGeneratedBrief(null);
         setReviewNotes([]);
       } else {
-        alert("Please upload a Microsoft Word document (.docx)");
+        setInvalidFileAlertOpen(true);
       }
     }
   };
@@ -143,7 +145,7 @@ export const PromptDocCapsule: React.FC<PromptDocCapsuleProps> = ({
         setGeneratedBrief(null);
         setReviewNotes([]);
       } else {
-        alert("Please upload a Microsoft Word document (.docx)");
+        setInvalidFileAlertOpen(true);
       }
     }
   };
@@ -484,6 +486,16 @@ export const PromptDocCapsule: React.FC<PromptDocCapsuleProps> = ({
           />
         </div>
       )}
+
+      <ConfirmDialog
+        open={invalidFileAlertOpen}
+        title="Invalid file format"
+        description="Please upload a Microsoft Word document (.docx)."
+        confirmLabel="OK"
+        cancelLabel={null}
+        onConfirm={() => setInvalidFileAlertOpen(false)}
+        onCancel={() => setInvalidFileAlertOpen(false)}
+      />
     </div>
   );
 };

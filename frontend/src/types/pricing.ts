@@ -8,8 +8,9 @@
  * Mirror of backend/src/services/pricing-rules.types.ts (types only).
  */
 
-export type Unit = "money" | "percent" | "integer" | "text" | "boolean" | "rows";
-export type CellUnit = Exclude<Unit, "rows">;
+/** "date" = an ISO date ("2026-10-02"), printed in its Stage 2 date_format; never a table cell or a lead input. */
+export type Unit = "money" | "percent" | "integer" | "text" | "boolean" | "date" | "rows";
+export type CellUnit = Exclude<Unit, "rows" | "date">;
 export type CompareOp = "eq" | "neq" | "gte" | "lte" | "gt" | "lt" | "in";
 /** null in an integer column = unbounded (a cap of ∞). */
 export type Cell = string | number | boolean | null;
@@ -26,8 +27,8 @@ export interface Where { column: string; op: CompareOp; value_var?: string; valu
 /** Variable test: `var <op> (value_var | value | values)`. */
 export interface Cond { var: string; op: CompareOp; value_var?: string; value?: Cell; values?: Cell[] }
 
-export type FormulaOp = "add" | "sub" | "mul" | "div" | "min" | "max";
-/** One flat operation. add/mul/min/max are n-ary (≥1); sub/div take exactly 2. "col:<key>" allowed inside rows.map. */
+export type FormulaOp = "add" | "sub" | "mul" | "div" | "min" | "max" | "add_days" | "add_months";
+/** One flat operation. add/mul/min/max are n-ary (≥1); sub/div take exactly 2; add_days/add_months take (a date or the reserved `today`, a whole number). "col:<key>" allowed inside rows.map. */
 export interface Formula { op: FormulaOp; args: (string | number)[] }
 
 export type InputType = "integer" | "choice" | "multi_choice" | "boolean" | "us_state" | "region";
@@ -35,9 +36,10 @@ export type InputType = "integer" | "choice" | "multi_choice" | "boolean" | "us_
 interface VariableBase { name: string; label: string; in_document: boolean; unit: Unit; /** "" = none; when the flag is false the variable is skipped. */ condition_flag: string }
 
 export type RuleVariable = VariableBase & (
-  | { kind: "input"; input_type: InputType; options_table?: string; options_column?: string; options?: string[]; required: boolean }
+  /** When the lead is silent: required → ask; default set → assume it; neither → leave blank. assume_when = a one-line reading hint. */
+  | { kind: "input"; input_type: InputType; options_table?: string; options_column?: string; options?: string[]; required: boolean; default?: Cell | string[]; assume_when?: string }
   | { kind: "constant"; value: Cell }
-  | { kind: "lookup"; table: string; where: Where[]; take: string }
+  | { kind: "lookup"; table: string; where: Where[]; take: string; fallback?: Cell }
   | ({ kind: "formula" } & Formula)
   | { kind: "condition"; all: Cond[] }
   | { kind: "aggregate"; fn: "sum" | "count"; table: string; rows: "selected" | "all"; selected_var?: string; key_column: string; column?: string; where?: Where[] }
@@ -89,6 +91,7 @@ export interface Stage2Variable {
   condition_flag?: string;
   enum_options?: string[];
   paragraph_mode?: string;
+  date_format?: string;
 }
 export interface Stage2Context {
   variables: Stage2Variable[];

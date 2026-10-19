@@ -3,9 +3,9 @@ import type { Cell, Cond, Formula, PricingRules, RuleVariable, Unit, Value, Wher
 /** Plain-language rendering of a rule definition for the ledger: no JSON, no jargon. */
 
 export const OP_SYMBOL: Record<string, string> = { eq: "=", neq: "≠", gte: "≥", lte: "≤", gt: ">", lt: "<", in: "in" };
-export const FORMULA_SYMBOL: Record<Formula["op"], string> = { add: "+", sub: "−", mul: "×", div: "÷", min: ",", max: "," };
+export const FORMULA_SYMBOL: Record<Formula["op"], string> = { add: "+", sub: "−", mul: "×", div: "÷", min: ",", max: ",", add_days: "+", add_months: "+" };
 
-export const UNIT_LABEL: Record<Unit, string> = { money: "money", percent: "percent", integer: "number", text: "text", boolean: "yes/no", rows: "rows" };
+export const UNIT_LABEL: Record<Unit, string> = { money: "money", percent: "percent", integer: "number", text: "text", boolean: "yes/no", date: "date", rows: "rows" };
 
 const fixed = (v: number, d: number) => v.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
 
@@ -46,18 +46,29 @@ export const readableConds = (rules: PricingRules, conds: Cond[]) =>
 export function readableFormula(rules: PricingRules, f: Formula): string {
   const args = f.args.map((a) => (typeof a === "number" ? String(a) : a.startsWith("col:") ? `row's ${a.slice(4)}` : labelOf(rules, a)));
   if (f.op === "min" || f.op === "max") return `${f.op === "min" ? "smaller" : "larger"} of ${args.join(", ")}`;
+  if (f.op === "add_days" || f.op === "add_months") return `${args[0] ?? "…"} + ${args[1] ?? "…"} ${f.op === "add_days" ? "days" : "months"}`;
   return args.join(` ${FORMULA_SYMBOL[f.op]} `);
 }
+
+/** An input's default as the seller reads it in the chip and the ledger. */
+export const readableDefault = (v: Extract<RuleVariable, { kind: "input" }>) =>
+  Array.isArray(v.default) ? v.default.join(", ") || "none" : formatValue(v.unit, v.default);
+
+/** Plain-language miss policy for a lookup. */
+export const readableMiss = (v: Extract<RuleVariable, { kind: "lookup" }>) =>
+  v.fallback === undefined ? "needs review" : `defaults to ${formatValue(v.unit, v.fallback)}`;
 
 export function readable(rules: PricingRules, v: RuleVariable): string {
   switch (v.kind) {
     case "input":
-      return `asked from the lead${v.required ? "" : " (optional)"}`;
+      if (v.required || v.default === undefined) return `asked from the lead${v.required ? "" : " (optional)"}`;
+      return `assumes ${readableDefault(v)} unless the lead says otherwise`;
     case "constant":
       return formatValue(v.unit, v.value);
     case "lookup": {
       const t = tableOf(rules, v.table);
-      return `${t?.label ?? v.table} · first row where ${readableWhere(rules, v.table, v.where) || "any"} → ${columnLabel(rules, v.table, v.take)}`;
+      const miss = ` · no match → ${readableMiss(v)}`;
+      return `${t?.label ?? v.table} · first row where ${readableWhere(rules, v.table, v.where) || "any"} → ${columnLabel(rules, v.table, v.take)}${miss}`;
     }
     case "formula":
       return readableFormula(rules, v);

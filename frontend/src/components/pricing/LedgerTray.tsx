@@ -1,9 +1,10 @@
 import React from "react";
 import { X, Plus, Trash2 } from "lucide-react";
 import { CustomDropdown } from "../ui/custom-dropdown";
-import type { Cond, Formula, PricingRules, RuleKind, RuleVariable, Unit, Where } from "../../types/pricing";
-import { OP_SYMBOL, UNIT_LABEL, cellInputText, parseCellInput, parseLiteral, readableFormula } from "./readable";
+import type { Cell, Cond, Formula, PricingRules, RuleKind, RuleVariable, Unit, Where } from "../../types/pricing";
+import { UNIT_LABEL, cellInputText, parseCellInput, readableFormula } from "./readable";
 import { Commit as CommitBox } from "./RuleTableCard";
+import { CondRows } from "./CondRows";
 
 /** Docked editor for one ledger variable: kind, unit, guard, and the kind's operands. */
 
@@ -17,12 +18,12 @@ const KINDS: { value: RuleKind; label: string }[] = [
   { value: "input", label: "asked from the lead" },
 ];
 const UNITS = (Object.keys(UNIT_LABEL) as Unit[]).map((u) => ({ value: u, label: UNIT_LABEL[u] }));
-const OPS = Object.entries(OP_SYMBOL).map(([value, label]) => ({ value, label }));
 const FORMULA_OPS: { value: Formula["op"]; label: string }[] = [
   { value: "add", label: "add (+)" }, { value: "sub", label: "subtract (−)" }, { value: "mul", label: "multiply (×)" },
   { value: "div", label: "divide (÷)" }, { value: "min", label: "smaller of" }, { value: "max", label: "larger of" },
+  { value: "add_days", label: "date + days" }, { value: "add_months", label: "date + months" },
 ];
-const INPUT_TYPES = ["integer", "choice", "multi_choice", "boolean", "us_state"].map((v) => ({ value: v, label: v.replace("_", " ") }));
+const INPUT_TYPES = ["integer", "choice", "multi_choice", "boolean", "region"].map((v) => ({ value: v, label: v.replace("_", " ") }));
 
 /** Fresh operands for a kind, keeping the shared header fields. */
 function defaultsFor(kind: RuleKind, base: RuleVariable, rules: PricingRules): RuleVariable {
@@ -31,7 +32,7 @@ function defaultsFor(kind: RuleKind, base: RuleVariable, rules: PricingRules): R
   const col = rules.tables[0]?.columns[0]?.key ?? "";
   switch (kind) {
     case "input": return { ...head, kind, input_type: "integer", required: true };
-    case "constant": return { ...head, kind, value: base.unit === "text" ? "" : base.unit === "boolean" ? false : 0 };
+    case "constant": return { ...head, kind, value: base.unit === "text" || base.unit === "date" ? "" : base.unit === "boolean" ? false : 0 };
     case "lookup": return { ...head, kind, table, where: [], take: col };
     case "formula": return { ...head, kind, op: "add", args: [] };
     case "condition": return { ...head, kind, unit: "boolean", all: [] };
@@ -52,54 +53,6 @@ const box = "h-7 w-full rounded-md border border-border/70 bg-background px-2 te
 const Commit: React.FC<{ value: string; onCommit: (s: string) => void; placeholder?: string; mono?: boolean; className?: string }> = ({ mono, className = "", ...rest }) => (
   <CommitBox {...rest} className={`${box} ${mono ? "font-mono tabular-nums" : ""} ${className}`} />
 );
-
-interface CondRowsProps<T extends Where | Cond> {
-  rules: PricingRules;
-  items: T[];
-  /** "column" (table filter) or "var" (variable test). */
-  left: T extends Where ? "column" : "var";
-  tableId?: string;
-  onChange: (items: T[]) => void;
-}
-
-function CondRows<T extends Where | Cond>({ rules, items, left, tableId, onChange }: CondRowsProps<T>) {
-  const leftOptions =
-    left === "column"
-      ? (rules.tables.find((t) => t.id === tableId)?.columns ?? []).map((c) => ({ value: c.key, label: c.label }))
-      : rules.variables.map((v) => ({ value: v.name, label: v.label || v.name }));
-  const varOptions = [{ value: "", label: "a value…" }, ...rules.variables.map((v) => ({ value: v.name, label: v.label || v.name }))];
-  const update = (i: number, patch: Partial<Where & Cond>) => onChange(items.map((c, j) => (j === i ? ({ ...c, ...patch } as T) : c)));
-  const rhsText = (c: Where | Cond) => (c.op === "in" ? (c.values ?? []).map((x) => cellInputText("text", x)).join(", ") : cellInputText("text", c.value));
-  return (
-    <div className="space-y-1.5">
-      {items.map((c, i) => (
-        <div key={i} className="flex items-center gap-1.5">
-          <CustomDropdown size="xs" className="min-w-28" value={(c as Where).column ?? (c as Cond).var ?? ""} options={leftOptions} onChange={(v) => update(i, { [left]: v } as Partial<Where & Cond>)} />
-          <CustomDropdown size="xs" className="w-14" value={c.op} options={OPS} onChange={(v) => update(i, { op: v as Where["op"] })} />
-          <CustomDropdown size="xs" className="min-w-24" value={c.value_var ?? ""} options={varOptions} onChange={(v) => update(i, v ? { value_var: v, value: undefined, values: undefined } : { value_var: undefined, value: null })} />
-          {!c.value_var && (
-            <Commit
-              value={rhsText(c)}
-              placeholder={c.op === "in" ? "a, b, c" : "value"}
-              className="w-24"
-              onCommit={(s) => update(i, c.op === "in" ? { values: s.split(",").map((x) => parseLiteral(x)) } : { value: parseLiteral(s) })}
-            />
-          )}
-          <button type="button" onClick={() => onChange(items.filter((_, j) => j !== i))} className="size-6 rounded-md text-muted-foreground hover:text-destructive inline-flex items-center justify-center" title="Remove">
-            <X className="size-3" />
-          </button>
-        </div>
-      ))}
-      <button
-        type="button"
-        onClick={() => onChange([...items, { [left]: leftOptions[0]?.value ?? "", op: "eq", value: null } as unknown as T])}
-        className="inline-flex items-center gap-1 h-6 px-2 rounded-md text-[11px] border border-dashed border-border text-muted-foreground hover:text-foreground"
-      >
-        <Plus className="size-3" /> condition
-      </button>
-    </div>
-  );
-}
 
 const TableFields: React.FC<{
   rules: PricingRules;
@@ -126,6 +79,85 @@ const TableFields: React.FC<{
   );
 };
 
+type InputVar = Extract<RuleVariable, { kind: "input" }>;
+/** The choices a choice / multi_choice input accepts (mirror of the backend's inputOptions). */
+const inputOptions = (v: InputVar, rules: PricingRules): string[] =>
+  v.options?.length ? v.options : (rules.tables.find((t) => t.id === v.options_table)?.rows ?? []).map((r) => String(r[v.options_column ?? ""] ?? ""));
+
+/** Ask / Assume / Blank is not stored: it is read off `required` + `default`. */
+const silentPolicy = (v: InputVar) => (v.required ? "ask" : v.default !== undefined ? "assume" : "blank");
+const without = (v: InputVar, key: "default" | "assume_when"): InputVar => { const c = { ...v }; delete c[key]; return c; };
+type LookupVar = Extract<RuleVariable, { kind: "lookup" }>;
+const withoutFallback = (v: LookupVar): LookupVar => { const c = { ...v }; delete c.fallback; return c; };
+/** Seed for a fallback just switched on: a typeable zero, never null — the backend rejects null on a number. */
+const blankFallback = (unit: Unit): Cell => (unit === "text" ? "" : unit === "boolean" ? false : 0);
+
+const tableColsOf = (rules: PricingRules, id: string) => (rules.tables.find((t) => t.id === id)?.columns ?? []).map((c) => ({ value: c.key, label: c.label }));
+
+const InputFields: React.FC<{ rules: PricingRules; v: InputVar; onChange: (v: RuleVariable) => void }> = ({ rules, v, onChange }) => {
+  const tableCols = (id: string) => tableColsOf(rules, id);
+  const options = inputOptions(v, rules);
+  const firstDefault = (): InputVar["default"] =>
+    v.input_type === "integer" ? 1 : v.input_type === "boolean" ? false : v.input_type === "multi_choice" ? options.slice(0, 1) : options[0] ?? "";
+  const setPolicy = (p: string) => {
+    const rest = without(v, "default");
+    onChange(p === "ask" ? { ...rest, required: true } : p === "assume" ? { ...rest, required: false, default: firstDefault() } : { ...rest, required: false });
+  };
+  // Tax is never assumed (the backend rejects it) — keyed on what the input feeds, so a region used for a
+  // service area or shipping zone keeps the option. Cover an unlisted buyer with a lookup fallback instead.
+  const feedsTax = rules.variables.some((x) => "table" in x && rules.tables.find((t) => t.id === x.table)?.kind === "taxes" && (x.where ?? []).some((w) => w.value_var === v.name));
+  const policies = [{ value: "ask", label: "ask them" }, ...(feedsTax ? [] : [{ value: "assume", label: "assume a value" }]), { value: "blank", label: "leave it blank" }];
+  const chosen = Array.isArray(v.default) ? v.default : [];
+  // direct lookup refs only (where.value_var === this input), not the transitive graph.
+  const affects = rules.variables.filter((x) => x.kind === "lookup" && x.where.some((w) => w.value_var === v.name)).map((x) => x.label || x.name);
+
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <Field label="Answer type"><CustomDropdown size="xs" className="w-full" value={v.input_type} options={INPUT_TYPES} onChange={(input_type) => onChange({ ...without(v, "default"), input_type: input_type as InputVar["input_type"] })} /></Field>
+        <Field label="If the lead doesn't say it"><CustomDropdown size="xs" className="w-full" value={silentPolicy(v)} options={policies} onChange={setPolicy} /></Field>
+        {(v.input_type === "choice" || v.input_type === "multi_choice" || v.input_type === "region") && (
+          <>
+            <Field label="Options from"><CustomDropdown size="xs" className="w-full" value={v.options_table ?? ""} options={rules.tables.map((t) => ({ value: t.id, label: t.label }))} onChange={(options_table) => onChange({ ...v, options_table, options_column: tableCols(options_table)[0]?.value })} /></Field>
+            <Field label="Column"><CustomDropdown size="xs" className="w-full" value={v.options_column ?? ""} options={tableCols(v.options_table ?? "")} onChange={(options_column) => onChange({ ...v, options_column })} /></Field>
+          </>
+        )}
+      </div>
+      {v.default !== undefined && (
+        <Field label="Assume">
+          {v.input_type === "choice" ? (
+            <CustomDropdown size="xs" className="max-w-64" value={String(v.default)} options={options.map((o) => ({ value: o, label: o }))} onChange={(s) => onChange({ ...v, default: s })} />
+          ) : v.input_type === "multi_choice" ? (
+            <div className="flex flex-wrap gap-x-3 gap-y-1">
+              {options.map((o) => (
+                <label key={o} className="inline-flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
+                  <input type="checkbox" className="size-3.5" checked={chosen.includes(o)} onChange={(e) => onChange({ ...v, default: e.target.checked ? [...chosen, o] : chosen.filter((x) => x !== o) })} />
+                  {o}
+                </label>
+              ))}
+            </div>
+          ) : v.input_type === "boolean" ? (
+            <CustomDropdown size="xs" value={v.default ? "true" : "false"} options={[{ value: "true", label: "Yes" }, { value: "false", label: "No" }]} onChange={(s) => onChange({ ...v, default: s === "true" })} />
+          ) : (
+            <Commit mono className="max-w-32" value={String(v.default)} onCommit={(s) => onChange({ ...v, default: Math.round(Number(s)) || 0 })} />
+          )}
+          {affects.length > 0 && <p className="text-[11px] text-muted-foreground mt-1">affects: {affects.join(", ")}</p>}
+        </Field>
+      )}
+      <Field label="How to read the lead's words for this (optional)">
+        <textarea
+          defaultValue={v.assume_when ?? ""}
+          key={v.name}
+          rows={1}
+          placeholder='e.g. "a yearly plan means 12"'
+          onBlur={(e) => { const assume_when = e.target.value.trim(); if (assume_when !== (v.assume_when ?? "")) onChange(assume_when ? { ...v, assume_when } : without(v, "assume_when")); }}
+          className={`${box} h-auto py-1.5 resize-none`}
+        />
+      </Field>
+    </div>
+  );
+};
+
 interface LedgerTrayProps {
   rules: PricingRules;
   variable: RuleVariable;
@@ -137,9 +169,13 @@ interface LedgerTrayProps {
 }
 
 export const LedgerTray: React.FC<LedgerTrayProps> = ({ rules, variable: v, sample, onChange, onDelete, onClose }) => {
-  const varOptions = rules.variables.filter((x) => x.name !== v.name && x.unit !== "text" && x.unit !== "rows").map((x) => ({ value: x.name, label: x.label || x.name }));
+  // `today` is reserved: the engine supplies it, so it is offered here without being a sheet variable.
+  const varOptions = [
+    { value: "today", label: "today" },
+    ...rules.variables.filter((x) => x.name !== v.name && x.unit !== "text" && x.unit !== "rows").map((x) => ({ value: x.name, label: x.label || x.name })),
+  ];
   const flagOptions = [{ value: "", label: "always" }, ...rules.variables.filter((x) => x.kind === "condition" && x.name !== v.name).map((x) => ({ value: x.name, label: `only when ${x.label || x.name}` }))];
-  const tableCols = (id: string) => (rules.tables.find((t) => t.id === id)?.columns ?? []).map((c) => ({ value: c.key, label: c.label }));
+  const tableCols = (id: string) => tableColsOf(rules, id);
 
   return (
     <div className="space-y-3">
@@ -151,11 +187,11 @@ export const LedgerTray: React.FC<LedgerTrayProps> = ({ rules, variable: v, samp
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {onDelete && (
-            <button type="button" onClick={onDelete} className="size-7 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 flex items-center justify-center" title="Remove this helper">
+            <button type="button" onClick={onDelete} className="size-7 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 flex items-center justify-center cursor-pointer" title="Remove this helper">
               <Trash2 className="size-3.5" />
             </button>
           )}
-          <button type="button" onClick={onClose} className="size-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-background/70 flex items-center justify-center" title="Close">
+          <button type="button" onClick={onClose} className="size-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-background/70 flex items-center justify-center cursor-pointer" title="Close">
             <X className="size-3.5" />
           </button>
         </div>
@@ -171,6 +207,8 @@ export const LedgerTray: React.FC<LedgerTrayProps> = ({ rules, variable: v, samp
         <Field label="Value">
           {v.unit === "boolean" ? (
             <CustomDropdown size="xs" value={v.value ? "true" : "false"} options={[{ value: "true", label: "Yes" }, { value: "false", label: "No" }]} onChange={(s) => onChange({ ...v, value: s === "true" })} />
+          ) : v.unit === "date" ? (
+            <input type="date" className={`${box} max-w-40 font-mono`} value={typeof v.value === "string" ? v.value : ""} onChange={(e) => onChange({ ...v, value: e.target.value })} />
           ) : (
             <Commit mono={v.unit !== "text"} className="max-w-48" value={cellInputText(v.unit, v.value)} onCommit={(s) => onChange({ ...v, value: parseCellInput(v.unit, s) })} />
           )}
@@ -189,15 +227,15 @@ export const LedgerTray: React.FC<LedgerTrayProps> = ({ rules, variable: v, samp
                   ) : (
                     <CustomDropdown size="xs" value={a} options={varOptions} onChange={(name) => onChange({ ...v, args: v.args.map((x, j) => (j === i ? name : x)) })} />
                   )}
-                  <button type="button" onClick={() => onChange({ ...v, args: v.args.filter((_, j) => j !== i) })} className="size-5 rounded text-muted-foreground hover:text-destructive inline-flex items-center justify-center" title="Remove">
+                  <button type="button" onClick={() => onChange({ ...v, args: v.args.filter((_, j) => j !== i) })} className="size-5 rounded text-muted-foreground hover:text-destructive inline-flex items-center justify-center cursor-pointer" title="Remove">
                     <X className="size-3" />
                   </button>
                 </span>
               ))}
-              <button type="button" onClick={() => onChange({ ...v, args: [...v.args, varOptions[0]?.value ?? ""] })} className="inline-flex items-center gap-1 h-6 px-2 rounded-md text-[11px] border border-dashed border-border text-muted-foreground hover:text-foreground">
+              <button type="button" onClick={() => onChange({ ...v, args: [...v.args, varOptions[0]?.value ?? ""] })} className="inline-flex items-center gap-1 h-6 px-2 rounded-md text-[11px] border border-dashed border-border text-muted-foreground hover:text-foreground cursor-pointer">
                 <Plus className="size-3" /> variable
               </button>
-              <button type="button" onClick={() => onChange({ ...v, args: [...v.args, 1] })} className="inline-flex items-center gap-1 h-6 px-2 rounded-md text-[11px] border border-dashed border-border text-muted-foreground hover:text-foreground">
+              <button type="button" onClick={() => onChange({ ...v, args: [...v.args, 1] })} className="inline-flex items-center gap-1 h-6 px-2 rounded-md text-[11px] border border-dashed border-border text-muted-foreground hover:text-foreground cursor-pointer">
                 <Plus className="size-3" /> number
               </button>
             </div>
@@ -215,6 +253,22 @@ export const LedgerTray: React.FC<LedgerTrayProps> = ({ rules, variable: v, samp
           <Field label="First row where">
             <CondRows<Where> rules={rules} items={v.where} left="column" tableId={v.table} onChange={(where) => onChange({ ...v, where })} />
           </Field>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="If no row matches">
+              <CustomDropdown
+                size="xs"
+                className="w-full"
+                value={v.fallback === undefined ? "review" : "fallback"}
+                options={[{ value: "review", label: "stop and ask a human" }, { value: "fallback", label: "defaults to" }]}
+                onChange={(p) => onChange(p === "review" ? withoutFallback(v) : { ...v, fallback: v.fallback ?? blankFallback(v.unit) })}
+              />
+            </Field>
+            {v.fallback !== undefined && (
+              <Field label={`Defaults to (${UNIT_LABEL[v.unit]})`}>
+                <Commit value={cellInputText(v.unit, v.fallback)} onCommit={(s) => onChange({ ...v, fallback: parseCellInput(v.unit, s) })} placeholder="value used for everyone the table does not list" />
+              </Field>
+            )}
+          </div>
         </div>
       )}
 
@@ -254,18 +308,7 @@ export const LedgerTray: React.FC<LedgerTrayProps> = ({ rules, variable: v, samp
         </div>
       )}
 
-      {v.kind === "input" && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <Field label="Answer type"><CustomDropdown size="xs" className="w-full" value={v.input_type} options={INPUT_TYPES} onChange={(input_type) => onChange({ ...v, input_type: input_type as typeof v.input_type })} /></Field>
-          <Field label="Required"><CustomDropdown size="xs" className="w-full" value={v.required ? "yes" : "no"} options={[{ value: "yes", label: "yes" }, { value: "no", label: "optional" }]} onChange={(s) => onChange({ ...v, required: s === "yes" })} /></Field>
-          {(v.input_type === "choice" || v.input_type === "multi_choice") && (
-            <>
-              <Field label="Options from"><CustomDropdown size="xs" className="w-full" value={v.options_table ?? ""} options={rules.tables.map((t) => ({ value: t.id, label: t.label }))} onChange={(options_table) => onChange({ ...v, options_table, options_column: tableCols(options_table)[0]?.value })} /></Field>
-              <Field label="Column"><CustomDropdown size="xs" className="w-full" value={v.options_column ?? ""} options={tableCols(v.options_table ?? "")} onChange={(options_column) => onChange({ ...v, options_column })} /></Field>
-            </>
-          )}
-        </div>
-      )}
+      {v.kind === "input" && <InputFields rules={rules} v={v} onChange={onChange} />}
 
       {sample !== undefined && (
         <p className="text-[11px] text-muted-foreground">
