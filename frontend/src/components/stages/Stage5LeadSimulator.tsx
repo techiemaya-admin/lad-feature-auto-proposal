@@ -811,20 +811,22 @@ const ProposalOutput: React.FC<{ company: Company; result: Extract<ProposalResul
       </div>
       <div className="space-y-3">
         <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Document preview</p>
-        {pdfUrl ? (
-          <button type="button" onClick={onOpenPreview} className="group relative block h-64 w-full overflow-hidden rounded-xl border border-border/70 bg-zinc-100 text-left dark:bg-zinc-900">
-            <iframe src={`${pdfUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`} title={`${company.company_name} proposal preview`} tabIndex={-1} className="pointer-events-none h-full w-full border-0 bg-white" />
-            <span className="absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-card/90 px-2 py-1 text-[11px] font-medium text-foreground opacity-0 shadow-xs transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-              <Maximize2 className="size-3" /> Open full preview
-            </span>
-          </button>
-        ) : (
-          <div className="flex h-64 flex-col items-center justify-center gap-2 rounded-xl border border-border/70 bg-muted/20 p-6 text-center">
-            <FileText className="size-6 text-muted-foreground" />
-            <p className="text-xs font-medium text-foreground">DOCX generated</p>
-            <p className="text-[11px] text-muted-foreground">The backend did not return a PDF preview for this run.</p>
-          </div>
-        )}
+        <div className="mx-auto w-full max-w-md">
+          {pdfUrl ? (
+            <button type="button" onClick={onOpenPreview} className="group relative block aspect-[8.5/11] w-full overflow-hidden rounded-xl border border-border/70 bg-zinc-100 text-left shadow-xs dark:bg-zinc-900">
+              <iframe src={`${pdfUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`} title={`${company.company_name} proposal preview`} tabIndex={-1} className="pointer-events-none h-full w-full border-0 bg-white" />
+              <span className="absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-card/90 px-2 py-1 text-[11px] font-medium text-foreground opacity-0 shadow-xs transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                <Maximize2 className="size-3" /> Open full preview
+              </span>
+            </button>
+          ) : (
+            <div className="flex aspect-[8.5/11] flex-col items-center justify-center gap-2 rounded-xl border border-border/70 bg-muted/20 p-6 text-center">
+              <FileText className="size-6 text-muted-foreground" />
+              <p className="text-xs font-medium text-foreground">DOCX generated</p>
+              <p className="text-[11px] text-muted-foreground">The backend did not return a PDF preview for this run.</p>
+            </div>
+          )}
+        </div>
         {result.pdf_error ? <p className="text-[11px] text-amber-600 dark:text-amber-400">PDF note: {result.pdf_error}</p> : null}
       </div>
     </div>
