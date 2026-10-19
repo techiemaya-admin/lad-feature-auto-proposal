@@ -6,7 +6,7 @@ Paths relative to repo root unless noted. Start at [README.md](README.md) for th
 
 Sales teams running AI outbound/inbound campaigns generate high volumes of inbound leads. When a lead requests a quote, automation breaks down: someone must interpret unstructured messages, calculate rates from mental models or spreadsheets, copy numbers into a Word template, and email it back. Slow, inconsistent, bottlenecked.
 
-This project proves **zero-config quotation auto-generation**:
+This project proves **zero-config quotation auto-generation** across six capabilities:
 
 1. **Import & ingest:** company profile (`Mock Data/companies_dataset.json`); dev-only pricing notes and sample lead from `Mock Data/test_seeds.json`.
 2. **Document understanding:** real `.docx` quotations → Markdown via `@firecrawl/anydoc`.
@@ -124,6 +124,7 @@ Payload keys equal `variable_name`; conditionals need boolean `has_*`; loops nee
 - Facts built per company from rules `input` variables + undefined non-date customer inputs; dates never asked (sheet computes from `today` = server local date).
 - Drafter: one call for all `ai_generated` paragraphs as `{tag}` placeholders; code substitutes, strips/reports unknown tags.
 - PDF via `soffice --headless`; failure → `pdf: null`. Artifacts logged to `backend/logs/<company>/<template>/`. No proposals table; files overwritten per run.
+- Full contract: [features/lead-simulator.md](features/lead-simulator.md).
 
 ## 5. Pricing Engine: Rule Cards & Deterministic Math
 
@@ -151,3 +152,15 @@ Engine notes (verified against fixtures): tag values are display strings — com
 3. **Fieldstone Studio (`co3_dev`)** — Landing $2.5k / Business $6k / E-Commerce $9.5k; add-ons; 2+ stackable add-ons 10% off add-on subtotal; 50/50 milestones. Benchmark: Rosewood (E-commerce $9.5k + $600 + $450 − 10%) = **$10,445.00** ($5,222.50 / $5,222.50).
 
 Arithmetic: [Mock Data/Verification Guide.md](../Mock%20Data/Verification%20Guide.md). All three pinned in `pricing-calculator.test.ts`.
+
+## Glossary
+
+| Term | Meaning |
+|---|---|
+| Capsule | The Stage 1 card (`PromptDocCapsule`) holding the prompt and the uploaded or generated sample; it locks into a read-only summary on Send. |
+| Tray | The docked detail panel under a ledger row (`LedgerTray`); `VariableReviewDeck` uses the same connector/header pattern. |
+| Covered | A variable whose value sits inside a drafted paragraph or loop, so the drafter receives it as input instead of the engine replacing it separately. |
+| `in_document` | Whether a pricing variable prints in the document; helpers are `false`. |
+| Sheet value | A Stage 4 formula value evaluated by the calculator, as opposed to prose written by the model. |
+| Wire shape | The Gemini-safe JSON (`AiPricingRules`) before `fromWire()` types it. |
+| Sample check | Comparing each evaluated document variable to its Stage 2 `sample_value`. |

@@ -26,7 +26,7 @@ Stack: TypeScript + ESM, Express backend with SQLite (`backend/src/`), Vite + sh
 
 ### 1. Deterministic math
 - Sample generation may use explicitly identified estimates for missing seller inputs; code calculates complete prices and records estimate notes in the frontend. Estimates do not change the authoritative pricing brief or Stage 5 missing-data rules.
-- All arithmetic — totals, discounts, taxes — runs in pure JavaScript (`backend/src/services/pricing-calculator.ts`).
+- All pricing arithmetic — totals, discounts, taxes — runs in pure JavaScript (`backend/src/services/pricing-calculator.ts`); sample planning normalizes model values around it.
 - The model reads and writes prose: parameter extraction, rule compilation, narrative drafting. Every number comes from code.
 - Check totals against [Mock Data/Verification Guide.md](Mock%20Data/Verification%20Guide.md): co1 `$35,073.00`, co2 `$2,734.80/mo + $3,150.00` setup, co3 `$10,445.00`. Pinned by `backend/src/tests/pricing-calculator.test.ts`.
 

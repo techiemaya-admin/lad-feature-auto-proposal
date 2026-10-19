@@ -2,6 +2,8 @@
 
 Paths below are relative to repo root.
 
+Pipeline: [architecture.md](../architecture.md). Screen behaviour: [ui.md](../ui.md) §3.2. Pricing contract: [pricing-engine.md](pricing-engine.md).
+
 ## Purpose and workflow
 
 A saved template can create its own sample Word proposal instead of requiring an existing quotation upload. This works for both ICP-generated and custom library cards. Import ICP still creates three briefs, not three documents; document generation happens inside the selected template's briefing.
@@ -13,6 +15,14 @@ A saved template can create its own sample Word proposal instead of requiring an
 5. Click the usual **Send** button to persist the document and briefing. Continue through Variable Ledger, Draft Proposal, Pricing Engine and Lead & Proposal (the Stage 4 button reads **Proceed to Check & Generate Proposal**).
 
 The sample is a concrete example from which the reusable template is built. Its prose, sections, service rows, numbers and layout are inputs to extraction and mutation. The final customer proposal still uses the lead and the separately compiled pricing rules. Generating a sample does not replace these later stages or send anything to a customer. Uploading an existing Word quotation remains supported.
+
+## Design decisions
+
+- Sample generation is a Stage 1 shortcut, not a separate pipeline: its document enters the same extraction and mutation flow as an upload.
+- The model proposes a calculation plan; `pricing-calculator.ts` owns every number.
+- Estimates are explicit and never modify the authoritative pricing brief or Stage 5's handling of missing lead data.
+- Review notes live in `working_state_json.sample_review_notes`, outside document content.
+- Custom sections become ordinary paragraphs in the Variable Ledger, not a separate conditional engine.
 
 ## AI context and pricing
 
@@ -75,9 +85,20 @@ These are previews: they do not persist the generated document. Missing/foreign 
 
 The ordinary multipart `/briefing/submit` accepts optional `sample_review_notes`, encoded as a JSON array of up to 80 strings of at most 1,000 characters. The response field is named `questions` for compatibility; it contains these explanatory notes.
 
-Submitting stores the file as `backend/storage/<company_id>/<template_id>/original_quotation.docx` and uses the normal filename metadata, AnyDoc Markdown conversion and downstream reset/locking flow. Notes persist separately in `working_state_json.sample_review_notes`; they survive restart and briefing unlock. A replacement file without notes clears previous notes; resubmitting an existing file without notes preserves them. No database migration or extra table is required.
+Submitting:
 
-The frontend prevents Send while generation/review is open. It tracks which brief produced the attached generated file: changing the brief requires regeneration before Send. A manually uploaded replacement clears that association and generated review notes. Stale async results are ignored after a brief change or unmount; temporary download URLs are revoked when replaced. Editing a locked briefing uses the existing reset confirmation and clears downstream work.
+- stores the file as `backend/storage/<company_id>/<template_id>/original_quotation.docx` and uses the normal filename metadata, AnyDoc Markdown conversion and downstream reset/locking flow;
+- persists notes separately in `working_state_json.sample_review_notes`; they survive restart and briefing unlock;
+- clears previous notes when a replacement file arrives without notes, and preserves them when the same file is resubmitted without notes;
+- needs no database migration or extra table.
+
+The frontend:
+
+- prevents Send while generation/review is open;
+- tracks which brief produced the attached generated file, so changing the brief requires regeneration before Send;
+- clears that association and generated review notes when a manual replacement is uploaded;
+- ignores stale async results after a brief change or unmount, and revokes replaced download URLs;
+- uses the existing reset confirmation when a locked briefing is edited, clearing downstream work.
 
 ## Where this lives
 
@@ -102,6 +123,18 @@ The frontend prevents Send while generation/review is open. It tracks which brie
 
 Run `npm test` and `npm run typecheck` from `backend`, and `npm run build` from `frontend`. Tests stub AI calls; these results do not establish live model quality. LibreOffice opening is checked through headless PDF conversion and visual inspection.
 
-Regression coverage includes the three pricing benchmarks (SEO annual 35,073; MSP monthly 2,734.80 plus 3,150 setup; development 10,445), contextual offer selection inputs, explicit estimates and their notes, invalid evidence/calculations, automatic retry, complete manual pricing, ownership and locking, section placement, Word ZIP compatibility, and notes persistence without document leakage.
+Regression coverage:
 
-For a manual check, generate from a selected template, inspect its services and totals, remove a rate from the brief and regenerate, and confirm the sample remains fully priced with accuracy notes only in the UI. Add a handwritten and an AI-generated section, rebuild, download and open in LibreOffice. Send and reload to verify the document and notes persist. Change the brief to verify stale generated files cannot be sent, then continue through the Variable Ledger and pricing verification.
+- the three pricing benchmarks (SEO annual 35,073; MSP monthly 2,734.80 plus 3,150 setup; development 10,445);
+- contextual offer selection inputs, explicit estimates and their notes;
+- invalid evidence/calculations and automatic retry;
+- complete manual pricing, ownership and locking, section placement;
+- Word ZIP compatibility and notes persistence without document leakage.
+
+For a manual check:
+
+1. Generate from a selected template; inspect its services and totals.
+2. Remove a rate from the brief and regenerate; confirm the sample stays fully priced and accuracy notes appear only in the UI.
+3. Add a handwritten and an AI-generated section, rebuild, download and open in LibreOffice.
+4. Send and reload; verify the document and notes persist.
+5. Change the brief; verify stale generated files cannot be sent, then continue through the Variable Ledger and pricing verification.

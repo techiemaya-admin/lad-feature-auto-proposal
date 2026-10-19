@@ -2,6 +2,8 @@
 
 Zero-configuration proposal generation: an uploaded or AI-generated sample Word quotation plus natural-language pricing notes in, client-ready `.docx` and PDF proposals out. Five stages, all described here.
 
+The five stages: **Briefing → Variable Ledger → Draft Proposal → Pricing Engine → Lead & Proposal.** The DevDock still labels Stage 2 “Variable Review”, and the Stage 4 button reads “Proceed to Check & Generate Proposal”; the stage names above are canonical.
+
 ## Quick setup
 
 Requires Node.js; LibreOffice is needed for PDF export (set `SOFFICE_PATH` if `soffice` is not on `PATH`).
@@ -15,6 +17,13 @@ npm run dev                 # http://localhost:3001
 cd ../frontend
 npm install
 npm run dev                 # http://localhost:5173
+```
+
+Verify offline:
+
+```bash
+cd backend && npm test && npm run typecheck
+cd ../frontend && npm run typecheck
 ```
 
 The SQLite database and mock companies are created on first start. Engineering rules for agents live in [AGENTS.md](../AGENTS.md).
@@ -44,4 +53,6 @@ These stay with the fixtures they describe:
 
 ## Document ownership
 
-One topic, one file. [AGENTS.md](../AGENTS.md) owns the engineering rules; `architecture.md` owns how the system fits together; `ui.md` owns screen behaviour; each file under `features/` owns one feature contract; the guides in `Mock Data/` own the numbers and demo inputs.
+One topic, one file. [AGENTS.md](../AGENTS.md) owns the engineering rules; `architecture.md` owns how the system fits together; `ui.md` owns screen behaviour; each file under `features/` owns one feature contract; the guides in `Mock Data/` own the numbers and demo inputs. Link to the owner instead of restating a contract.
+
+Feature docs follow the same rough shape: purpose → design decisions → contract → implementation map → limitations → verification.

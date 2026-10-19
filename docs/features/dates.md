@@ -11,13 +11,10 @@ Paths relative to repo root. Pipeline overview: [../architecture.md](../architec
 - Covers every date in a template, including kinds the mock quotations don't have yet.
 - Date maths = calendar days and simple months. No business days, no date comparisons, no date differences as sheet values.
 - **date-fns** does all date work: maths, reading, printing. No Temporal, no chrono-node. A date value is its ISO string `"2026-10-02"`, read with `parseISO` (never `new Date(iso)`: that is UTC midnight, the previous day west of UTC).
-- The **extraction model returns each date's format** as a date-fns pattern (`MMMM d, yyyy`, `dd/MM/yyyy`, `MMMM do, yyyy`, `EEEE, MMMM d, yyyy`, `dd/MM/yy`, or month-only `MMMM yyyy`), saved on the Stage 2 variable as `date_format` and editable in the Variable Ledger (text field with a live today's-date preview). An ambiguous numeric date (`07/09/2026`) defaults to **day-first** (`dd/MM/yyyy`).
-- Code verifies every format: the sample must read with it and print back identically. A missing or failing format falls back to `MMMM d, yyyy`, and the Variable Ledger warns on that date.
-- `today` is a **reserved sheet name** supplied by code (§3).
-- Two formula ops: `add_days(date, n)`, `add_months(date, n)`. `add_days(today, 0)` = "this date is today".
+- `today` is a **reserved sheet name** supplied by code (§3). Two formula ops: `add_days(date, n)`, `add_months(date, n)`; `add_days(today, 0)` = "this date is today".
+- The extraction model returns each date's `date_format`; code verifies it (§6).
 - **A date variable holds only the date.** A duration beside it ("September 21, 2026 (14 days)") is a separate number variable: template `{proposal_valid_until} ({validity_days} days)`.
-- The compiler prompt lists each date with its gap from the earliest date, **computed by code**; the model only links gaps to number variables (or adds a hidden helper constant when the document prints none).
-- Sheets and extractions created before the date type are not supported (demo data); there is no string-date fallback.
+- No string-date fallback: sheets and extractions created before the date type are unsupported (demo data).
 
 ## 1. Date helpers (`backend/src/services/dates.ts`)
 

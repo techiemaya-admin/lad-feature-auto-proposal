@@ -16,11 +16,18 @@ Company (profile in company_sessions; voice/inbox in company_configurations)
 
 One editable lead email per company is persisted in `mock_email_routes` with an optional assignment to one owned template. Routing chooses relevance, not readiness — assigning an email never completes template setup.
 
+## Design decisions
+
+- Company-scoped: every template belongs to one company and every route checks ownership.
+- A template is a record, not a document: creating one generates no Word file.
+- The seven-template cap is service-enforced, not a DB constraint.
+- Email routing is per company, not per template: one editable message, at most one assignment.
+
 ## 2. User journey
 
 - **Startup:** company tabs load; the first company's template list loads; the library opens (no auto-open of a remembered template). Loading and error states are explicit; errors offer retry and the list is reloaded (the server may have committed before the response was lost).
 - **Empty library:** welcome panel with the company name + large **Import ICP data**. While generating: three pulsing skeleton cards + status text. On success: three cards (name + description). On failure: error + retry.
-- **Import ICP data:** the server loads that company's profile from `Mock Data/companies_dataset.json` plus dev pricing context from `Mock Data/test_seeds.json`, asks the configured AI for exactly three distinct briefs (name + one-sentence description ≤160 chars ideally + actionable pricing brief), validates (three entries, distinct names, length limits), and commits transactionally. Requires an empty library; concurrent duplicate imports are rejected (409). Not append/regenerate.
+- **Import ICP data:** the server loads that company's profile from `Mock Data/companies_dataset.json` plus dev pricing context from `Mock Data/test_seeds.json`, asks the configured AI for exactly three distinct briefs (name + one-sentence description; the prompt targets ≤160 characters, while validation accepts up to 1,000 + actionable pricing brief), validates (three entries, distinct names, length limits), and commits transactionally. Requires an empty library; concurrent duplicate imports are rejected (409). Not append/regenerate.
 - **Open a card:** opens the keyed workspace with the saved brief prefilled; normal upload/generate flow follows. **All templates** returns (unsaved edits confirmed via shared `ConfirmDialog`; saved work is kept). Company switching from a workspace warns the same way.
 - **Custom template:** dialog for name (1–100) + description (1–1000) + pricing brief (1–20,000), all required; creates the row, refreshes, opens its workspace. No AI call.
 - **Rename:** name-only `PATCH` exists at the API; the card UI does not expose it.
@@ -29,7 +36,7 @@ One editable lead email per company is persisted in `mock_email_routes` with an 
 
 ## 3. Saved-email routing and editing
 
-- **Check a lead email** panel (below the grid, once templates exist) starts from the saved company email. **Check** saves pending edits first, then routes the saved text against all company templates (id + name + description + brief). The AI returns one exact candidate ID + short reason, or null (no fit / equal fits). The backend validates the ID against the candidate set and caps the reason at 500 chars. Success is a real SQLite assignment; the card highlights; **Open template** jumps in. Re-check may replace the assignment; a no-match result clears it; provider failure keeps the last good assignment.
+- **Check a lead email** panel (below the grid, once templates exist) starts from the saved company email. **Check** saves pending edits first, then routes the saved text against all company templates (id + name + description + brief). The AI returns one exact candidate ID + short reason, or null (no fit / equal fits). The backend validates the ID against the candidate set and rejects a reason longer than 500 characters. Success is a real SQLite assignment; the card highlights; **Open template** jumps in. Re-check may replace the assignment; a no-match result clears it; provider failure keeps the last good assignment.
 - **Editable message:** textarea up to 12,000 chars. Saving changed text clears the assignment and bumps `version`; saving unchanged text preserves it. Stale `version` → 409. No history — one message per company; browser edits are not auto-persisted.
 - **Manual override:** closed disclosure to pick a template without AI. No-match/progress states are explicit (no stuck spinners).
 - **Stage 5 prefill** order for the opened template: assigned email for that company+template → dev `sample_lead_text` → empty. Editing the Stage 5 textarea does not write back to the routing record.

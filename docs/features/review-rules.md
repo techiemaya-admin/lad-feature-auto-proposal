@@ -6,12 +6,7 @@ Paths relative to repo root. UI spec: [../ui.md](../ui.md) §3.4. Rule schema: [
 
 ## Background
 
-`review_rules` in `PricingRules` is an array of `ReviewRule`:
-
-```ts
-interface ReviewRule { when: Cond[]; reason: string }
-interface Cond { var: string; op: CompareOp; value_var?: string; value?: Cell; values?: Cell[] }
-```
+`review_rules` in `PricingRules` is an array of rules, each pairing conditions with a human-readable reason. The schema lives in [pricing-engine.md](pricing-engine.md).
 
 At Stage 5 (`generateProposal`), the pricing calculator evaluates every rule and pushes matching ones into `evaluation.needs_review`. A non-empty `needs_review` marks the proposal a draft and shows the red **Draft** box to the human reviewer; the document is still built.
 
