@@ -47,7 +47,7 @@ LadSettingsHeader (always visible)
 - Overview-first, detail-on-demand. Header: `Variables`, `N spots in <Company>'s quotation will change per client`, `Tap one to check it`, ghost Re-scan.
 - Four rows: Customer inputs · Fixed & auto-filled · Pricing (loop tables as ⊞ chips) · Paragraphs (❝ fixed / ✦ drafted glyphs). Chips show state only: selected = inverted, left-out = dashed + strikethrough (stays in place), needs-attention = amber dot, settled = emerald tick, primary action = navy/blue.
 - Detail tray docks under the ledger: inline rename, category switch, `In the quotation` verbatim hero, fact grid (One of / Shown only when / Template tag `{name}` / Source), paragraph mode segmented control, Leave out / Bring back, [+ Add one] custom chip (verified against quotation Markdown).
-- Date variables: `date_format` backend contract exists ([plans/07-date-type.md](plans/07-date-type.md)); a dedicated format editor with live preview is **pending** in this UI.
+- Date variables: the detail tray edits `date_format` as a text field with a live today's-date preview and flags a format that fails verification — see [plans/07-date-type.md](plans/07-date-type.md).
 - Every edit persists (`PUT /variables`) and invalidates Stage 3+ until regenerated.
 
 ### 3.3 Stage 3: Template Checkpoint (`stages/Stage3TemplateCheck.tsx` + `DocxDocumentPreview.tsx`)
@@ -55,10 +55,10 @@ LadSettingsHeader (always visible)
 - Unplaced fields as chips; tapping one focuses the variable in Stage 2. Footer: `[Download .docx]` + size, primary `[Set up pricing ➔]`. No engine vocabulary in user copy.
 
 ### 3.4 Stage 4: Pricing Engine (`stages/Stage4PricingEngine.tsx` + `pricing/LedgerTray.tsx`)
-- Sections top→bottom: assumptions strip (amber) → one editable card per rule table (typed cells, `tabular-nums`, commit on blur/Enter, add/remove rows) → "What we ask the lead" chips → calculation ledger in evaluation order (label, plain-language definition, sample value, quotation value, ✓/✗) → read-only "Held for review when" list → footer (`N of M match`, Regenerate, Proceed).
+- Sections top→bottom: assumptions strip (amber) → one editable card per rule table (typed cells, `tabular-nums`, commit on blur/Enter, add/remove rows) → "What we ask the lead" chips → calculation ledger in evaluation order (label, plain-language definition, sample value, quotation value, ✓/✗) → editable "Held for review when" rules → footer (`N of M match`, Regenerate, Proceed).
 - Tapping a ledger row docks `LedgerTray` (kind / operator / operands / conditions editor). `CondRows` is shared inside `pricing/LedgerTray.tsx`.
 - Live check: 300 ms debounced `PUT /rules`; rejected edits show inline errors and keep the edit on screen. Proceed blocked while structural errors exist.
-- Review rules are currently **read-only**; full add/edit/delete is specified in [plans/08-editable-review-rules.md](plans/08-editable-review-rules.md) and pending in this UI. The raw JSON remains editable in the Dev Dock.
+- Review rules are editable: each rule has conditions and a reason, added/edited/deleted in place, and a half-finished rule (no conditions or an empty reason) blocks Proceed — see [plans/08-editable-review-rules.md](plans/08-editable-review-rules.md). The raw JSON remains editable in the Dev Dock.
 
 ### 3.5 Stage 5: Lead & Proposal (`stages/Stage5LeadSimulator.tsx` + `Stage5ReceiptSummary.tsx`)
 - Lead textarea (same fluid pattern as Stage 1) prefilled with the assigned/routed email → template's email, else dev sample. `[Generate proposal]` runs extract → generate back to back.

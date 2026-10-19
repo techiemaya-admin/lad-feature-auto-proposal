@@ -1,6 +1,6 @@
 # Plan: 07 — Dates as a Stage 4 Type
 
-> Status: backend implemented (`dates.ts`, `add_days`/`add_months`, `date_format` verification). Stage 2 date-format editor UI pending — see AGENTS.md. Paths below are relative to repo root unless noted.
+> Status: implemented — `dates.ts` (`add_days`/`add_months`), `date_format` written and verified by the extraction model, and the Variable Review format field with a live today's-date preview. Paths below are relative to repo root unless noted.
 
 ## Context
 

@@ -45,7 +45,7 @@ This project proves **zero-config quotation auto-generation**:
   ├── One auto-repair pass on errors/mismatch; 300 ms debounced PUT /rules on edits
   ├── Assumption strip → one editable card per table → "What we ask the lead"
   │     → calculation ledger (readable rule · sample · quotation · ✓/✗)
-  ├── "Held for review when" list is currently READ-ONLY (see plans/08-editable-review-rules.md)
+  ├── "Held for review when" rules are editable (add / edit / delete; a half-finished rule blocks Proceed)
   └── [Proceed to Stage 5 ➔] (blocked while structural errors exist)
              │
              ▼
@@ -129,7 +129,7 @@ Payload keys equal `variable_name`; conditionals need boolean `has_*`; loops nee
   │     in_document:true = Stage 2 pricing variable; false = pricing-only helper
   ├── review_rules[] (flag for human), assumptions[], sample_inputs
   └── persisted in working_state_json.pricing_rules; compile + repair logged
-        ├── [Stage4PricingEngine] one card per table, ledger with ✓/✗ vs sample, read-only review list
+        ├── [Stage4PricingEngine] one card per table, ledger with ✓/✗ vs sample, editable review rules
         └── [pricing-calculator.ts] topological evaluation, cents rounding, condition-flag guards,
             needs_review (missing input / lookup miss / ÷0 / broken date / review rule),
             formatLike() prints values in the quotation's notation

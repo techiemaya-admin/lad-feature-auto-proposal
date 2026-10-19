@@ -13,7 +13,7 @@ Stack: TypeScript + ESM, Express backend with SQLite (`backend/src/`), Vite + sh
 - **Pricing engine plan:** [docs/plans/05-pricing-engine.md](docs/plans/05-pricing-engine.md) — rule schema, compiler, deterministic math.
 - **Lead simulator plan:** [docs/plans/06-lead-simulator.md](docs/plans/06-lead-simulator.md) — extraction, clarification loop, generation.
 - **Date type plan:** [docs/plans/07-date-type.md](docs/plans/07-date-type.md) — dates as sheet values (`today`, `add_days`/`add_months`).
-- **Review-rules plan:** [docs/plans/08-editable-review-rules.md](docs/plans/08-editable-review-rules.md) — editable "held for review" rules (backend round-trips the full object today; Stage 4 UI is read-only, upgrade pending).
+- **Review-rules guide:** [docs/plans/08-editable-review-rules.md](docs/plans/08-editable-review-rules.md) — the Stage 4 review-rule editor (add / edit / delete a rule; a half-finished rule blocks Proceed).
 - **Pricing verification guide:** [Mock Data/verification_guide.md](Mock%20Data/verification_guide.md) — formulas and benchmark arithmetic.
 - **Mock dataset:** [Mock Data/companies_dataset.json](Mock%20Data/companies_dataset.json) — company profiles only (no pricing).
 - **Dev seeds:** [Mock Data/test_seeds.json](Mock%20Data/test_seeds.json) — dev-only `pricing_spec` and `sample_lead_text`.
@@ -30,7 +30,7 @@ Stack: TypeScript + ESM, Express backend with SQLite (`backend/src/`), Vite + sh
 
 ### 2. Text-only extraction contract
 - The extraction model returns verbatim text and nothing else: `sample_text`, `category`, `condition_flag`, `enum_options`, rare `context_text`, and loop tables by `header_texts` + `row_labels`. The engine (`backend/src/services/template-mutator.service.ts`) owns every locator and derives each mutation from the variable itself.
-- One exception: for a `date`, the model also returns `date_format`, a date-fns pattern it derives rather than copies. Code trusts it only when the sample reads with it and prints back exactly; otherwise `MMMM d, yyyy` is used. Stage 2 date-format editing UI is pending — see [docs/plans/07-date-type.md](docs/plans/07-date-type.md).
+- One exception: for a `date`, the model also returns `date_format`, a date-fns pattern it derives rather than copies. Code trusts it only when the sample reads with it and prints back exactly; otherwise `MMMM d, yyyy` is used. Variable Review edits that pattern in place with a live today's-date preview, and flags a format that fails verification — see [docs/plans/07-date-type.md](docs/plans/07-date-type.md).
 - Every field the engine reads is `required` in the response schema — optional fields get skipped regardless of prompt wording.
 - Provider and model live in the `app_settings` table (`backend/src/services/ai-settings.service.ts`) and are stamped into each `backend/logs/<company>/<template>/*-variables-raw.json` as `ai`. Default `deepseek-flash`.
 - Mutation mechanics — loop collapse, tier matrix, paragraph sub-spans, ordering: [docs/plan.md](docs/plan.md).
@@ -59,7 +59,7 @@ Stack: TypeScript + ESM, Express backend with SQLite (`backend/src/`), Vite + sh
 - The primary canvas holds the 5-stage pipeline alone (`StageStepper` + `Stage1Briefing` … `Stage5LeadSimulator` in `frontend/src/components/stages/`).
 - Per-company drafter preferences (style notes, reference proposal, clarification-email notes) live in the settings drawer (`ConfigurationSheet.tsx` / `BusinessProfileView` / `VoiceInboxView`), backed by `company_configurations`. The mock inbox link lives in the template library view (`TemplateLibraryView.tsx`) so it is controlled from one place across templates.
 - Technical inspection data (AnyDoc Markdown, Variables JSON, Rule Schema JSON, mutation logs) lives in the collapsible bottom HUD (`DevDock.tsx`).
-- Small known debt: `App.tsx` (company switch, template switch) and `CompanyProfileCard.tsx` still use native `window.confirm` in 3 places instead of the shared `ConfirmDialog`. New code must use `ConfirmDialog`; these call sites are pending migration.
+- All confirmations go through the shared `ConfirmDialog`; new code must use it rather than native `window.confirm` / `alert`.
 
 ### 7. Per-company isolation
 - Working files sit on disk under `backend/storage/<company_id>/<template_id>/`. Logs sit under `backend/logs/<company_id>/<template_id>/`. Stage 5 runs are transient: `proposal.docx` / `proposal.pdf` are overwritten per generate, there is no proposals table, and a refresh clears the on-screen result.
