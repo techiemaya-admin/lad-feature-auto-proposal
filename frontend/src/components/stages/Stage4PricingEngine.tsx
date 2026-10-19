@@ -127,9 +127,8 @@ export const Stage4PricingEngine: React.FC<Stage4PricingEngineProps> = ({
       setIsSavingRules(true);
       try {
         const next = await updatePricingRules(companyId, stripForPayload(rules), templateId);
-        setRules(normalizeRules(next.rules));
         setLastSaved(rules);
-        setErrors(next.validation_errors);
+        setErrors(next.validation_errors ?? []);
         onStateChange({ ...next, rules });
         setSaveStatus("Recalculated & Saved");
         setTimeout(() => setSaveStatus(null), 1500);
@@ -245,7 +244,33 @@ export const Stage4PricingEngine: React.FC<Stage4PricingEngineProps> = ({
   const matched = checks.filter((c) => c.ok).length;
   const allGreen = checks.length > 0 && matched === checks.length;
   const selectedVar = rules?.variables.find((v) => v.name === selected) ?? null;
-  const hasUnsavedRules = Boolean(rules && rules !== state?.rules);
+  const hasUnsavedRules = useMemo(() => {
+    if (!rules || !state?.rules) return false;
+    return JSON.stringify(stripForPayload(rules)) !== JSON.stringify(stripForPayload(state.rules));
+  }, [rules, state?.rules]);
+
+  const handleProceed = async () => {
+    if (isProceeding || isSavingRules || errors.length > 0 || reviewBlocked) return;
+    if (hasUnsavedRules && rules) {
+      setIsSavingRules(true);
+      try {
+        const next = await updatePricingRules(companyId, stripForPayload(rules), templateId);
+        setLastSaved(rules);
+        setErrors(next.validation_errors ?? []);
+        onStateChange({ ...next, rules });
+      } catch (err) {
+        setErrors(
+          err instanceof RulesValidationError
+            ? err.errors
+            : [{ path: "", message: err instanceof Error ? err.message : String(err) }]
+        );
+        return;
+      } finally {
+        setIsSavingRules(false);
+      }
+    }
+    onProceed();
+  };
 
   return (
     <div className="stage-arrival relative rounded-3xl border border-[#E2E8F0] dark:border-[#262831] bg-white dark:bg-[#000724] p-5 sm:p-7 space-y-6 shadow-sm overflow-hidden">
@@ -762,8 +787,8 @@ export const Stage4PricingEngine: React.FC<Stage4PricingEngineProps> = ({
                 : "Pricing engine certified"}
             </span>
             <Button
-              onClick={onProceed}
-              disabled={isProceeding || isSavingRules || hasUnsavedRules || errors.length > 0 || reviewBlocked}
+              onClick={handleProceed}
+              disabled={isProceeding || isSavingRules || errors.length > 0 || reviewBlocked}
               size="sm"
               className="h-10 px-6 text-xs font-semibold bg-[#0B1957] hover:bg-[#152a8a] dark:bg-[#2B7CFF] dark:hover:bg-[#2563eb] text-white dark:text-[#000724] rounded-xl shadow-xs cursor-pointer disabled:opacity-50 transition-all active:scale-98"
             >
