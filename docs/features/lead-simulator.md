@@ -85,7 +85,7 @@ Prompt sections: company profile (name, value proposition, industry); voice (`st
 
 `services/lead-extractor.service.ts` (schema builder + call + `missing`), `services/clarification-drafter.service.ts` (`draftClarification` + `draftLeadReply`), `services/narrative-drafter.service.ts` (prompt + substitution), `services/proposal-generator.service.ts` (steps §1.4, dates from the sheet per [dates.md](dates.md), docx + pdf), `routes/proposal.ts` (five routes above), registered in `app.ts`.
 
-- No new dependency: `execFile` on the soffice binary (`SOFFICE_PATH` env, documented in `.env.example`, then the platform default paths); persistent profile in the temp dir (storage/ has spaces in its path and soffice fails silently on a spaced profile URL).
+- Dependency: Node's `execFile` on the soffice binary (`SOFFICE_PATH` env, documented in `.env.example`, then the platform default paths); persistent profile in the temp dir (storage/ has spaces in its path and soffice fails silently on a spaced profile URL).
 - Hard reset: `briefing/unlock`, `template` regeneration and `rules/compile` also delete that template's `proposal.docx|pdf` through one helper, `clearProposalFiles`.
 - Tests (offline, `npm test`): date handling per [dates.md](dates.md); placeholder substitution (known/unknown tags, `covered` tags); extractor schema builder for the co1/co2/co3 rules fixtures (field list + required flags); generation end-to-end with a stubbed model on the co1 fixtures → `proposal.docx` converted with `@firecrawl/anydoc` contains `$35,073.00` and no `{`/`}` left; routes: 409 before Stage 5, 400 on missing inputs, draft-box path. Live model calls only in `test:live`.
 

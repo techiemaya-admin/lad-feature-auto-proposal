@@ -15,7 +15,7 @@ interface Cond { var: string; op: CompareOp; value_var?: string; value?: Cell; v
 
 At Stage 5 (`generateProposal`), the pricing calculator evaluates every rule and pushes matching ones into `evaluation.needs_review`. A non-empty `needs_review` marks the proposal a draft and shows the red **Draft** box to the human reviewer; the document is still built.
 
-The full `PricingRules` object (including `review_rules`) already round-trips through the existing `PUT /rules` endpoint. This is a frontend-only feature.
+The full `PricingRules` object (including `review_rules`) round-trips through `PUT /rules`; the editor needs no backend change.
 
 ## Design decisions
 
@@ -29,7 +29,7 @@ The full `PricingRules` object (including `review_rules`) already round-trips th
 | Downstream result | Editing review rules does not clear the last Stage 5 result on screen; the next Generate uses the updated rules. No wipe, no rewind. |
 | Empty `when: []` | Stripped before PUT + Proceed blocked while one exists. A half-created rule can never Draft-block proposals. |
 | Empty `reason` | Required: `trim(reason) !== ""`, `maxLength={200}` attribute only, no counter UI. Empty → inline hint + Proceed blocked. |
-| Condition editor | Shared `CondRows` with a unit filter. No cross-import from `LedgerTray`. |
+| Condition editor | Shared `CondRows` with a unit filter; the review editor does not import `LedgerTray`. |
 | Row identity | Client-only UUID: normalize on load + on add, stripped before PUT. No backend change. |
 | Validation display | Top band + red border + auto-expand the offending row via the `review_rules[N]` path. |
 
@@ -55,7 +55,7 @@ Every edit updates local state and starts the existing 300 ms debounce. Before `
 
 ### Stage 5 after an edit
 
-Editing review rules changes only the rules, not the template or variables. The app does not clear the last Stage 5 result, so the previous proposal and its Draft box stay on screen unchanged; generating again evaluates the review rules as they now are and shows the updated reasons.
+Editing review rules changes only the rules, not the template or variables. The app does not clear the last Stage 5 result, so the previous proposal and its Draft box stay on screen unchanged; generating again evaluates the review rules as they are and shows the updated reasons.
 
 ### Backend validation
 
@@ -99,7 +99,7 @@ sequenceDiagram
 | `frontend/src/components/pricing/LedgerTray.tsx` | Imports the shared `CondRows`; existing call sites unchanged |
 | `frontend/src/components/pricing/PricingEngineDeck.tsx` | Rule editor, client-only `_id`, save guards, row-error highlight |
 
-No backend changes. No new dependencies. No new state machine, no counter UI, no persisted ids.
+Backend: `PUT /rules`, no schema change. Dependencies: none. State: a local rules copy plus a client-only `_id`; no counter UI and no persisted ids.
 
 ## Verification
 

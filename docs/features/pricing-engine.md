@@ -8,7 +8,7 @@ Paths relative to repo root. Pipeline overview: [../architecture.md](../architec
 
 - **Mental model = a spreadsheet whose cells are the Stage 2 variables.** No internal key vocabulary, no bindings map. Every Stage 2 `pricing` variable gets a *definition* written in terms of other variables. Pricing-only helpers (inputs like `location_count`, constants like `minimum_seat_commitment`, intermediates like `stackable_addon_count`) live inside the rules JSON with `in_document: false` — never in `company_variables`.
 - Rerunning any earlier stage resets Stage 4 (hard-reset policy).
-- Persist in `working_state_json.pricing_rules` (seeded `null` on submit, wiped on unlock). No new table.
+- Persist in `working_state_json.pricing_rules` (seeded `null` on submit, wiped on unlock). No extra table.
 - Formulas are **one flat operation per variable** (`{op, args}`); nesting = add a helper variable.
 - Tables (the cards) are **generic grids with a `kind` hint**; the AI picks columns per company.
 - Live **per-variable self-check**: evaluate with `sample_inputs`, compare each document variable to its Stage 2 `sample_value`, ✓/✗ on the ledger.
@@ -102,7 +102,7 @@ interface PricingRulesState { rules; compiled_at; validation_errors: ValidationE
 - `validate`: cycle, unknown name, unknown table/column, Stage 2 pricing variable undefined, Stage 2 flag undefined, `sub` with 3 args, choice without options.
 - `formatLike`: `("$3,000/mo",3000)`, `("8.25%",0.0825)`, `("10%",0.1)`, `("10%",0.0825)→"8.25%"`, `("$36,000.00",35073)→"$35,073.00"`, `("42",42)`, text passthrough.
 - `sampleCheck` all `ok` for each fixture.
-- `buildProposalPayload` keys ⟷ template tags: render each fixture with `applyTemplate` as in `template-mutator.test.ts`, scan `\{([a-z0-9_]+)\}` (skip `{#…}`/`{/…}`), assert every pricing/flag/loop/`tierN_*` tag is a non-empty payload key and vice-versa. **Never** compare against `Mock Data/templated_markdown/*.md` — it is drifted (`tier_left_*`, `{#has_copywriting}`) from what the engine emits.
+- `buildProposalPayload` keys ⟷ template tags: render each fixture with `applyTemplate` as in `template-mutator.test.ts`, scan `\{([a-z0-9_]+)\}` (skip `{#…}`/`{/…}`), assert every pricing/flag/loop/`tierN_*` tag is a non-empty payload key and vice-versa. **For this parity check, never** compare against `Mock Data/templated_markdown/*.md` — it is drifted (`tier_left_*`, `{#has_copywriting}`) from what the engine emits. The mutator golden test (`template-mutator.test.ts`) still uses those files as its expected output.
 
 ---
 
@@ -118,12 +118,12 @@ interface PricingRulesState { rules; compiled_at; validation_errors: ValidationE
 - `compilePricingRules(companyId): Promise<PricingRulesState>` — call → `fromWire` → `validate` → `evaluate(rules, sample_inputs)` → `sampleCheck`; if any structural error or `!ok` → **one** retry with errors appended; keep the attempt with fewer (structural, then sample) errors. Log `rules-raw.json` (`{ai: getAISettings(), ...wire}`) and `rules-repair.json` (`fixing` = the first attempt's errors, `kept` = `"first"`/`"second"`).
 - `setRulesModelCall(fn | null)` — test seam replacing the network call. `buildRulesState(rules, ctx)` shared by compile and PUT.
 
-**`backend/src/routes/rules.ts`** (Router + response shapes of `routes/template.ts`):
-- `POST /:id/rules/compile` — 400 without `quotation_markdown` or Stage 2 pricing variables; persist `working_state.pricing_rules = state`, `stage: "pricing_engine"`; `{success, pricing_rules}`.
-- `GET /:id/rules` — 404 "Pricing rules have not been compiled yet" when null.
-- `PUT /:id/rules` body `{rules}` — validate against live Stage 2; structural errors → 400 `{success:false, errors:[{path,message}]}` (nothing persisted); else re-evaluate + sample check, persist.
-- `POST /:id/rules/calculate` body `{inputs}` → `{success, evaluation, payload}` (Stage 5's entry point; a sample check against a non-sample lead is meaningless, so it is not returned — the deck's live check goes through `PUT`).
-- `POST /:id/rules/proceed` — 409 if no rules or validation errors; `stage: "lead_simulation"`; returns `formatCompanyResponse(row)`.
+**`backend/src/routes/rules.ts`** (mounted at `/api/companies/:companyId/templates/:templateId`):
+- `POST /rules/compile` — 400 without `quotation_markdown` or Stage 2 pricing variables; persist `working_state.pricing_rules = state`, `stage: "pricing_engine"`; `{success, pricing_rules}`.
+- `GET /rules` — 404 "Pricing rules have not been compiled yet" when null.
+- `PUT /rules` body `{rules}` — validate against live Stage 2; structural errors → 400 `{success:false, errors:[{path,message}]}` (nothing persisted); else re-evaluate + sample check, persist.
+- `POST /rules/calculate` body `{inputs}` → `{success, evaluation, payload}` (Stage 5's entry point; a sample check against a non-sample lead is meaningless, so it is not returned — the deck's live check goes through `PUT`).
+- `POST /rules/proceed` — 409 if no rules or validation errors; `stage: "lead_simulation"`; returns `formatCompanyResponse(row)`.
 
 **Edits:** mount `rulesRouter` before `companiesRouter` in `app.ts`; `routes/template.ts` adds `pricing_rules: null` to the template spread (regeneration resets Stage 4); `routes/briefing.ts` adds an explicit `pricing_rules: null`.
 
@@ -136,8 +136,8 @@ interface PricingRulesState { rules; compiled_at; validation_errors: ValidationE
 **Types/API:** `frontend/src/types/pricing.ts`; `types/company.ts` adds `pricing_rules?: PricingRulesState | null`; `services/api.ts` adds `compilePricingRules`, `fetchPricingRules`, `updatePricingRules` (attach `errors` on 400), `calculatePricing`, `proceedToLeadSimulation` — error unwrapping as `generateTemplate`.
 
 **`frontend/src/components/pricing/PricingEngineDeck.tsx`** (+ `RuleTableCard.tsx`, `LedgerTray.tsx`, `readable.ts` in the folder):
-- Shell = the checkpoint card classes; `.shimmer-bar` (in `index.css`) while compiling; the Variable Review error panel pattern with "Try again" (never a stuck shimmer).
-- Sections: **assumptions strip** (the amber panel classes from `TemplateCheckpointCard.tsx`) → **one `RuleTableCard` per `tables[]`** (icon/title by `kind`; cells editable and typed by column unit; `font-mono tabular-nums` on money/percent/integer; empty integer = "∞"; add/remove row; `hover:-translate-y-0.5 transition-transform duration-100`) → **"What we ask the lead"** (input variables: label, type chip, required) → **Calculation ledger** (variables in `evaluation.order` minus inputs/constants shown above: label, `readable(def)`, computed value, Stage 2 sample, ✓/✗ from `sample_check`; helpers get a dashed "not in document" chip; tap → `LedgerTray` docked under the ledger with the connector from `VariableReviewDeck.tsx`; `[+ Add variable]` dashed chip) → **review rules** list → footer: "N of M match" + ghost `Regenerate` + primary `Proceed to Lead Simulation` (`bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-xs btn-tactile`, disabled while validation errors exist).
+- Shell = the checkpoint card classes; `.shimmer-bar` (in `index.css`) while compiling; the `VariableReviewDeck` error-panel pattern with "Try again" (never a stuck shimmer).
+- Sections: **assumptions strip** (the amber panel classes from `TemplateCheckpointCard.tsx`) → **one `RuleTableCard` per `tables[]`** (icon/title by `kind`; cells editable and typed by column unit; `font-mono tabular-nums` on money/percent/integer; empty integer = "∞"; add/remove row; `hover:-translate-y-0.5 transition-transform duration-100`) → **"What we ask the lead"** (input variables: label, type chip, required) → **Calculation ledger** (variables in `evaluation.order` minus inputs/constants shown above: label, `readable(def)`, computed value, Stage 2 sample, ✓/✗ from `sample_check`; helpers get a dashed "not in document" chip; tap → `LedgerTray` docked under the ledger with the connector from `VariableReviewDeck.tsx`; `[+ Add variable]` dashed chip) → **review rules** list → footer: "N of M match" + ghost `Regenerate` + primary `Proceed to Check & Generate Proposal` (`bg-blue-600 hover:bg-blue-500 text-white rounded-xl shadow-xs btn-tactile`, disabled while validation errors exist or a review rule is unfinished).
 - `LedgerTray`: `TrayHeader` pattern from `VariableReviewDeck.tsx`; `CustomDropdown` for kind/op/unit/table/column; operand chips (variable names + literal number input); condition rows (var / op / value or value_var); delete only for helpers.
 - `readable.ts`: `formula` → `base_investment_amount × annual_discount_percentage`; `lookup` → `Packages · first row where location_cap ≥ location_count → monthly_rate`; `condition` → `annual_prepay is true`; `aggregate` → `count of selected Add-ons where stackable = true`; `rows` → `one row per selected Add-ons`; `constant` → value formatted by unit.
 - State: local `rules` copy; every edit → `setRules` + 300 ms debounced `updatePricingRules`; response replaces `sample_check`/`evaluation`; a 400 shows its `errors` inline and keeps local edits.

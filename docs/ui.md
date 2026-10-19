@@ -50,7 +50,7 @@ LadSettingsHeader (always visible)
 - Date variables: the detail tray edits `date_format` as a text field with a live today's-date preview and flags a format that fails verification — see [features/dates.md](features/dates.md).
 - Every edit persists (`PUT /variables`) and invalidates Stage 3+ until regenerated.
 
-### 3.3 Stage 3: Template Checkpoint (`stages/Stage3TemplateCheck.tsx` + `DocxDocumentPreview.tsx`)
+### 3.3 Stage 3: Draft Proposal (template checkpoint) (`stages/Stage3TemplateCheck.tsx` + `DocxDocumentPreview.tsx`)
 - Answers: did it work, is anything wrong, what's next. Clipped scaled `docx-preview` thumbnail (click → full modal) of the real `template.docx`; one-line stats sentence (fields / tables / rows).
 - Unplaced fields as chips; tapping one focuses the variable in Stage 2. Footer: `[Download .docx]` + size, primary `[Set up pricing ➔]`. No engine vocabulary in user copy.
 

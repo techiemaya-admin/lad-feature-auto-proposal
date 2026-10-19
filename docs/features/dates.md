@@ -11,13 +11,13 @@ Paths relative to repo root. Pipeline overview: [../architecture.md](../architec
 - Covers every date in a template, including kinds the mock quotations don't have yet.
 - Date maths = calendar days and simple months. No business days, no date comparisons, no date differences as sheet values.
 - **date-fns** does all date work: maths, reading, printing. No Temporal, no chrono-node. A date value is its ISO string `"2026-10-02"`, read with `parseISO` (never `new Date(iso)`: that is UTC midnight, the previous day west of UTC).
-- The **extraction model returns each date's format** as a date-fns pattern (`MMMM d, yyyy`, `dd/MM/yyyy`, `MMMM do, yyyy`, `EEEE, MMMM d, yyyy`, `dd/MM/yy`, or month-only `MMMM yyyy`), saved on the Stage 2 variable as `date_format` and editable in Variable Review (text field with a live today's-date preview). An ambiguous numeric date (`07/09/2026`) defaults to **day-first** (`dd/MM/yyyy`).
-- Code verifies every format: the sample must read with it and print back identically. A missing or failing format falls back to `MMMM d, yyyy`, and Variable Review warns on that date.
+- The **extraction model returns each date's format** as a date-fns pattern (`MMMM d, yyyy`, `dd/MM/yyyy`, `MMMM do, yyyy`, `EEEE, MMMM d, yyyy`, `dd/MM/yy`, or month-only `MMMM yyyy`), saved on the Stage 2 variable as `date_format` and editable in the Variable Ledger (text field with a live today's-date preview). An ambiguous numeric date (`07/09/2026`) defaults to **day-first** (`dd/MM/yyyy`).
+- Code verifies every format: the sample must read with it and print back identically. A missing or failing format falls back to `MMMM d, yyyy`, and the Variable Ledger warns on that date.
 - `today` is a **reserved sheet name** supplied by code (§3).
 - Two formula ops: `add_days(date, n)`, `add_months(date, n)`. `add_days(today, 0)` = "this date is today".
 - **A date variable holds only the date.** A duration beside it ("September 21, 2026 (14 days)") is a separate number variable: template `{proposal_valid_until} ({validity_days} days)`.
 - The compiler prompt lists each date with its gap from the earliest date, **computed by code**; the model only links gaps to number variables (or adds a hidden helper constant when the document prints none).
-- Old sheets and extractions are not supported (demo data); there is no string-date fallback.
+- Sheets and extractions created before the date type are not supported (demo data); there is no string-date fallback.
 
 ## 1. Date helpers (`backend/src/services/dates.ts`)
 
@@ -41,7 +41,7 @@ The calculator, the compiler, Stage 2 and the lead extractor all need it; keepin
 - A day count that is not a finite whole number (14.5, NaN) marks the date `broken` with a `needs_review` reason, never a throw. Its dependants blank through the existing `broken` spread.
 - `today` is read from `inputs.today` like any input, never defined by the sheet.
 - `buildProposalPayload`: a `date`-unit value prints through the module's `printDate` (`writeDate` with `dateFormatOf` of its Stage 2 variable), taking precedence over the generic `formatLike` path. `formatLike` itself has no date branch.
-- `sampleCheck`: a `date` value is compared as it prints, `writeDate(value, dateFormatOf(v)) === sample`, so each date is checked at the precision its document shows (the day, or only the month for `December 2026`). A sample that reads with neither its format nor the default (`TBC`) is **skipped**; Variable Review already warns on it.
+- `sampleCheck`: a `date` value is compared as it prints, `writeDate(value, dateFormatOf(v)) === sample`, so each date is checked at the precision its document shows (the day, or only the month for `December 2026`). A sample that reads with neither its format nor the default (`TBC`) is **skipped**; the Variable Ledger warns on it.
 
 ## 3. Today
 
@@ -75,8 +75,8 @@ The calculator, the compiler, Stage 2 and the lead extractor all need it; keepin
 ## 6. Stage 2: extraction and variables
 
 - Response schema: a **required** `date_format` field in the Gemini schema and the DeepSeek JSON shape; `""` for non-dates.
-- Extraction prompt: "for a `date`, give its date-fns format (`MMMM d, yyyy`); when day and month order is unclear, use day-first (`dd/MM/yyyy`)". A date's `sample_text` is the date alone; a duration next to it ("(14 days)") is its own `number` variable, placed with `context_text` as `validity_days` is. Live extraction already splits it for co1 and co2; the line is a nudge.
-- `routes/variables.ts`: `date_format` is saved into the descriptor JSON in the existing extract insert. No derive step, no DB migration. Custom-added dates and old rows have none and use the default.
+- Extraction prompt: "for a `date`, give its date-fns format (`MMMM d, yyyy`); when day and month order is unclear, use day-first (`dd/MM/yyyy`)". A date's `sample_text` is the date alone; a duration next to it ("(14 days)") is its own `number` variable, placed with `context_text` as `validity_days` is. The co1 and co2 samples split it; the prompt line reinforces that.
+- `routes/variables.ts`: `date_format` is saved into the descriptor JSON in the extract insert. No derive step, no DB migration. Custom-added dates and rows extracted before `date_format` existed have none and use the default.
 - The variables GET adds a computed `date_format_ok` per date variable (worked out on read, so never stale).
 - `VariableReviewDeck.tsx`: a format text field beside the sample for date variables, saved through the existing `patchDescriptor`; a warning on the date when `date_format_ok` is false. The field previews today's date in what is typed so far (empty = the default format), with the same D / Y guard as the backend instead of letting date-fns throw.
 
@@ -84,7 +84,7 @@ The calculator, the compiler, Stage 2 and the lead extractor all need it; keepin
 
 - `types/pricing.ts`: `Unit` + `FormulaOp` additions mirroring the backend.
 - `readable.ts`: `UNIT_LABEL.date`; `add_days` / `add_months` readable as "proposal_date + validity_days days" / "+ N months".
-- `LedgerTray.tsx`: the two ops in `FORMULA_OPS`; `today` in the variable dropdown (`varOptions`); a date constant uses `<input type="date">` (ISO in, ISO out). Days stay ordinary integer constants, edited as now.
+- `LedgerTray.tsx`: the two ops in `FORMULA_OPS`; `today` in the variable dropdown (`varOptions`); a date constant uses `<input type="date">` (ISO in, ISO out). Days stay ordinary integer constants, edited in the ledger.
 
 ## 8. Stage 5
 
@@ -97,9 +97,9 @@ The calculator, the compiler, Stage 2 and the lead extractor all need it; keepin
 | Case | Behaviour |
 |---|---|
 | Date with no printed duration (delivery date only) | Compiler adds a hidden constant `delivery_days = 30`; editable in Stage 4. |
-| Duration in weeks ("valid for 2 weeks") | Helper `mul(validity_weeks, 7)` → `add_days`. No new op. |
+| Duration in weeks ("valid for 2 weeks") | Helper `mul(validity_weeks, 7)` → `add_days`. No extra op. |
 | Duration attached to the date's text | Extraction splits it; if not, the format fails the check → default format + warning. |
-| Ambiguous `07/09/2026` | The model picks day-first; the format is editable in Variable Review. Code can't check this choice (both readings print back). |
+| Ambiguous `07/09/2026` | The model picks day-first; the format is editable in the Variable Ledger. Code can't check this choice (both readings print back). |
 | Ordinal, weekday, two-digit year | date-fns tokens `do`, `EEEE`, `yy`; the weekday is recomputed for the new date. |
 | Month-only (`December 2026`, `12/2026`, `Q4 2026`) | Formats `MMMM yyyy`, `MM/yyyy`, `QQQ yyyy`; gap given in months (§5), checked as printed (§2). |
 | Wrong model format (`D` / `YYYY`, `dd` vs `d`) | Fails `checkFormat` → default format + warning. |

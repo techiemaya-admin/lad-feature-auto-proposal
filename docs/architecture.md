@@ -33,7 +33,7 @@ This project proves **zero-config quotation auto-generation**:
   └── [Generate template ➔]
              │
              ▼
-[STAGE 3: TEMPLATE CHECKPOINT]  Stage3TemplateCheck.tsx + DocxDocumentPreview.tsx
+[STAGE 3: DRAFT PROPOSAL]  Stage3TemplateCheck.tsx + DocxDocumentPreview.tsx
   docxmlater finds every occurrence of each verbatim sample_text and derives the mutation
   ├── Preview-first card: clipped docx-preview thumbnail (click → full modal) + summary
   ├── Unplaced fields listed as chips; tapping one focuses that variable in Stage 2
@@ -46,16 +46,16 @@ This project proves **zero-config quotation auto-generation**:
   ├── Assumption strip → one editable card per table → "What we ask the lead"
   │     → calculation ledger (readable rule · sample · quotation · ✓/✗)
   ├── "Held for review when" rules are editable (add / edit / delete; a half-finished rule blocks Proceed)
-  └── [Proceed to Stage 5 ➔] (blocked while structural errors exist)
+  └── [Proceed to Stage 5 ➔] (blocked while structural errors exist or a review rule is unfinished)
              │
              ▼
 [STAGE 5: LEAD & PROPOSAL]  Stage5LeadSimulator.tsx
   Lead textarea prefilled with assigned/routed email or dev sample → [Generate proposal]
-  ├── POST /lead/extract → read-only facts; required fact missing → clarification email
+  ├── POST /lead/extract → editable facts; required fact missing → clarification email
   │     + reply loop (the thread is re-read until nothing is missing)
   ├── POST /proposal/generate → evaluate → needs_review → payload → {tag} narrative
   │     → easy-template-x .docx → LibreOffice PDF (failure → pdf: null)
-  └── Split view: facts + assumptions + numbers ledger | PDF <iframe> + downloads
+  └── Facts + assumptions + ledger above; result splits narrative | PDF <iframe> + downloads
 
 AMBIENT SHELL:
 ├── Header tabs (LadSettingsHeader.tsx): companies, AI model picker, Business Profile / Voice & Inbox / Auto Proposal / ICP Strategy
@@ -83,20 +83,25 @@ Entry flow: header company tabs → `TemplateLibraryView` (import ICP / open car
 ### 4.1 Parsing with `@firecrawl/anydoc`
 - `.docx` → clean GitHub-Flavored Markdown in milliseconds. Markdown (headings, lists, tables) is what the model reads — never heavy XML. Shown in the Dev Dock.
 
-### 4.2 Variable extraction contract — text only
+### 4.2 Variable extraction contract — text and metadata, no locators
 No locators, no mutation instructions in the extraction contract (`ai-extraction.service.ts` dispatching `gemini.service.ts` / `deepseek.service.ts`):
 
 | Field | Meaning |
 |---|---|
-| `sample_text` | Verbatim text from the quotation (multi-line for paragraph blocks). The engine searches for exactly this. |
+| `variable_name` | Proposed tag name; used as the variable key and written into the document. |
+| `natural_name` | Short human label for the variable; display and review only. |
 | `category` | `customer_input` / `fixed` / `pricing` / `paragraph`. |
+| `data_type` | `string` / `number` / `currency` / `enum` / `date` / `paragraph`; drives review and, for dates, the payload. |
+| `sample_text` | Verbatim text from the quotation (multi-line for paragraph blocks). The engine searches for exactly this. |
+| `description` | One-line explanation of what the field means; display and review only. |
 | `condition_flag` | `has_tax`, … — engine wraps the row (or paragraph) in `{#flag}…{/flag}`. `""` = always shown. |
 | `enum_options` | Tier selector options; engine finds the tier matrix by name — no locator needed. |
 | `context_text` | Almost always `""` (= replace everywhere). Only when identical text appears elsewhere with a different meaning. |
-| `loop_tables[]` | `header_texts`, `loop_tag`, `column_tags`, `row_labels`. No table indexes. |
+| `paragraph_config` | For a `paragraph`: `mode` (`fixed` / `ai_generated`), `purpose`, `tone`, `length_guideline`. |
+| `loop_tables[]` | `natural_name`, `header_texts`, `loop_tag`, `column_tags`, `row_labels`. No table indexes. |
 | `date_format` | Date-only exception: a date-fns pattern the model derives; verified by code (read + print-back). |
 
-Every field the engine depends on is `required` in the response schema.
+The model supplies text plus this descriptive metadata, never locators or mutation instructions. Every field the engine depends on is `required` in the response schema.
 
 ### 4.3 Template mutation with `docxmlater`
 `backend/src/services/template-mutator.service.ts` owns all location logic:
