@@ -1,5 +1,5 @@
 {
-  "note": "Dev-only seeds for the prototype. pricing_spec prefills the Stage 1 prompt box; sample_lead_text prefills the Stage 5 lead textarea (verbatim from verification_guide.md). Neither is imported by the main backend — companies_dataset.json holds only imported data.",
+  "note": "Dev-only seeds for the prototype. pricing_spec prefills the Stage 1 prompt box; sample_lead_text prefills the Stage 5 lead textarea (verbatim from Verification Guide.md). Neither is imported by the main backend — companies_dataset.json holds only imported data.",
   "companies": [
     {
       "company_id": "co1_seo",
