@@ -6,6 +6,7 @@ Stack: TypeScript + ESM, Express backend with SQLite (`backend/src/`), Vite + sh
 
 ## Context Pointers
 
+- **Documentation index:** [docs/README.md](docs/README.md) — reading order, quick setup, and which document owns what.
 - **Generated sample proposals:** [docs/features/sample-proposals.md](docs/features/sample-proposals.md) — automatic sample pricing, custom sections, frontend-only accuracy notes, Word compatibility.
 - **Architecture & pipeline blueprint:** [docs/architecture.md](docs/architecture.md) — the 5-stage pipeline, mutation flow, variable taxonomy, execution order.
 - **UI/UX design spec:** [docs/ui.md](docs/ui.md) — layouts, component structure, theme tokens.
@@ -57,7 +58,7 @@ Stack: TypeScript + ESM, Express backend with SQLite (`backend/src/`), Vite + sh
 - Prompt text and uploaded files survive a rewind.
 
 ### 6. Ambient decoupling
-- The primary canvas holds the 5-stage pipeline alone (`StageStepper` + `Stage1Briefing` … `Stage5LeadSimulator` in `frontend/src/components/stages/`).
+- The primary canvas holds the 5-stage pipeline alone (`StageStepper` in `frontend/src/components/layout/`, `Stage1Briefing` … `Stage5LeadSimulator` in `frontend/src/components/stages/`).
 - Per-company drafter preferences (style notes, reference proposal, clarification-email notes) live in the settings drawer (`ConfigurationSheet.tsx` / `BusinessProfileView` / `VoiceInboxView`), backed by `company_configurations`. The mock inbox link lives in the template library view (`TemplateLibraryView.tsx`) so it is controlled from one place across templates.
 - Technical inspection data (AnyDoc Markdown, Variables JSON, Rule Schema JSON, mutation logs) lives in the collapsible bottom HUD (`DevDock.tsx`).
 - All confirmations go through the shared `ConfirmDialog`; new code must use it rather than native `window.confirm` / `alert`.
@@ -66,11 +67,11 @@ Stack: TypeScript + ESM, Express backend with SQLite (`backend/src/`), Vite + sh
 - Working files sit on disk under `backend/storage/<company_id>/<template_id>/`. Logs sit under `backend/logs/<company_id>/<template_id>/`. Stage 5 runs are transient: `proposal.docx` / `proposal.pdf` are overwritten per generate, there is no proposals table, and a refresh clears the on-screen result.
 - Variable tables, rule schemas and configurations persist in SQLite so switching company tabs keeps progress; app-wide settings (AI provider/model) live in `app_settings`.
 - The template library persists one editable lead email per company in `mock_email_routes`; assignments must reference a template owned by that company. Email edits clear its assignment; version checks reject stale AI results. Stage 5 prefill uses the selected template's assigned email before the dev sample. Connect inbox remains a mock flag, not mailbox access.
-- "Reset to Mock Default" re-seeds from `companies_dataset.json` + `Mock Data/test_seeds.json`.
+- "Reset to Mock Default" re-seeds from `Mock Data/companies_dataset.json` + `Mock Data/test_seeds.json`.
 
 ### 8. Testing
 - `npm test` (in `backend/`) runs offline (`tsx --test`); route tests stub the model call. The live contracts (variable extraction, rules compile, lead + narrative) are `npm run test:live` (needs API key, never in CI).
-- Keep the golden test green: `backend/src/tests/template-mutator.test.ts` pins the engine against `Mock Data/templated_markdown/*.md`, using `tests/fixtures/*.variables.json` (ideal responses) and `*.raw.json` (real model logs, which catch model quirks the ideal fixtures miss). Full suite is 98 tests green (verified Oct 2026 after fixing `Mock Data` paths to repo root).
+- Keep the golden test green: `backend/src/tests/template-mutator.test.ts` pins the engine against `Mock Data/templated_markdown/*.md`, using `tests/fixtures/*.variables.json` (ideal responses) and `*.raw.json` (real model logs, which catch model quirks the ideal fixtures miss). The offline suite must be green before a commit.
 - Tests assert observable behaviour and calculation accuracy — the three benchmark totals to the cent — rather than private helpers.
 - `tests/fixtures/*.raw.json` are captured model logs, not inputs to tune. A failing raw fixture means the engine must handle it; fix the engine, never the fixture.
 - Assert that a fact reached a prompt (a value, an option list, the lead's own words). Leave the prompt's wording to the eval — `npm run test:live`, run by a human before a demo and after any prompt change.
@@ -87,3 +88,4 @@ Stack: TypeScript + ESM, Express backend with SQLite (`backend/src/`), Vite + sh
 
 - **Flag drift, then wait.** When a change alters architecture, API endpoints, pipeline stages or component responsibilities, name the affected docs (`docs/architecture.md`, `docs/ui.md`, `docs/features/*`), show the diff, and apply it once the user approves.
 - **Keep these files timeless.** No phase status, tickets, checklists, or merge records in `docs/` — describe the code as it is, including its current limitations.
+- **One topic, one file.** `docs/architecture.md` owns how the system fits together, `docs/ui.md` owns screen behaviour, each file under `docs/features/` owns one feature contract, and the guides in `Mock Data/` own the numbers and demo inputs. Link to the owner instead of restating it.

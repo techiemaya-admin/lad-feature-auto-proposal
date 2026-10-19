@@ -1,6 +1,6 @@
-# Auto-Proposal — Architectural Plan & Blueprint
+# Auto-Proposal — Architecture & Pipeline
 
-Paths relative to repo root unless noted.
+Paths relative to repo root unless noted. Start at [README.md](README.md) for the doc map.
 
 ## 1. Executive Summary
 
@@ -109,7 +109,7 @@ Every field the engine depends on is `required` in the response schema.
 - Loop collapse: table by `header_texts`, rows by `row_labels`; first loop row gets tags + `{#loop}…{/loop}`, rest removed; header/subtotal/total rows untouched.
 - Post-check: every placed tag verified; swallowed tags become `covered` (drafter input) or reported misses. Only `applied: false` counts as "didn't land".
 - Tier matrix (columns = tiers): tagged positionally; selected tier rotates into the highlighted column at hydration via `buildTierMatrixPayload`.
-- Golden test: `backend/src/tests/template-mutator.test.ts` + `fixtures/*.variables.json` + `*.raw.json` must reproduce `Mock Data/templated_markdown/*.md` (18/18 green).
+- Golden test: `backend/src/tests/template-mutator.test.ts` + `fixtures/*.variables.json` + `*.raw.json` must reproduce `Mock Data/templated_markdown/*.md`.
 
 ### 4.4 Proposal hydration with `easy-template-x`
 Payload keys equal `variable_name`; conditionals need boolean `has_*`; loops need arrays keyed by `loop_tag`; tier matrix from `buildTierMatrixPayload`. Outputs the finalized proposal for download/preview.

@@ -64,6 +64,6 @@ Base: `/api/companies/:companyId/templates`. Management paths mount before gener
 
 ## 6. Verification
 
-- Backend: `npm test` in `backend/` (98 green incl. `template-ideas.test.ts`, `email-routing.test.ts`, `templates.test.ts`); `npm run typecheck`; live AI quality is `npm run test:live` only.
+- Backend: `npm test` in `backend/` (includes `template-ideas.test.ts`, `email-routing.test.ts`, `templates.test.ts`); `npm run typecheck`; live AI quality is `npm run test:live` only.
 - Manual: fresh company → empty welcome → Import (3 skeletons → 3 cards) → reload persists → open card (brief prefilled) → All templates → custom create → fill to 7 (blocked) → delete one (slot frees) → edit email, Check, open assigned template (Stage 5 prefilled) → reassign manually → delete assigned template (email kept, unassigned) → switch companies (isolation).
 - Limitations: import empty-library-only; no import-progress job (reload loses skeleton state; 409 until import finishes); process-local import lock; no description edit UI; no inbox integration; no per-lead proposal archive (Stage 5 files overwritten per generate); a template can be assigned before it is configured, but generation still requires the configured workflow.

@@ -1,6 +1,6 @@
 # Auto-Proposal — UI/UX & Interaction Design Specification
 
-Paths relative to repo root. Backend pipeline: [architecture.md](architecture.md). Sample generation: [features/sample-proposals.md](features/sample-proposals.md).
+Paths relative to repo root. Backend pipeline: [architecture.md](architecture.md). Sample generation: [features/sample-proposals.md](features/sample-proposals.md). Feature contracts live in [features/](features/).
 
 ## 1. Design Vision & Philosophy
 
@@ -55,12 +55,14 @@ LadSettingsHeader (always visible)
 - Unplaced fields as chips; tapping one focuses the variable in Stage 2. Footer: `[Download .docx]` + size, primary `[Set up pricing ➔]`. No engine vocabulary in user copy.
 
 ### 3.4 Stage 4: Pricing Engine (`stages/Stage4PricingEngine.tsx` + `pricing/LedgerTray.tsx`)
+Rule schema and calculator contracts: [features/pricing-engine.md](features/pricing-engine.md).
 - Sections top→bottom: assumptions strip (amber) → one editable card per rule table (typed cells, `tabular-nums`, commit on blur/Enter, add/remove rows) → "What we ask the lead" chips → calculation ledger in evaluation order (label, plain-language definition, sample value, quotation value, ✓/✗) → editable "Held for review when" rules → footer (`N of M match`, Regenerate, Proceed).
 - Tapping a ledger row docks `LedgerTray` (kind / operator / operands / conditions editor). `CondRows` is shared inside `pricing/LedgerTray.tsx`.
 - Live check: 300 ms debounced `PUT /rules`; rejected edits show inline errors and keep the edit on screen. Proceed blocked while structural errors exist.
 - Review rules are editable: each rule has conditions and a reason, added/edited/deleted in place, and a half-finished rule (no conditions or an empty reason) blocks Proceed — see [features/review-rules.md](features/review-rules.md). The raw JSON remains editable in the Dev Dock.
 
 ### 3.5 Stage 5: Lead & Proposal (`stages/Stage5LeadSimulator.tsx` + `Stage5ReceiptSummary.tsx`)
+Extraction, clarification and generation contracts: [features/lead-simulator.md](features/lead-simulator.md).
 - Lead textarea (same fluid pattern as Stage 1) prefilled with the assigned/routed email → template's email, else dev sample. `[Generate proposal]` runs extract → generate back to back.
 - Facts panel (read-only; booleans Yes/No, `tabular-nums`): missing required fact highlights amber and stops the run; conversation card drafts the clarification ask (Copy) + reply box (`What the lead wrote back…`, model-as-lead filler, editable) → re-read loop until complete.
 - Assumptions strip (amber, read-between-the-lines). Numbers ledger (in-document money/percent/integer in calculation order, last money value emphasized).

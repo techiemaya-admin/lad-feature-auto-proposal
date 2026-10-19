@@ -1,12 +1,8 @@
-# Plan 08 — Editable "Held for Review" Rules
-
-> Status: implemented — the Stage 4 editor adds, edits and deletes rules, sharing `CondRows` with the ledger tray; the backend round-trips the full `PricingRules` object. The sections below are kept as the design reference.
-
-## Goal
+# Editable review rules
 
 The **"Held for review when"** section in Stage 4 (`PricingEngineDeck`) is an editor: add a rule, edit its conditions and reason, delete it — the same UX and data flow as the ledger variables editor. A rule left without conditions, or with an empty reason, blocks Proceed until it is finished.
 
----
+Paths relative to repo root. UI spec: [../ui.md](../ui.md) §3.4. Rule schema: [pricing-engine.md](pricing-engine.md).
 
 ## Background
 
@@ -17,235 +13,62 @@ interface ReviewRule { when: Cond[]; reason: string }
 interface Cond { var: string; op: CompareOp; value_var?: string; value?: Cell; values?: Cell[] }
 ```
 
-At Stage 5 (`generateProposal`), the pricing calculator evaluates every rule and pushes matching ones into `evaluation.needs_review`. A non-empty `needs_review` blocks the proposal from being marked "ready to send" and shows the red **Draft** box to the human reviewer.
+At Stage 5 (`generateProposal`), the pricing calculator evaluates every rule and pushes matching ones into `evaluation.needs_review`. A non-empty `needs_review` marks the proposal a draft and shows the red **Draft** box to the human reviewer; the document is still built.
 
-The full `PricingRules` object (including `review_rules`) is already round-tripped through the existing `updatePricingRules` PUT endpoint. **No backend changes are needed.** This is a frontend-only change.
+The full `PricingRules` object (including `review_rules`) already round-trips through the existing `PUT /rules` endpoint. This is a frontend-only feature.
 
----
-
-## Design Decisions (All Agreed)
+## Design decisions
 
 | Decision | Choice |
 |---|---|
 | Editing level | Full structural: add, edit conditions + reason, delete |
 | Save mechanism | Auto-save with 300 ms debounce (same as ledger) |
-| New rule default | Empty condition (`when: []`), reason `""` (guarded by Q2/Q3 below) |
+| New rule default | Empty condition (`when: []`), reason `""` |
 | UX expansion pattern | Click a rule row → inline tray expands below it (same as ledger variable rows) |
 | Always-show section | Yes — header + "Add rule" button visible even when `review_rules` is empty |
-| Downstream stale | Soft stale banner (Q1): old Stage 5 result stays, flagged "rules changed — regenerate". No wipe, no rewind. |
-| Empty `when: []` | Stripped before PUT + Proceed blocked while one exists (Q2). A half-created rule can never Draft-block proposals. |
-| Empty `reason` | Required: `trim(reason) !== ""`, `maxLength={200}` attr only, no counter UI (Q3). Empty → inline hint + Proceed blocked. |
-| Condition editor | Extract `CondRows` to shared `CondRows.tsx` with unit filter (Q4). No cross-import from `LedgerTray`. |
-| Row identity | Client-only UUID: normalize on load + on add, stripped before PUT. No backend change (Q5). |
-| Validation display | Top band + red-border + auto-expand offending row via `review_rules[N]` path parse (Q6). |
+| Downstream stale | Soft stale banner: the old Stage 5 result stays, flagged "rules changed — regenerate". No wipe, no rewind. |
+| Empty `when: []` | Stripped before PUT + Proceed blocked while one exists. A half-created rule can never Draft-block proposals. |
+| Empty `reason` | Required: `trim(reason) !== ""`, `maxLength={200}` attribute only, no counter UI. Empty → inline hint + Proceed blocked. |
+| Condition editor | Shared `CondRows` with a unit filter. No cross-import from `LedgerTray`. |
+| Row identity | Client-only UUID: normalize on load + on add, stripped before PUT. No backend change. |
+| Validation display | Top band + red border + auto-expand the offending row via the `review_rules[N]` path. |
 
----
+## Behaviour
 
-## Resolved Question (was Open)
+### Adding a rule
 
-**Stage 5 stale clearing — RESOLVED (Q1):** soft stale banner. The old Stage 5 proposal stays on screen with a "rules changed — regenerate" flag. No wipe, no template/pricing rewind. Rationale: review edits invalidate only the last generate, not the template or variables; wiping destroys reviewer context. Keep it simple: reuse the existing notification/banner path, no new state machine.
+The section is always visible. **Add rule** appends `{ when: [], reason: "" }`, opens its tray, and shows an amber "no conditions" warning. The row is highlighted while incomplete.
 
----
+### Editing a rule
 
-## Proposed Changes
+- Conditions: the shared `CondRows` editor builds `var / op / value` rows. The variable dropdown hides `text` and `rows` units. "When (all conditions must hold)".
+- Reason: a single-line input, trimmed for validation, capped at 200 characters. Placeholder suggests a short human explanation.
+- Delete: a delete action in the tray removes the rule and clears the selection.
 
-Only **two files** change. No new files, no backend touches, no new dependencies.
+### Saving
 
----
+Every edit updates local state and starts the existing 300 ms debounce. Before `PUT /rules`, the payload drops rules with `when: []` and strips the client-only `_id`. The response replaces `sample_check` and `evaluation`. The existing in-flight guard keeps the trailing edit; the next debounce catches it.
 
-### `CondRows.tsx` (new shared module — Q4, Q5 simplicity)
+### Blocking Proceed
 
-Extract `CondRows` (plus `OPS`) from `LedgerTray.tsx` into `frontend/src/components/pricing/CondRows.tsx` — no other logic moves. One addition: a unit filter so review-rule LHS hides `text`/`rows` units (one `.filter()` line). `LedgerTray` imports it back (existing call sites unchanged); `PricingEngineDeck` imports from the shared path. No cross-import LedgerTray → Deck.
+`proceedDisabled` is true while any rule has no conditions or an empty reason. The top validation band names the problem, the row gets a red border, and the tray auto-expands. A rule that is merely incomplete cannot reach the backend because it is stripped from the save payload.
 
----
+### Stage 5 after an edit
 
-### `PricingEngineDeck.tsx`
+Editing review rules invalidates only the last generate, not the template or variables. The previous proposal and its Draft box stay on screen with a "rules changed — regenerate" banner. Generating again shows the updated reasons.
 
-**Imports — additions**
+### Backend validation
 
-```diff
--import { Calculator, CheckCircle2, AlertCircle, AlertTriangle, RefreshCw, ChevronRight, Check, X, Plus, ShieldAlert, User } from "lucide-react";
-+import { Calculator, CheckCircle2, AlertCircle, AlertTriangle, RefreshCw, ChevronRight, Check, X, Plus, ShieldAlert, User, Trash2 } from "lucide-react";
+Removing a ledger variable that a review rule references surfaces a `ValidationError` from the debounced PUT and appears in the general errors band. Nothing is persisted on a 400.
 
--import type { PricingRules, PricingRulesState, RuleVariable, ValidationError } from "../../types/pricing";
-+import type { Cond, PricingRules, PricingRulesState, ReviewRule, RuleVariable, ValidationError } from "../../types/pricing";
-
-+import { CondRows } from "./CondRows";
-```
-Client-only row identity (Q5): each rule carries a transient `_id` (`crypto.randomUUID()` on load-normalize + on add), stripped before PUT. Selection + error mapping key off `_id`, never the array index.
-
-Save guards (Q2/Q3, kept minimal — no new state machine):
-- Strip `when: []` rules from the PUT payload (one filter fn).
-- `proceedDisabled = rules.review_rules.some(r => r.when.length === 0 || trim(r.reason) === "")`.
-- Reason input gets `maxLength={200}` only — no counter UI.
-- Error mapping (Q6): extend the existing `errorByPath` memo to also parse `review_rules[N]` paths → red-border + auto-expand row N. ~5 lines, no new error system.
-
-**New state — beside `selected`**
-
-```diff
- const [selected, setSelected] = useState<string | null>(null);
-+const [selectedRule, setSelectedRule] = useState<string | null>(null); // client-only _id (Q5), not index
-```
-
-**Three helper functions — beside `editVariable` / `addHelper` (keyed by client-only `_id`, Q5)**
-
-```ts
-type EditableReviewRule = ReviewRule & { _id: string };
-
-const editReviewRule = (id: string, r: EditableReviewRule) =>
-  rules && setRules({ ...rules, review_rules: rules.review_rules.map((x) => (x as EditableReviewRule)._id === id ? r : x) });
-
-const deleteReviewRule = (id: string) => {
-  if (!rules) return;
-  setRules({ ...rules, review_rules: rules.review_rules.filter((x) => (x as EditableReviewRule)._id !== id) });
-  setSelectedRule(null);
-};
-
-const addReviewRule = () => {
-  if (!rules) return;
-  const r = { _id: crypto.randomUUID(), when: [], reason: "" };
-  setRules({ ...rules, review_rules: [...rules.review_rules, r] });
-  setSelectedRule(r._id); // auto-open the new rule's tray
-};
-```
-
-**The review-rule block: before and after**
-
-_Before:_
-```tsx
-{/* Review rules */}
-{rules.review_rules.length > 0 && (
-  <div className="space-y-1.5">
-    <div className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-      <ShieldAlert className="size-3" /> Held for review when
-    </div>
-    <ul className="space-y-1 text-xs">
-      {rules.review_rules.map((r, i) => (
-        <li key={i} className="flex gap-2">
-          <span className="text-muted-foreground shrink-0">{readableConds(rules, r.when)}</span>
-          <span className="text-foreground">→ {r.reason}</span>
-        </li>
-      ))}
-    </ul>
-  </div>
-)}
-```
-
-_After:_
-```tsx
-{/* Review rules — fully editable, same expand-below-row UX as ledger variables */}
-<div className="space-y-1.5">
-  <div className="flex items-center justify-between">
-    <div className="flex items-center gap-2 text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-      <ShieldAlert className="size-3" /> Held for review when
-    </div>
-    <button
-      type="button"
-      onClick={addReviewRule}
-      className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-    >
-      <Plus className="size-3" /> Add rule
-    </button>
-  </div>
-
-  {rules.review_rules.length === 0 ? (
-    <p className="text-[11px] text-muted-foreground italic">
-      No review rules yet — the AI found none. Add one if a scenario needs a human check before sending.
-    </p>
-  ) : (
-    <div className="rounded-xl border border-border/70 overflow-hidden divide-y divide-border/40">
-      {rules.review_rules.map((r, i) => {
-        const isSel = selectedRule === i;
-        const noConditions = r.when.length === 0;
-        return (
-          <React.Fragment key={i}>
-            {/* Row — click to toggle tray */}
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => setSelectedRule(isSel ? null : i)}
-              onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && setSelectedRule(isSel ? null : i)}
-              className={`flex items-start gap-2 px-3 py-2 cursor-pointer transition-colors text-xs
-                ${isSel ? "bg-muted/60" : "hover:bg-muted/30"}
-                ${noConditions ? "bg-amber-500/5" : ""}`}
-            >
-              {noConditions && <AlertTriangle className="size-3.5 shrink-0 text-amber-500 mt-0.5" />}
-              <span className="text-muted-foreground shrink-0 min-w-0 truncate">
-                {r.when.length
-                  ? readableConds(rules, r.when)
-                  : <span className="italic opacity-60">no conditions</span>}
-              </span>
-              <span className="text-foreground ml-1">
-                → {r.reason || <span className="italic opacity-60">no reason</span>}
-              </span>
-            </div>
-
-            {/* Inline tray — same expand-below pattern as LedgerTray */}
-            {isSel && (
-              <div className="animate-in fade-in slide-in-from-top-1 duration-200 motion-reduce:animate-none">
-                <div className="bg-muted border-border/70 p-3.5 space-y-3">
-                  {noConditions && (
-                    <div className="flex items-center gap-2 text-[11px] text-amber-700 dark:text-amber-400">
-                      <AlertTriangle className="size-3.5 shrink-0" />
-                      No conditions — this rule will flag every proposal until you add at least one.
-                    </div>
-                  )}
-
-                  <div className="space-y-1">
-                    <div className="text-[11px] text-muted-foreground">When (all conditions must hold)</div>
-                    <CondRows
-                      rules={rules}
-                      items={r.when as Cond[]}
-                      left="var"
-                      onChange={(when) => editReviewRule(i, { ...r, when: when as Cond[] })}
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <div className="text-[11px] text-muted-foreground">Reason shown to the reviewer</div>
-                    <input
-                      type="text"
-                      value={r.reason}
-                      onChange={(e) => editReviewRule(i, { ...r, reason: e.target.value })}
-                      placeholder="e.g. Franchise-scale — needs a call"
-                      className="h-7 w-full rounded-md border border-border/70 bg-background px-2 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-blue-500/20"
-                    />
-                  </div>
-
-                  <div className="flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => deleteReviewRule(i)}
-                      className="inline-flex items-center gap-1 text-[11px] text-destructive/70 hover:text-destructive transition-colors"
-                    >
-                      <Trash2 className="size-3" /> Delete rule
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </React.Fragment>
-        );
-      })}
-    </div>
-  )}
-</div>
-```
-
-**Debounced PUT — with Q2 strip**
-
-The existing `useEffect` at line 66–81 fires on any `rules` change. Before `updatePricingRules`, strip `when: []` drafts and client-only `_id` fields. No extra wiring needed for persistence.
-
----
-
-## Data Flow
+## Data flow
 
 ```mermaid
 sequenceDiagram
     participant User
     participant PricingEngineDeck
     participant debounce as debounce (300 ms)
-    participant API as PUT /api/companies/:companyId/templates/:templateId/rules
+    participant API as PUT /rules
     participant App
 
     User->>PricingEngineDeck: edit reason / add condition / delete rule
@@ -257,48 +80,35 @@ sequenceDiagram
     App->>App: setPricingRules(next)
 ```
 
----
-
-## Edge Cases
+## Edge cases
 
 | Case | Behaviour |
 |---|---|
-| Rule with `when: []` | Amber row + tray warning. Stripped from PUT (Q2); Proceed blocked until conditions added or rule deleted. Can never Draft-block proposals. |
-| Rule with empty `reason` | Inline "reason required" hint, `maxLength={200}` with no counter UI (Q3). Proceed blocked until filled. |
-| `selectedRule` points to a deleted index | Impossible by construction (Q5): selection keys off client-only `_id`; delete clears selection. |
-| Deleting the only rule | Section falls back to empty-state hint text + "+ Add rule" button. |
-| Editing a rule while PUT is in-flight | The existing `lastSaved` guard in `PricingEngineDeck` already handles this — the next debounce will catch the trailing edit. |
-| Variable removed from the ledger that a review rule references | The existing backend validator (`pricing-calculator.ts` validate) will surface a `ValidationError` via the debounced PUT response. The error appears in `generalErrors`. |
+| Rule with `when: []` | Amber row + tray warning. Stripped from PUT; Proceed blocked until conditions are added or the rule is deleted. Can never Draft-block proposals. |
+| Rule with empty `reason` | Inline "reason required" hint, `maxLength={200}` with no counter UI. Proceed blocked until filled. |
+| `selectedRule` points to a deleted row | Impossible by construction: selection keys off the client-only `_id`; delete clears the selection. |
+| Deleting the only rule | The section falls back to the empty-state hint + "Add rule" button. |
+| Editing while PUT is in flight | The existing `lastSaved` guard handles it; the next debounce catches the trailing edit. |
+| Variable removed that a rule references | The backend validator returns a `ValidationError`; it appears in the general errors band. |
 
----
+## Where it lives
 
-## Files Touched
-
-| File | Change |
+| File | Responsibility |
 |---|---|
-| `frontend/src/components/pricing/CondRows.tsx` | NEW: extracted `CondRows` + `OPS` from `LedgerTray`, plus one-line unit filter hiding `text`/`rows` for review rules (Q4) |
-| `frontend/src/components/pricing/LedgerTray.tsx` | Import shared `CondRows`; existing call sites unchanged |
-| `frontend/src/components/pricing/PricingEngineDeck.tsx` | Imports, `selectedRule: string \| null` (`_id`), helpers keyed by `_id`, interactive rule editor, Q2 strip + Q3 reason guard + Q6 row-error highlight, Q1 stale banner hook |
+| `frontend/src/components/pricing/CondRows.tsx` | Shared condition rows + `OPS`, with the unit filter that hides `text`/`rows` for review rules |
+| `frontend/src/components/pricing/LedgerTray.tsx` | Imports the shared `CondRows`; existing call sites unchanged |
+| `frontend/src/components/pricing/PricingEngineDeck.tsx` | Rule editor, client-only `_id`, save guards, row-error highlight, stale banner hook |
 
-No backend changes. No new dependencies. Simplicity guardrail: no new state machine, no counter UI, no persisted ids.
+No backend changes. No new dependencies. No new state machine, no counter UI, no persisted ids.
 
----
+## Verification
 
-## Verification Plan
-
-### Automated tests
-```bash
-cd backend && npm test
-```
-No changes to backend logic or types — existing `pricing-calculator.test.ts` already covers `review_rules` validation.
-
-### Manual verification
-1. Open Stage 4 for any company after compiling pricing rules.
-2. **Empty state** — compile a company that has no review rules. Confirm section is visible with "+ Add rule" button and empty-state text.
-3. **Add a rule** — click "+ Add rule". New row appears, tray auto-opens, amber "no conditions" warning shows.
-4. **Add a condition** — use the variable dropdowns in the tray. Amber warning disappears. Confirm "Saved ✓" appears within ~300 ms.
-5. **Edit a reason** — type in the reason input. Confirm debounced save fires.
-6. **Delete a rule** — open tray → "Delete rule" → row gone, save fires.
-7. **Variable reference validation** — add a condition referencing a non-existent variable name (edit JSON directly via DevDock, then re-open). Confirm a validation error surfaces in the general errors band.
-8. **Stage 5 check** — generate a proposal. Edit a review rule. Confirm behaviour matches the agreed decision on stale clearing.
-9. **Stage 5 Draft box** — generate a proposal that triggers the edited rule. Confirm the Draft box shows the updated `reason` text.
+1. Open Stage 4 after compiling pricing rules.
+2. **Empty state** — a company with no review rules shows the section with "Add rule" and the empty-state text.
+3. **Add a rule** — the new row appears, its tray auto-opens, and the amber "no conditions" warning shows.
+4. **Add a condition** — choose variables in the tray; the warning disappears; "Saved ✓" appears within ~300 ms.
+5. **Edit a reason** — typing fires the debounced save.
+6. **Delete a rule** — the row disappears and the save fires.
+7. **Invalid reference** — add a condition naming a non-existent variable through the DevDock JSON; the validation error surfaces in the general errors band.
+8. **Stage 5 Draft box** — generate a proposal that triggers the rule and confirm the box shows the edited `reason`.
+9. **Stage 5 stale** — edit a rule after generating; the old proposal stays with the "rules changed — regenerate" banner.

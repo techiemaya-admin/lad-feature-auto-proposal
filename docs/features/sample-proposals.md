@@ -1,10 +1,10 @@
-# Generated sample proposals
+# Sample proposals
 
-Current behavior as of 14 October 2026. Paths below are relative to repo root.
+Paths below are relative to repo root.
 
 ## Purpose and workflow
 
-A saved template can now create its own sample Word proposal instead of requiring an existing quotation upload. This works for both ICP-generated and custom library cards. Import ICP still creates three briefs, not three documents; document generation happens inside the selected template's briefing.
+A saved template can create its own sample Word proposal instead of requiring an existing quotation upload. This works for both ICP-generated and custom library cards. Import ICP still creates three briefs, not three documents; document generation happens inside the selected template's briefing.
 
 1. Open a template and review its pricing brief.
 2. Click **Generate sample proposal**. The AI selects services relevant to this template and creates a fictional customer and requirements. Code calculates prices and creates and attaches the Word file automatically.
@@ -79,7 +79,7 @@ Submitting stores the file as `backend/storage/<company_id>/<template_id>/origin
 
 The frontend prevents Send while generation/review is open. It tracks which brief produced the attached generated file: changing the brief requires regeneration before Send. A manually uploaded replacement clears that association and generated review notes. Stale async results are ignored after a brief change or unmount; temporary download URLs are revoked when replaced. Editing a locked briefing uses the existing reset confirmation and clears downstream work.
 
-## File inventory
+## Where this lives
 
 | File | Responsibility |
 | --- | --- |
@@ -100,7 +100,7 @@ The frontend prevents Send while generation/review is open. It tracks which brie
 
 ## Verification
 
-Run `npm test` and `npm run typecheck` from `backend`, and `npm run build` from `frontend`. The completed implementation passed 97 backend tests, backend type checking and the frontend build. Tests stub AI calls; these results do not establish live model quality. LibreOffice opening was also checked through headless PDF conversion and visual inspection.
+Run `npm test` and `npm run typecheck` from `backend`, and `npm run build` from `frontend`. Tests stub AI calls; these results do not establish live model quality. LibreOffice opening is checked through headless PDF conversion and visual inspection.
 
 Regression coverage includes the three pricing benchmarks (SEO annual 35,073; MSP monthly 2,734.80 plus 3,150 setup; development 10,445), contextual offer selection inputs, explicit estimates and their notes, invalid evidence/calculations, automatic retry, complete manual pricing, ownership and locking, section placement, Word ZIP compatibility, and notes persistence without document leakage.
 
