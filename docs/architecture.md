@@ -65,7 +65,7 @@ AMBIENT SHELL:
 └── DevDock.tsx: AnyDoc MD, Variables JSON, Rule Schema JSON, logs (bottom HUD)
 ```
 
-Entry flow: header company tabs → `TemplateLibraryView` (import ICP / open card / routing) → keyed `TemplateWorkspace` (`App.tsx`) → `StageStepper` 1–5. `TemplatesApp.tsx` is a thin re-export of `App`. `Stage5ReceiptSummary.tsx` is present but unrendered (dead code).
+Entry flow: header company tabs → `TemplateLibraryView` (import ICP / open card / routing) → keyed `TemplateWorkspace` (`App.tsx`) → `StageStepper` 1–5. `TemplatesApp.tsx` is a thin re-export of `App`.
 
 ## 3. The 4-Tier Taxonomy
 

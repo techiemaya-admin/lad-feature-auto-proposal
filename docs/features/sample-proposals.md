@@ -115,7 +115,7 @@ The frontend:
 | `frontend/src/components/SampleProposalBuilder.tsx` | Generation, optional editing, confirmation, notes and attachment state |
 | `frontend/src/components/SampleSectionsEditor.tsx` | Section controls and AI drafting |
 | `frontend/src/components/PromptDocCapsule.tsx` | Builder integration, downloads, brief association, Send gating and persisted notes display |
-| `frontend/src/components/CompanyProfileCard.tsx`, `frontend/src/App.tsx` | Pass notes through briefing submission |
+| `frontend/src/components/stages/Stage1Briefing.tsx`, `frontend/src/App.tsx` | Pass notes through briefing submission |
 | `frontend/src/services/api.ts` | Includes notes in multipart submission |
 | `frontend/src/types/company.ts` | Types persisted sample review notes |
 

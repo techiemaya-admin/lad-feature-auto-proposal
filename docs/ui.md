@@ -67,7 +67,6 @@ Extraction, clarification and generation contracts: [features/lead-simulator.md]
 - Editable facts form (booleans Yes/No, `tabular-nums`): editing a field in place re-generates when nothing is missing; missing required facts highlight amber and stop the run; the conversation card drafts the clarification ask (Copy) plus a reply box (`Type the lead's reply…`, "Draft lead reply" model-as-lead filler, editable) → re-read loop until complete.
 - Assumptions strip (amber, read-between-the-lines). Numbers ledger (`NumbersLedger`, in-document money/percent/integer in calculation order, last money value emphasized); when `needs_review` is non-empty the red Draft box appears beneath it (reasons listed; document still built, affected values print `[to confirm]`).
 - Generated-proposal card split `lg:grid-cols-[1.1fr_0.9fr]`: proposal narrative left; document preview right — a PDF `<iframe>` thumbnail (click → full-screen modal) or "the backend did not return a PDF preview" + `[Download .docx] [Download .pdf]`. `docx-preview` is not used here.
-- `stages/Stage5ReceiptSummary.tsx` exists but is not rendered anywhere — dead code, do not reference it in new work.
 
 ## 4. Library, Routing & Settings UI
 

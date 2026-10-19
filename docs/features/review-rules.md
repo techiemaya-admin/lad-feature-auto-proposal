@@ -1,6 +1,6 @@
 # Editable review rules
 
-The **"Held for review when"** section in Stage 4 (`PricingEngineDeck`) is an editor: add a rule, edit its conditions and reason, delete it — the same UX and data flow as the ledger variables editor. A rule left without conditions, or with an empty reason, blocks Proceed until it is finished.
+The **"Held for review when"** section in Stage 4 (`Stage4PricingEngine.tsx`) is an editor: add a rule, edit its conditions and reason, delete it — the same UX and data flow as the ledger variables editor. A rule left without conditions, or with an empty reason, blocks Proceed until it is finished.
 
 Paths relative to repo root. UI spec: [../ui.md](../ui.md) §3.4. Rule schema: [pricing-engine.md](pricing-engine.md).
 
@@ -24,7 +24,7 @@ The full `PricingRules` object (including `review_rules`) round-trips through `P
 | Downstream result | Editing review rules does not clear the last Stage 5 result on screen; the next Generate uses the updated rules. No wipe, no rewind. |
 | Empty `when: []` | Stripped before PUT + Proceed blocked while one exists. A half-created rule can never Draft-block proposals. |
 | Empty `reason` | Required: `trim(reason) !== ""`, `maxLength={200}` attribute only, no counter UI. Empty → inline hint + Proceed blocked. |
-| Condition editor | Shared `CondRows` with a unit filter; the review editor does not import `LedgerTray`. |
+| Condition editor | Shared `CondRows` with a unit filter; the review editor calls `CondRows` directly rather than through `LedgerTray`. |
 | Row identity | Client-only UUID: normalize on load + on add, stripped before PUT. No backend change. |
 | Validation display | Top band + red border + auto-expand the offending row via the `review_rules[N]` path. |
 
@@ -61,18 +61,18 @@ Removing a ledger variable that a review rule references surfaces a `ValidationE
 ```mermaid
 sequenceDiagram
     participant User
-    participant PricingEngineDeck
+    participant Stage4PricingEngine
     participant debounce as debounce (300 ms)
     participant API as PUT /rules
     participant App
 
-    User->>PricingEngineDeck: edit reason / add condition / delete rule
-    PricingEngineDeck->>PricingEngineDeck: setRules({ ...rules, review_rules: [...] })
-    PricingEngineDeck->>debounce: rules changed
+    User->>Stage4PricingEngine: edit reason / add condition / delete rule
+    Stage4PricingEngine->>Stage4PricingEngine: setRules({ ...rules, review_rules: [...] })
+    Stage4PricingEngine->>debounce: rules changed
     debounce->>API: updatePricingRules(companyId, rules)
-    API-->>PricingEngineDeck: PricingRulesState (re-evaluated sample_check)
-    PricingEngineDeck->>App: onStateChange(next)
-    App->>App: setPricingRules(next)
+    API-->>Stage4PricingEngine: PricingRulesState (re-evaluated sample_check)
+    Stage4PricingEngine->>App: onStateChange(next)
+    App->>App: setPricingRulesState(next)
 ```
 
 ## Edge cases
@@ -92,7 +92,7 @@ sequenceDiagram
 |---|---|
 | `frontend/src/components/pricing/CondRows.tsx` | Shared condition rows + `OPS`, with the unit filter that hides `text`/`rows` for review rules |
 | `frontend/src/components/pricing/LedgerTray.tsx` | Imports the shared `CondRows`; existing call sites unchanged |
-| `frontend/src/components/pricing/PricingEngineDeck.tsx` | Rule editor, client-only `_id`, save guards, row-error highlight |
+| `frontend/src/components/stages/Stage4PricingEngine.tsx` | Rule editor, client-only `_id`, save guards, row-error highlight |
 
 Backend: `PUT /rules`, no schema change. Dependencies: none. State: a local rules copy plus a client-only `_id`; no counter UI and no persisted ids.
 
