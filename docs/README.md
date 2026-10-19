@@ -2,7 +2,7 @@
 
 Zero-configuration proposal generation: an uploaded or AI-generated sample Word quotation plus natural-language pricing notes in, client-ready `.docx` and PDF proposals out. Five stages, all described here.
 
-The five stages: **Briefing → Variable Ledger → Draft Proposal → Pricing Engine → Lead & Proposal.** The DevDock still labels Stage 2 “Variable Review”, and the Stage 4 button reads “Proceed to Check & Generate Proposal”; the stage names above are canonical.
+The five stages: **Briefing → Variable Ledger → Draft Proposal → Pricing Engine → Lead & Proposal.** The DevDock still labels Stage 2 “Variable Review”, and the Stage 4 button reads “Proceed to Stage 5: Lead Simulation”; the stage names above are canonical.
 
 ## Quick setup
 
