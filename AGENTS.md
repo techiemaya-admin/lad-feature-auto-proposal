@@ -28,7 +28,7 @@ Stack: TypeScript + ESM, Express backend with SQLite (`backend/src/`), Vite + sh
 ### 2. Extraction contract: text and metadata, no locators
 - The extraction response returns a `document_summary` plus, per variable, text and descriptive metadata, never locators: `sample_text` (verbatim), `variable_name`, `natural_name`, `data_type`, `description`, `category`, `condition_flag`, `enum_options`, rare `context_text`, `paragraph_config` (`mode` / `purpose` / `tone` / `length_guideline`), and loop tables by `header_texts` + `row_labels`. The engine (`backend/src/services/template-mutator.service.ts`) owns every locator and derives each mutation from the variable itself.
 - One exception: for a `date`, the model also returns `date_format`, a date-fns pattern it derives rather than copies. Code trusts it only when the sample reads with it and prints back exactly; otherwise `MMMM d, yyyy` is used. The Variable Ledger edits that pattern in place with a live today's-date preview, and flags a format that fails verification — see [docs/features/dates.md](docs/features/dates.md).
-- Every field the engine reads is `required` in the response schema — optional fields get skipped regardless of prompt wording.
+- Every field the engine depends on is `required` in the response schema — optional fields get skipped regardless of prompt wording.
 - Provider and model live in the `app_settings` table (`backend/src/services/ai-settings.service.ts`) and are stamped into each `backend/logs/<company>/<template>/*-variables-raw.json` as `ai`. Default `deepseek-flash`.
 - Mutation mechanics — loop collapse, tier matrix, paragraph sub-spans, ordering: [docs/architecture.md](docs/architecture.md).
 
