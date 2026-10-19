@@ -1,6 +1,6 @@
 # Demo Inputs — the three mock companies
 
-Copy-paste sheet for a live demo. Every prompt and email below is **verbatim** from `Mock Data/test_seeds.json`, which is what the prototype seeds itself with — so nothing has to be typed by hand.
+Copy-paste sheet for a live demo. Every prompt and email below is **verbatim** from `Mock Data/seeds/test_seeds.json`, which the prototype seeds itself with — so nothing has to be typed by hand.
 
 **The order for each company:** pick the company tab → **Stage 1** paste the pricing prompt and upload the `.docx` → work through the stages → **Stage 5** paste the email.
 

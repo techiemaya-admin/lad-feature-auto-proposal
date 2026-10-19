@@ -12,8 +12,8 @@ Stack: TypeScript + ESM, Express backend with SQLite (`backend/src/`), Vite + sh
 - **Feature contracts:** [docs/features/](docs/features/) — one file per feature: template library, sample proposals, pricing engine, lead simulator, dates, review rules.
 - **Pricing verification guide:** [Mock Data/Verification Guide.md](Mock%20Data/Verification%20Guide.md) — formulas and benchmark arithmetic.
 - **Demo inputs:** [Mock Data/Demo Inputs.md](Mock%20Data/Demo%20Inputs.md) — paste-ready pricing prompt, `.docx` and lead email per company.
-- **Mock dataset:** [Mock Data/companies_dataset.json](Mock%20Data/companies_dataset.json) — company profiles only (no pricing).
-- **Dev seeds:** [Mock Data/test_seeds.json](Mock%20Data/test_seeds.json) — dev-only `pricing_spec` and `sample_lead_text`.
+- **Mock dataset:** [Mock Data/seeds/companies_dataset.json](Mock%20Data/seeds/companies_dataset.json) — company profiles only (no pricing).
+- **Dev seeds:** [Mock Data/seeds/test_seeds.json](Mock%20Data/seeds/test_seeds.json) — dev-only `pricing_spec` and `sample_lead_text`.
 
 ---
 
@@ -62,7 +62,7 @@ Stack: TypeScript + ESM, Express backend with SQLite (`backend/src/`), Vite + sh
 - Working files sit on disk under `backend/storage/<company_id>/<template_id>/`. Logs sit under `backend/logs/<company_id>/<template_id>/`. Stage 5 runs are transient: `proposal.docx` / `proposal.pdf` are overwritten per generate, there is no proposals table, and a refresh clears the on-screen result.
 - Variable tables, rule schemas and configurations persist in SQLite so switching company tabs keeps progress; app-wide settings (AI provider/model) live in `app_settings`.
 - The template library persists one editable lead email per company in `mock_email_routes`; assignments must reference a template owned by that company. Email edits clear its assignment; version checks reject stale AI results. Stage 5 prefill uses the selected template's assigned email before the dev sample. Connect inbox remains a mock flag, not mailbox access.
-- "Reset to Mock Default" re-seeds from `Mock Data/companies_dataset.json` + `Mock Data/test_seeds.json`.
+- "Reset to Mock Default" re-seeds from `Mock Data/seeds/companies_dataset.json` + `Mock Data/seeds/test_seeds.json`.
 
 ### 8. Testing
 - `npm test` (in `backend/`) runs offline (`tsx --test`); route tests stub the model call. The live contracts (variable extraction, rules compile, lead + narrative) are `npm run test:live` (needs API key, never in CI).

@@ -8,7 +8,7 @@ Sales teams running AI outbound/inbound campaigns generate high volumes of inbou
 
 This project proves **zero-config quotation auto-generation** across six capabilities:
 
-1. **Import & ingest:** company profile (`Mock Data/companies_dataset.json`); dev-only pricing notes and sample lead from `Mock Data/test_seeds.json`.
+1. **Import & ingest:** company profile (`Mock Data/seeds/companies_dataset.json`); dev-only pricing notes and sample lead from `Mock Data/seeds/test_seeds.json`.
 2. **Document understanding:** real `.docx` quotations → Markdown via `@firecrawl/anydoc`.
 3. **Variable detection & taxonomy:** scalar entities, pricing numbers, table loops, dynamic paragraphs, with human-in-the-loop review.
 4. **Non-destructive Word mutation:** `docxmlater` replaces text anchors and collapses repeating rows into loop syntax, preserving styling.

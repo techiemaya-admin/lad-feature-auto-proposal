@@ -55,14 +55,15 @@ export interface DatasetFile {
   companies: CompanyRecord[];
 }
 
-function findMockDataFile(filename: string): string {
+function findSeedFile(filename: string): string {
   const candidatePaths = [
-    path.resolve(__dirname, `../../Mock Data/${filename}`),
-    path.resolve(__dirname, `../../../Mock Data/${filename}`),
-    path.resolve(process.cwd(), `Mock Data/${filename}`),
-    path.resolve(process.cwd(), `backend/Mock Data/${filename}`),
-    path.resolve(process.cwd(), `../Mock Data/${filename}`),
-    path.resolve(process.cwd(), `prototypes/new-auto-proposal/Mock Data/${filename}`),
+    // Source run (tsx): backend/src/db -> repo root/Mock Data/seeds
+    path.resolve(__dirname, `../../../Mock Data/seeds/${filename}`),
+    // Compiled run (tsc): backend/dist/db -> repo root/Mock Data/seeds
+    path.resolve(__dirname, `../../../../Mock Data/seeds/${filename}`),
+    path.resolve(process.cwd(), `Mock Data/seeds/${filename}`),
+    path.resolve(process.cwd(), `backend/Mock Data/seeds/${filename}`),
+    path.resolve(process.cwd(), `../Mock Data/seeds/${filename}`),
   ];
 
   for (const candidate of candidatePaths) {
@@ -75,7 +76,7 @@ function findMockDataFile(filename: string): string {
 }
 
 export function findDatasetPath(): string {
-  return findMockDataFile("companies_dataset.json");
+  return findSeedFile("companies_dataset.json");
 }
 
 export function loadDataset(): DatasetFile {
@@ -86,7 +87,7 @@ export function loadDataset(): DatasetFile {
 
 /** Dev-only seeds (Stage 1 pricing text, Stage 5 sample lead) — never part of the imported dataset. */
 export function loadSeeds(): SeedsFile {
-  const raw = fs.readFileSync(findMockDataFile("test_seeds.json"), "utf-8");
+  const raw = fs.readFileSync(findSeedFile("test_seeds.json"), "utf-8");
   return JSON.parse(raw) as SeedsFile;
 }
 

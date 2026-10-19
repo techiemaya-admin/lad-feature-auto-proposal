@@ -11,7 +11,7 @@ Paths relative to repo root. Pipeline overview: [../architecture.md](../architec
 - The UI runs `POST /lead/extract` (message → facts) then `POST /proposal/generate` (**structured facts** → document) back-to-back; `generate` never re-reads the email (production separates these steps too — a human or a clarification email sits between them). Two optional helpers hang off the facts form: `POST /lead/clarify` drafts the ask email and `POST /lead/reply` has the model play the lead so the thread can be re-read.
 - Missing required fact → stop at the facts form (field highlighted) **and** draft a clarification email (`POST /lead/clarify`, a separate call so a rep who just types the fact never pays for it). Not sent — shown with a Copy button; the form stays editable so the demo can continue by hand.
 - A review flag does not block generation. A human sends every proposal, so the document is built, the reasons are shown to the human, and only the values a reason touches are left blank. No clarification email for this case.
-- Dev-only seeds (`pricing_spec`, `sample_lead_text`) live in `Mock Data/test_seeds.json`; `companies_dataset.json` keeps only what the main backend imports. `sample_lead_text` is not stored — the company response attaches it from the file and the Stage 5 textarea starts with it (as `PromptDocCapsule` starts with `pricing_spec`). "Reset to mock default" re-seeds from both files.
+- Dev-only seeds (`pricing_spec`, `sample_lead_text`) live in `Mock Data/seeds/test_seeds.json`; `companies_dataset.json` keeps only what the main backend imports. `sample_lead_text` is not stored — the company response attaches it from the file and the Stage 5 textarea starts with it (as `PromptDocCapsule` starts with `pricing_spec`). "Reset to mock default" re-seeds from both files.
 - No `proposals` table, no persistence of runs. Files overwrite `backend/storage/<company>/<template>/proposal.docx` / `proposal.pdf`; a refresh loses the on-screen result, the files stay downloadable.
 - Dates are code, not model: Stage 2 gains `data_type: "date"`, and dates are Stage 4 sheet values built from `today` — see [dates.md](dates.md). Seller-owned values (validity days, payment terms) are compiled as constants, never asked.
 - Drafter writes `{tag}` placeholders, never numbers; one model call for all `ai_generated` paragraphs, every paragraph a required field.
@@ -75,7 +75,7 @@ Prompt sections: company profile (name, value proposition, industry); voice (`st
 
 ## 2. Seeds and the date type
 
-- `Mock Data/test_seeds.json`: `{ note, companies: [{ company_id, pricing_spec, sample_lead_text }] }` for co1/co2/co3 (pricing text lives here, not in `companies_dataset.json`; emails come from the verification guide).
+- `Mock Data/seeds/test_seeds.json`: `{ note, companies: [{ company_id, pricing_spec, sample_lead_text }] }` for co1/co2/co3 (pricing text lives here, not in `companies_dataset.json`; emails come from the verification guide).
 - `backend/src/db/seed.ts`: `loadSeeds()` uses the same candidate-path lookup; `upsertCompany` takes `pricing_spec` from the seed entry (`""` when absent); `CompanyRecord` has no `pricing_engine_spec`.
 - `routes/companies.ts` `formatCompanyResponse` attaches `sample_lead_text` from the seeds (`""` when absent). Frontend `types/company.ts` has `sample_lead_text: string`.
 - `gemini.service.ts` / `deepseek.service.ts` extraction schema + prompt: the `data_type` enum adds `"date"` ("proposal dates and validity dates"); frontend `VariableDataType` adds `"date"`.
