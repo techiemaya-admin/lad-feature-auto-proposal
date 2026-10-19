@@ -34,7 +34,7 @@ LadSettingsHeader (always visible)
                         · Pricing Rules JSON (editable + Apply) · Logs/artifacts
 ```
 
-`TemplatesApp.tsx` is a thin re-export of `App`. Workspace state is keyed by company + template; switching unmounts and remounts (UI isolation, not server cancellation). "All templates" back-navigation and destructive deletes use `ConfirmDialog`.
+Workspace state is keyed by company + template; switching unmounts and remounts (UI isolation, not server cancellation). "All templates" back-navigation and destructive deletes use `ConfirmDialog`.
 
 ## 3. Stage Specifications
 
