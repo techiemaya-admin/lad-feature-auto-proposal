@@ -4,7 +4,7 @@ Paths relative to repo root. UI entry: `frontend/src/components/templates/Templa
 
 ## 1. What it is
 
-The company-scoped entry point that sits in front of the 5-stage pipeline ([plan.md](plan.md)). A company owns up to **seven** saved templates; each template is a named record (name + description + pricing brief) that later gains a quotation, variables, a generated Word template, pricing rules, and proposals. Creating a record generates no document — the existing workflow inside the workspace does that.
+The company-scoped entry point that sits in front of the 5-stage pipeline ([architecture.md](../architecture.md)). A company owns up to **seven** saved templates; each template is a named record (name + description + pricing brief) that later gains a quotation, variables, a generated Word template, pricing rules, and proposals. Creating a record generates no document — the existing workflow inside the workspace does that.
 
 ```
 Company (profile in company_sessions; voice/inbox in company_configurations)

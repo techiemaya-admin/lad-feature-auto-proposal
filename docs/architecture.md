@@ -17,7 +17,7 @@ This project proves **zero-config quotation auto-generation**:
 
 ## 2. System Architecture & Component Flow
 
-5-stage sequential pipeline + ambient shell (settings drawer/views + bottom Dev Dock). UI spec: [design.md](design.md).
+5-stage sequential pipeline + ambient shell (settings drawer/views + bottom Dev Dock). UI spec: [ui.md](ui.md).
 
 ```
 [STAGE 1: BRIEFING]  Stage1Briefing.tsx
@@ -135,7 +135,7 @@ Payload keys equal `variable_name`; conditionals need boolean `has_*`; loops nee
             formatLike() prints values in the quotation's notation
 ```
 
-API (`/api/companies/:companyId/templates/:templateId/rules`): `POST /compile` (validate → evaluate sample → sample check → one auto-repair; stage → `pricing_engine`) · `GET` · `PUT` (400 `errors[{path,message}]`, nothing persisted) · `POST /calculate` (`{inputs}` → `{evaluation, payload}`) · `POST /proceed` (409 while structural errors; stage → `lead_simulation`). Full schema: [plans/05-pricing-engine.md](plans/05-pricing-engine.md).
+API (`/api/companies/:companyId/templates/:templateId/rules`): `POST /compile` (validate → evaluate sample → sample check → one auto-repair; stage → `pricing_engine`) · `GET` · `PUT` (400 `errors[{path,message}]`, nothing persisted) · `POST /calculate` (`{inputs}` → `{evaluation, payload}`) · `POST /proceed` (409 while structural errors; stage → `lead_simulation`). Full schema: [features/pricing-engine.md](features/pricing-engine.md).
 
 Engine notes (verified against fixtures): tag values are display strings — compute numerically, print with `formatLike`; parse percents from the sample string; add-on multi-select is a `multi_choice` input with `aggregate`/`rows`; drafted paragraphs receive numbers as inputs and return `{tags}`; text compares are case-insensitive; minimum-commitment = `constant` + `formula max`.
 
@@ -145,4 +145,4 @@ Engine notes (verified against fixtures): tag values are display strings — com
 2. **Fortress IT Group (`co2_msp`)** — Essential $45 / Standard $65 / Premium $85; 25–49 seats −$5, 50+ −$10; extra devices $12; setup $75/seat untaxed; OH 6% on recurring; 10-seat floor. Benchmark: Whitfield (42 seats, Standard, 5 devices, OH) = **$2,734.80/mo + $3,150.00** setup.
 3. **Fieldstone Studio (`co3_dev`)** — Landing $2.5k / Business $6k / E-Commerce $9.5k; add-ons; 2+ stackable add-ons 10% off add-on subtotal; 50/50 milestones. Benchmark: Rosewood (E-commerce $9.5k + $600 + $450 − 10%) = **$10,445.00** ($5,222.50 / $5,222.50).
 
-Arithmetic: [Mock Data/verification_guide.md](../Mock%20Data/verification_guide.md). All three pinned in `pricing-calculator.test.ts`.
+Arithmetic: [Mock Data/Verification Guide.md](../Mock%20Data/Verification%20Guide.md). All three pinned in `pricing-calculator.test.ts`.

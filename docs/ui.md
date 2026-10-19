@@ -1,6 +1,6 @@
 # Auto-Proposal — UI/UX & Interaction Design Specification
 
-Paths relative to repo root. Backend pipeline: [plan.md](plan.md). Sample generation: [generated-sample-proposals.md](generated-sample-proposals.md).
+Paths relative to repo root. Backend pipeline: [architecture.md](architecture.md). Sample generation: [features/sample-proposals.md](features/sample-proposals.md).
 
 ## 1. Design Vision & Philosophy
 
@@ -40,14 +40,14 @@ LadSettingsHeader (always visible)
 
 ### 3.1 Stage 1: Briefing (`stages/Stage1Briefing.tsx` + `SampleProposalBuilder.tsx`)
 - Fluid auto-resizing prompt textarea (Enter = newline) with integrated Send; docked dropzone beneath for `.docx` (click or drag, 20 MB limit, extension filter). Human copy, no character counts.
-- Alternative path: **Generate sample proposal** builds an AI-planned, code-priced Word sample from the current brief (see [generated-sample-proposals.md](generated-sample-proposals.md)); optional custom sections (`SampleSectionsEditor.tsx`). Generated file association is tracked: changing the brief requires regeneration before Send; manual upload clears the association.
+- Alternative path: **Generate sample proposal** builds an AI-planned, code-priced Word sample from the current brief (see [features/sample-proposals.md](features/sample-proposals.md)); optional custom sections (`SampleSectionsEditor.tsx`). Generated file association is tracked: changing the brief requires regeneration before Send; manual upload clears the association.
 - On Send: capsule locks into a read-only summary with Edit/Reset (reset warns; downstream variables/template/rules cleared, prompt + file preserved). Shimmer bar on the card edge while AI work runs; failures are explicit panels with retry — never a stuck shimmer.
 
 ### 3.2 Stage 2: Variable Ledger (`stages/Stage2VariableLedger.tsx`)
 - Overview-first, detail-on-demand. Header: `Variables`, `N spots in <Company>'s quotation will change per client`, `Tap one to check it`, ghost Re-scan.
 - Four rows: Customer inputs · Fixed & auto-filled · Pricing (loop tables as ⊞ chips) · Paragraphs (❝ fixed / ✦ drafted glyphs). Chips show state only: selected = inverted, left-out = dashed + strikethrough (stays in place), needs-attention = amber dot, settled = emerald tick, primary action = navy/blue.
 - Detail tray docks under the ledger: inline rename, category switch, `In the quotation` verbatim hero, fact grid (One of / Shown only when / Template tag `{name}` / Source), paragraph mode segmented control, Leave out / Bring back, [+ Add one] custom chip (verified against quotation Markdown).
-- Date variables: the detail tray edits `date_format` as a text field with a live today's-date preview and flags a format that fails verification — see [plans/07-date-type.md](plans/07-date-type.md).
+- Date variables: the detail tray edits `date_format` as a text field with a live today's-date preview and flags a format that fails verification — see [features/dates.md](features/dates.md).
 - Every edit persists (`PUT /variables`) and invalidates Stage 3+ until regenerated.
 
 ### 3.3 Stage 3: Template Checkpoint (`stages/Stage3TemplateCheck.tsx` + `DocxDocumentPreview.tsx`)
@@ -58,7 +58,7 @@ LadSettingsHeader (always visible)
 - Sections top→bottom: assumptions strip (amber) → one editable card per rule table (typed cells, `tabular-nums`, commit on blur/Enter, add/remove rows) → "What we ask the lead" chips → calculation ledger in evaluation order (label, plain-language definition, sample value, quotation value, ✓/✗) → editable "Held for review when" rules → footer (`N of M match`, Regenerate, Proceed).
 - Tapping a ledger row docks `LedgerTray` (kind / operator / operands / conditions editor). `CondRows` is shared inside `pricing/LedgerTray.tsx`.
 - Live check: 300 ms debounced `PUT /rules`; rejected edits show inline errors and keep the edit on screen. Proceed blocked while structural errors exist.
-- Review rules are editable: each rule has conditions and a reason, added/edited/deleted in place, and a half-finished rule (no conditions or an empty reason) blocks Proceed — see [plans/08-editable-review-rules.md](plans/08-editable-review-rules.md). The raw JSON remains editable in the Dev Dock.
+- Review rules are editable: each rule has conditions and a reason, added/edited/deleted in place, and a half-finished rule (no conditions or an empty reason) blocks Proceed — see [features/review-rules.md](features/review-rules.md). The raw JSON remains editable in the Dev Dock.
 
 ### 3.5 Stage 5: Lead & Proposal (`stages/Stage5LeadSimulator.tsx` + `Stage5ReceiptSummary.tsx`)
 - Lead textarea (same fluid pattern as Stage 1) prefilled with the assigned/routed email → template's email, else dev sample. `[Generate proposal]` runs extract → generate back to back.
