@@ -72,6 +72,25 @@ export const Stage3TemplateCheck: React.FC<Stage3TemplateCheckProps> = ({
     };
   }, [companyId, templateId, stats]);
 
+  /**
+   * A Letter page renders 816px wide, wider than the modal on most laptops. docx-preview only adds
+   * page chrome inside its own wrapper, so with `inWrapper: false` the sections are transparent and
+   * overflow their box. Fit every section to the container instead of letting it clip.
+   */
+  const fitPages = (el: HTMLDivElement) => {
+    const pages = Array.from(el.querySelectorAll<HTMLElement>("section.docx"));
+    if (!pages.length) return;
+
+    // Measure at natural size: a previous fit left zoom on the sections.
+    pages.forEach((page) => (page.style.zoom = ""));
+    const widest = Math.max(...pages.map((page) => page.offsetWidth));
+    const available = el.clientWidth;
+    if (!widest || !available || widest <= available) return;
+
+    const scale = available / widest;
+    pages.forEach((page) => (page.style.zoom = String(scale)));
+  };
+
   const renderInto = (el: HTMLDivElement | null, onDone?: () => void) => {
     if (!blob || !el) return;
     el.innerHTML = "";
@@ -80,7 +99,10 @@ export const Stage3TemplateCheck: React.FC<Stage3TemplateCheckProps> = ({
       ignoreWidth: false,
       ignoreHeight: false,
     })
-      .then(() => onDone?.())
+      .then(() => {
+        fitPages(el);
+        onDone?.();
+      })
       .catch((err) =>
         setRenderError(err instanceof Error ? err.message : "Couldn't render docx preview")
       );
@@ -92,6 +114,14 @@ export const Stage3TemplateCheck: React.FC<Stage3TemplateCheckProps> = ({
 
   useEffect(() => {
     if (isPreviewOpen) renderInto(modalRef.current);
+  }, [isPreviewOpen, blob]);
+
+  // Refit when the viewport changes, so a rotated phone or a resized window never clips the page.
+  useEffect(() => {
+    if (!isPreviewOpen) return;
+    const onResize = () => modalRef.current && fitPages(modalRef.current);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
   }, [isPreviewOpen, blob]);
 
   useEffect(() => {
@@ -192,17 +222,17 @@ export const Stage3TemplateCheck: React.FC<Stage3TemplateCheckProps> = ({
                     <span>Rendering OpenXML document layout...</span>
                   </div>
                 )}
-                <div className="absolute inset-x-0 top-0 flex justify-center pt-4 pointer-events-none">
+                <div className="absolute inset-0 flex justify-center overflow-hidden pt-4 pointer-events-none">
                   <div
                     ref={thumbRef}
-                    className={`bg-white text-zinc-900 shadow-md w-[816px] max-w-none origin-top scale-[0.62] sm:scale-[0.72] transition-opacity duration-300 rounded-sm overflow-hidden ${
+                    className={`flex w-full flex-col items-center gap-5 [&>section.docx]:bg-white [&>section.docx]:shadow-lg [&>section.docx]:rounded-[2px] transition-opacity duration-300 ${
                       thumbReady ? "opacity-100" : "opacity-0"
                     }`}
                   />
                 </div>
 
                 <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-zinc-100 dark:from-zinc-900 via-zinc-100/60 dark:via-zinc-900/60 to-transparent pointer-events-none" />
-                
+
                 <span className="absolute bottom-3.5 right-3.5 inline-flex items-center gap-1.5 text-xs font-bold text-foreground bg-card/95 border border-border/80 rounded-lg px-3 py-1.5 shadow-sm group-hover:scale-105 transition-all">
                   <Maximize2 className="size-3.5 text-[#2B7CFF]" />
                   <span>Open Full Document Preview</span>
@@ -273,10 +303,10 @@ export const Stage3TemplateCheck: React.FC<Stage3TemplateCheckProps> = ({
             </div>
 
             {/* Document Pages Viewport */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-zinc-200 dark:bg-zinc-950 flex justify-center">
+            <div className="flex-1 overflow-auto p-4 sm:p-8 bg-zinc-200 dark:bg-zinc-950">
               <div
                 ref={modalRef}
-                className="bg-white text-zinc-900 shadow-xl rounded-sm max-w-[816px] w-full p-2 sm:p-4 [&_.docx]:shadow-none"
+                className="mx-auto flex w-full flex-col items-center gap-6 [&>section.docx]:bg-white [&>section.docx]:shadow-xl [&>section.docx]:rounded-[2px]"
               />
             </div>
           </div>
