@@ -40,11 +40,6 @@ export async function generateJsonWithDeepSeek<T>(prompt: string, jsonShapeSuffi
 
   const baseUrl = (process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com").replace(/\/+$/, "");
 
-  const apiModel =
-    model === "deepseek-flash" || model === "deepseek-v4-pro"
-      ? "deepseek-chat"
-      : model;
-
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
@@ -52,7 +47,7 @@ export async function generateJsonWithDeepSeek<T>(prompt: string, jsonShapeSuffi
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: apiModel,
+      model,
       messages: [{ role: "user", content: prompt + jsonShapeSuffix }],
       response_format: { type: "json_object" },
       temperature,
