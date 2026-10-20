@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
 import type { Company } from "../../types/company";
 import type { ProposalTemplateSummary, EmailRoutingResult } from "../../services/api";
 import { Button } from "../ui/button";
@@ -19,6 +20,7 @@ import {
   Check,
   Loader2,
   ChevronDown,
+  X,
 } from "lucide-react";
 
 interface TemplateLibraryViewProps {
@@ -75,6 +77,21 @@ export const TemplateLibraryView: React.FC<TemplateLibraryViewProps> = ({
   React.useEffect(() => {
     setLocalEmail(email);
   }, [email]);
+
+  // Close the create-template modal on Escape and lock background scrolling
+  React.useEffect(() => {
+    if (!creating) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !isSubmittingForm) setCreating(false);
+    };
+    document.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [creating, isSubmittingForm]);
 
   const emailDirty = localEmail.trim() !== (routing?.email ?? "");
 
@@ -383,194 +400,237 @@ export const TemplateLibraryView: React.FC<TemplateLibraryViewProps> = ({
             </div>
           </div>
 
-          {/* Custom Template Creation Card with AI Generate from ICP */}
-          {creating && (
-            <Card className="rounded-2xl border border-primary/30 bg-card p-6 shadow-md space-y-5 animate-in fade-in slide-in-from-top-2">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-3">
-                <div>
-                  <h3 className="font-heading text-base font-bold text-foreground">
-                    Create a custom template
-                  </h3>
-                  <p className="text-xs text-muted-foreground">
-                    Define a dedicated brief and pricing spec for a specific
-                    client profile or service package.
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleAutoFillBothFromIcp}
-                  disabled={isBusy || isSubmittingForm || isGeneratingDesc || isGeneratingBrief}
-                  className="rounded-xl text-xs gap-1.5 font-semibold border-primary/30 text-primary hover:bg-primary/10 shadow-2xs cursor-pointer"
-                >
-                  <Sparkles className="size-3.5" />
-                  Auto-fill Both from Business Profile &amp; ICP
-                </Button>
-              </div>
-
-              {formError && (
+          {/* Custom Template Creation Modal (portal, above the whole app) */}
+          {creating &&
+            createPortal(
+              <div
+                role="presentation"
+                className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 backdrop-blur-xs animate-in fade-in duration-200 sm:items-center"
+                onMouseDown={(e) => {
+                  if (e.target === e.currentTarget && !isSubmittingForm) {
+                    setCreating(false);
+                  }
+                }}
+              >
                 <div
-                  role="alert"
-                  className="rounded-xl border border-destructive/30 bg-destructive/10 px-3.5 py-2.5 text-xs font-semibold text-destructive flex items-center gap-2 animate-in fade-in"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="custom-tpl-title"
+                  className="my-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-primary/30 bg-card shadow-xl animate-in fade-in zoom-in-95 slide-in-from-bottom-2 duration-200"
+                  onMouseDown={(e) => e.stopPropagation()}
                 >
-                  <AlertCircle className="size-4 shrink-0" />
-                  <span className="flex-1">{formError}</span>
-                  <button
-                    type="button"
-                    onClick={() => setFormError("")}
-                    className="text-destructive/80 hover:text-destructive text-xs ml-2 cursor-pointer"
-                  >
-                    ✕
-                  </button>
-                </div>
-              )}
-
-              <form className="space-y-4" onSubmit={handleCreateSubmit}>
-                {/* Name Field */}
-                <div className="space-y-1.5">
-                  <label
-                    htmlFor="custom-tpl-name"
-                    className="block text-xs font-semibold text-foreground"
-                  >
-                    Template Name
-                  </label>
-                  <Input
-                    id="custom-tpl-name"
-                    autoFocus
-                    required
-                    maxLength={100}
-                    value={name}
-                    onChange={(e) => {
-                      setName(e.target.value);
-                      if (formError) setFormError("");
-                    }}
-                    disabled={isBusy || isSubmittingForm}
-                    className="rounded-xl border-border/80 text-sm"
-                    placeholder="e.g. Managed IT for growing teams or Multi-Location SEO"
-                  />
-                </div>
-
-                {/* Description Field with AI Generate Button */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <label
-                      htmlFor="custom-tpl-desc"
-                      className="block text-xs font-semibold text-foreground"
-                    >
-                      Description
-                    </label>
-                    <button
+                  {/* Modal Header */}
+                  <div className="flex items-start justify-between gap-3 border-b border-border/60 px-6 py-4">
+                    <div>
+                      <h3
+                        id="custom-tpl-title"
+                        className="font-heading text-base font-bold text-foreground"
+                      >
+                        Create a custom template
+                      </h3>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Define a dedicated brief and pricing spec for a specific
+                        client profile or service package.
+                      </p>
+                    </div>
+                    <Button
                       type="button"
-                      onClick={handleGenerateDescriptionFromIcp}
-                      disabled={isBusy || isSubmittingForm || isGeneratingDesc}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary transition-all hover:bg-primary/20 hover:border-primary/50 shadow-2xs cursor-pointer disabled:opacity-50"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Close create template"
+                      disabled={isSubmittingForm}
+                      onClick={() => setCreating(false)}
+                      className="size-8 shrink-0 rounded-lg text-muted-foreground hover:text-foreground cursor-pointer"
                     >
-                      <Wand2 className="size-3" />
-                      {isGeneratingDesc ? (
-                        "Synthesizing from ICP..."
-                      ) : descGeneratedSuccess ? (
-                        <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
-                          <Check className="size-3" /> Generated from ICP!
-                        </span>
-                      ) : (
-                        "✨ AI Generate from ICP"
-                      )}
-                    </button>
+                      <X className="size-4" />
+                    </Button>
                   </div>
-                  <Textarea
-                    id="custom-tpl-desc"
-                    required
-                    maxLength={1000}
-                    value={description}
-                    onChange={(e) => {
-                      setDescription(e.target.value);
-                      if (formError) setFormError("");
-                    }}
-                    disabled={isBusy || isSubmittingForm}
-                    className="rounded-xl border-border/80 text-sm min-h-24 leading-relaxed"
-                    placeholder="Who is this proposal for, and what does it offer? (Or click 'AI Generate from ICP' above)"
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Captures your target customer, value proposition, and buyer segment from the business profile / ICP page.
-                  </p>
-                </div>
 
-                {/* Pricing Brief Field with AI Generate Button */}
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <label
-                      htmlFor="custom-tpl-brief"
-                      className="block text-xs font-semibold text-foreground"
-                    >
-                      Pricing Brief
-                    </label>
-                    <button
-                      type="button"
-                      onClick={handleGeneratePricingBriefFromIcp}
-                      disabled={isBusy || isSubmittingForm || isGeneratingBrief}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary transition-all hover:bg-primary/20 hover:border-primary/50 shadow-2xs cursor-pointer disabled:opacity-50"
-                    >
-                      <Wand2 className="size-3" />
-                      {isGeneratingBrief ? (
-                        "Structuring from ICP..."
-                      ) : briefGeneratedSuccess ? (
-                        <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
-                          <Check className="size-3" /> Structured from ICP!
-                        </span>
-                      ) : (
-                        "✨ AI Generate from ICP"
-                      )}
-                    </button>
-                  </div>
-                  <Textarea
-                    id="custom-tpl-brief"
-                    required
-                    maxLength={20000}
-                    className="min-h-40 rounded-xl border-border/80 text-xs font-mono leading-relaxed"
-                    value={brief}
-                    onChange={(e) => {
-                      setBrief(e.target.value);
-                      if (formError) setFormError("");
-                    }}
-                    disabled={isBusy || isSubmittingForm}
-                    placeholder="Describe your packages, rates, conditions, add-ons, and discounts... (Or click 'AI Generate from ICP' above)"
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Populates approved retainers, setup fees, payment terms, and guarantees from your Business Profile / ICP pricing specification.
-                  </p>
-                </div>
+                  <div className="max-h-[calc(100dvh-10rem)] space-y-4 overflow-y-auto px-6 py-5">
+                    {/* Auto-fill Both from ICP */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3.5 py-2.5">
+                      <p className="text-[11px] leading-relaxed text-muted-foreground">
+                        Draft the description and pricing brief from your saved
+                        Business Profile &amp; ICP.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleAutoFillBothFromIcp}
+                        disabled={isBusy || isSubmittingForm || isGeneratingDesc || isGeneratingBrief}
+                        className="rounded-xl text-xs gap-1.5 font-semibold border-primary/30 text-primary hover:bg-primary/10 shadow-2xs cursor-pointer"
+                      >
+                        <Sparkles className="size-3.5" />
+                        Auto-fill Both
+                      </Button>
+                    </div>
 
-                {/* Footer Submit Buttons */}
-                <div className="flex gap-2.5 pt-2">
-                  <Button
-                    type="button"
-                    disabled={isBusy || isSubmittingForm}
-                    onClick={() => void handleCreateSubmit()}
-                    className="rounded-xl font-semibold text-xs shadow-xs gap-1.5 cursor-pointer"
-                  >
-                    {isSubmittingForm ? (
-                      <>
-                        <Loader2 className="size-3.5 animate-spin" />
-                        Saving &amp; opening template...
-                      </>
-                    ) : (
-                      "Save and open template"
+                    {formError && (
+                      <div
+                        role="alert"
+                        className="rounded-xl border border-destructive/30 bg-destructive/10 px-3.5 py-2.5 text-xs font-semibold text-destructive flex items-center gap-2 animate-in fade-in"
+                      >
+                        <AlertCircle className="size-4 shrink-0" />
+                        <span className="flex-1">{formError}</span>
+                        <button
+                          type="button"
+                          onClick={() => setFormError("")}
+                          className="text-destructive/80 hover:text-destructive text-xs ml-2 cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      </div>
                     )}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    disabled={isBusy || isSubmittingForm}
-                    onClick={() => setCreating(false)}
-                    className="rounded-xl text-xs cursor-pointer"
-                  >
-                    Cancel
-                  </Button>
+
+                    <form className="space-y-4" onSubmit={handleCreateSubmit}>
+                      {/* Name Field */}
+                      <div className="space-y-1.5">
+                        <label
+                          htmlFor="custom-tpl-name"
+                          className="block text-xs font-semibold text-foreground"
+                        >
+                          Template Name
+                        </label>
+                        <Input
+                          id="custom-tpl-name"
+                          autoFocus
+                          required
+                          maxLength={100}
+                          value={name}
+                          onChange={(e) => {
+                            setName(e.target.value);
+                            if (formError) setFormError("");
+                          }}
+                          disabled={isBusy || isSubmittingForm}
+                          className="rounded-xl border-border/80 text-sm"
+                          placeholder="e.g. Managed IT for growing teams or Multi-Location SEO"
+                        />
+                      </div>
+
+                      {/* Description Field with AI Generate Button */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <label
+                            htmlFor="custom-tpl-desc"
+                            className="block text-xs font-semibold text-foreground"
+                          >
+                            Description
+                          </label>
+                          <button
+                            type="button"
+                            onClick={handleGenerateDescriptionFromIcp}
+                            disabled={isBusy || isSubmittingForm || isGeneratingDesc}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary transition-all hover:bg-primary/20 hover:border-primary/50 shadow-2xs cursor-pointer disabled:opacity-50"
+                          >
+                            <Wand2 className="size-3" />
+                            {isGeneratingDesc ? (
+                              "Synthesizing from ICP..."
+                            ) : descGeneratedSuccess ? (
+                              <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                                <Check className="size-3" /> Generated from ICP!
+                              </span>
+                            ) : (
+                              "✨ AI Generate from ICP"
+                            )}
+                          </button>
+                        </div>
+                        <Textarea
+                          id="custom-tpl-desc"
+                          required
+                          maxLength={1000}
+                          value={description}
+                          onChange={(e) => {
+                            setDescription(e.target.value);
+                            if (formError) setFormError("");
+                          }}
+                          disabled={isBusy || isSubmittingForm}
+                          className="rounded-xl border-border/80 text-sm min-h-24 leading-relaxed"
+                          placeholder="Who is this proposal for, and what does it offer? (Or click 'AI Generate from ICP' above)"
+                        />
+                        <p className="text-[11px] text-muted-foreground">
+                          Captures your target customer, value proposition, and buyer segment from the business profile / ICP page.
+                        </p>
+                      </div>
+
+                      {/* Pricing Brief Field with AI Generate Button */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <label
+                            htmlFor="custom-tpl-brief"
+                            className="block text-xs font-semibold text-foreground"
+                          >
+                            Pricing Brief
+                          </label>
+                          <button
+                            type="button"
+                            onClick={handleGeneratePricingBriefFromIcp}
+                            disabled={isBusy || isSubmittingForm || isGeneratingBrief}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary transition-all hover:bg-primary/20 hover:border-primary/50 shadow-2xs cursor-pointer disabled:opacity-50"
+                          >
+                            <Wand2 className="size-3" />
+                            {isGeneratingBrief ? (
+                              "Structuring from ICP..."
+                            ) : briefGeneratedSuccess ? (
+                              <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                                <Check className="size-3" /> Structured from ICP!
+                              </span>
+                            ) : (
+                              "✨ AI Generate from ICP"
+                            )}
+                          </button>
+                        </div>
+                        <Textarea
+                          id="custom-tpl-brief"
+                          required
+                          maxLength={20000}
+                          className="min-h-40 rounded-xl border-border/80 text-xs font-mono leading-relaxed"
+                          value={brief}
+                          onChange={(e) => {
+                            setBrief(e.target.value);
+                            if (formError) setFormError("");
+                          }}
+                          disabled={isBusy || isSubmittingForm}
+                          placeholder="Describe your packages, rates, conditions, add-ons, and discounts... (Or click 'AI Generate from ICP' above)"
+                        />
+                        <p className="text-[11px] text-muted-foreground">
+                          Populates approved retainers, setup fees, payment terms, and guarantees from your Business Profile / ICP pricing specification.
+                        </p>
+                      </div>
+
+                      {/* Footer Submit Buttons */}
+                      <div className="flex justify-end gap-2.5 border-t border-border/60 pt-4">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          disabled={isBusy || isSubmittingForm}
+                          onClick={() => setCreating(false)}
+                          className="rounded-xl text-xs cursor-pointer"
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          type="button"
+                          disabled={isBusy || isSubmittingForm}
+                          onClick={() => void handleCreateSubmit()}
+                          className="rounded-xl font-semibold text-xs shadow-xs gap-1.5 cursor-pointer"
+                        >
+                          {isSubmittingForm ? (
+                            <>
+                              <Loader2 className="size-3.5 animate-spin" />
+                              Saving &amp; opening template...
+                            </>
+                          ) : (
+                            "Save and open template"
+                          )}
+                        </Button>
+                      </div>
+                    </form>
+                  </div>
                 </div>
-              </form>
-            </Card>
-          )}
+              </div>,
+              document.body
+            )}
 
           {/* Template Cards Grid */}
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
