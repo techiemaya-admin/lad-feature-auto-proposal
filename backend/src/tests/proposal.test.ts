@@ -53,6 +53,11 @@ test("leadFields: rules inputs plus the undefined non-date customer inputs, per 
   withConstant.variables.push({ name: "proposal_validity_period", label: "Validity", in_document: true, unit: "text", condition_flag: "", kind: "constant", value: "14 days" });
   assert.deepEqual(brief("co1_seo", validity, withConstant).at(-1), "client_name:text!");
   assert.deepEqual(brief("co1_seo", validity).at(-1), "proposal_validity_period:text!");
+  // An empty constant answers nothing: the Stage 2 input is still a lead question.
+  const blankName = [{ variable_name: "client_company_name", category: "customer_input", sample_value: "Bloom & Co Dental Group" }];
+  const withBlankConstant = rulesOf("co1_seo");
+  withBlankConstant.variables.push({ name: "client_company_name", label: "Client Company Name", in_document: true, unit: "text", condition_flag: "", kind: "constant", value: "" });
+  assert.ok(brief("co1_seo", blankName, withBlankConstant).includes("client_company_name:text!"));
   // Fixed & auto-filled is a screen label only: a seller value in it is handled exactly like a customer input,
   // and a Fixed date is never asked.
   const fixedValidity = [{ ...validity[0], category: "fixed" }, { variable_name: "proposal_date", category: "fixed", data_type: "date", sample_value: "September 7, 2026" }];

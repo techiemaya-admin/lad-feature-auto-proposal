@@ -29,6 +29,8 @@ export interface LeadField {
   assume_when?: string;
 }
 
+export const isBlank = (v: unknown) => v === null || v === undefined || v === "" || (Array.isArray(v) && v.length === 0);
+
 export function leadFields(rules: PricingRules, stage2: Stage2Context): LeadField[] {
   const fields: LeadField[] = [];
   for (const v of rules.variables) {
@@ -41,8 +43,9 @@ export function leadFields(rules: PricingRules, stage2: Stage2Context): LeadFiel
       ...(v.default === undefined ? {} : { default: v.default }), ...(v.assume_when ? { assume_when: v.assume_when } : {}),
     });
   }
-  // Every rule variable counts as defined: a Stage 2 input the sheet holds as a constant (validity days) is not re-asked as text.
-  const defined = new Set(rules.variables.map((v) => v.name));
+  // A rule defines a variable when it asks for it, computes it, or holds a real constant. An empty constant is a
+  // placeholder, not an answer, so the Stage 2 customer input is still asked and the lead can supply it.
+  const defined = new Set(rules.variables.filter((v) => v.kind !== "constant" || !isBlank(v.value)).map((v) => v.name));
   for (const v of stage2.variables) {
     // ponytail: a Fixed value Stage 4 leaves undefined is still asked here, as a customer input is — the box is a
     // label, Stage 4 has the final say. Upgrade path: print its sample instead, if that ever confuses a reviewer.
@@ -51,8 +54,6 @@ export function leadFields(rules: PricingRules, stage2: Stage2Context): LeadFiel
   }
   return fields;
 }
-
-export const isBlank = (v: unknown) => v === null || v === undefined || v === "" || (Array.isArray(v) && v.length === 0);
 
 /** Required fields the facts do not answer. */
 export const missingFields = (fields: LeadField[], inputs: Record<string, unknown>) =>
