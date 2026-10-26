@@ -1,13 +1,15 @@
 // src/features/conversations/conversation.controller.js
 const conversationService = require('../services/conversation.service');
+const { clientMessage } = require('../../../utils/http-errors');
 const { uploadToGCSFromBase64 } = require('../../../utils/gcsUploader');
 const tenantService = require('../services/tenant.service');
 const aiResponseService = require('../services/ai-response.service');
 const leadService = require('../services/lead.service');
+const logger = require('../../../utils/logger');
 
 class ConversationController {
   async getConversations(req, res) {
-    console.log("Received request to get conversations with query:", req.tenantId);
+    logger.debug("Received request to get conversations with query:", req.tenantId);
     try {
       const { search } = req.query;
       const contacts = await conversationService.getContacts(req.tenantId, search);
@@ -17,21 +19,21 @@ class ConversationController {
         data: contacts
       });
     } catch (error) {
-      console.error("Error fetching conversations:", error);
-      res.status(500).json({ success: false, message: error.message });
+      logger.error("Error fetching conversations:", error);
+      res.status(500).json({ success: false, message: clientMessage(error) });
     }
   }
 
   async getMessages(req, res) {
     try {
       const contactId = req.query.contact_id;
-      console.log("Received request to get messages for contact:", contactId, "tenant:", req.tenantId);
+      logger.debug("Received request to get messages for contact:", contactId, "tenant:", req.tenantId);
       const messages = await conversationService.getContactMessages(req.tenantId, contactId);
 
       res.status(200).json(messages);
     } catch (error) {
-      console.error("Error fetching messages:", error);
-      res.status(500).json({ success: false, message: error.message });
+      logger.error("Error fetching messages:", error);
+      res.status(500).json({ success: false, message: clientMessage(error) });
     }
   }
 
@@ -40,7 +42,7 @@ class ConversationController {
       const { body_html, subject, recipients, attachments, provider } = req.body;
       const tenantId = req.tenantId; // Taken from auth middleware
       const userId = req.userId; // Taken from auth middleware
-      console.log("Received bulk email send request for tenant:", tenantId, "userId:", userId, "recipientsCount:", Array.isArray(recipients) ? recipients.length : 0);
+      logger.debug("Received bulk email send request for tenant:", tenantId, "userId:", userId, "recipientsCount:", Array.isArray(recipients) ? recipients.length : 0);
 
       // Basic Validation
       if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
@@ -61,14 +63,14 @@ class ConversationController {
         success: true
       });
     } catch (error) {
-      console.error("Bulk Send Controller Error:", error);
+      logger.error("Bulk Send Controller Error:", error);
       res.status(500).json({ error: "Internal Server Error" });
     }
   };
 
   async uploadAttachment(req, res) {
     try {
-      console.log("Uploading attachment for tenant:", req.tenantId, "filename:", req.file?.originalname);
+      logger.debug("Uploading attachment for tenant:", req.tenantId, "filename:", req.file?.originalname);
       if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
       }
@@ -86,7 +88,7 @@ class ConversationController {
         ...result
       });
     } catch (error) {
-      console.error('GCS Upload Error:', error);
+      logger.error('GCS Upload Error:', error);
       return res.status(500).json({ error: 'Failed to upload to storage' });
     }
   };
@@ -95,7 +97,7 @@ class ConversationController {
   async generateFollowUp(req, res) {
     try {
       const { contactId } = req.params;
-      console.log("Generating follow-up for contact_id:", contactId, "tenant:", req.tenantId);
+      logger.debug("Generating follow-up for contact_id:", contactId, "tenant:", req.tenantId);
       const lastMessage = await conversationService.findLastMessagesByContactId(req.tenantId, contactId);
       const clientText = lastMessage[0]?.body_text || lastMessage[0]?.body_html || "No previous message found.";
       const tenantDetails=await tenantService.getTenantById(req.tenantId);
@@ -108,8 +110,8 @@ class ConversationController {
       });
 
     } catch (error) {
-      console.error("Error generating AI follow-up:", error);
-      res.status(500).json({ success: false, error: error.message });
+      logger.error("Error generating AI follow-up:", error);
+      res.status(500).json({ success: false, error: clientMessage(error) });
     }
   };
 
@@ -117,7 +119,7 @@ class ConversationController {
   async generateFollowUpCrux(req, res) {
     try {
       const { contactId } = req.params;
-      console.log("Generating follow-up crux for contact_id:", contactId, "tenant:", req.tenantId);
+      logger.debug("Generating follow-up crux for contact_id:", contactId, "tenant:", req.tenantId);
       // 1. Fetch the last message from this contact (Inbound)
       const messages = await conversationService.getContactMessages(req.tenantId, contactId);
       const tenantDetails=await tenantService.getTenantById(req.tenantId);
@@ -126,8 +128,8 @@ class ConversationController {
       res.status(200).json({ success: true, crux });
 
     } catch (error) {
-      console.error("Error generating AI follow-up:", error);
-      res.status(500).json({ success: false, error: error.message });
+      logger.error("Error generating AI follow-up:", error);
+      res.status(500).json({ success: false, error: clientMessage(error) });
     }
   };
 }

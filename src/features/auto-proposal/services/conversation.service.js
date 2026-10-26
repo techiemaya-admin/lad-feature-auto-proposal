@@ -4,10 +4,11 @@ const MessageRepository = require('../repositories/conversation-message.reposito
 const gmailSendEmailService = require('../services/gmail-send-email.service');
 const { uploadToGCSFromBase64 } = require('../../../utils/gcsUploader');
 const googleConfig = require('../../../config/google.config');
+const logger = require('../../../utils/logger');
 
 class ConversationService {
   async listConversations(tenantId, filters) {
-    console.log("list conversations for tenant:", tenantId, "with filters:", filters);
+    logger.debug("list conversations for tenant:", tenantId, "with filters:", filters);
     // Fetch from your DB
     return await ConversationRepository.listAllConversationByTenantId(tenantId, filters);
   }
@@ -42,7 +43,7 @@ class ConversationService {
 
   async handleBulkEmailSend(tenantId, userId, payload) {
     const { body_html, subject, recipients, provider, attachments } = payload;
-    console.log("Handling bulk email send for tenant:", tenantId, " with payload:", payload);
+    logger.debug("Handling bulk email send", { tenantId, recipients: (payload.recipients || []).length, attachments: (payload.attachments || []).length });
     const results = [];
     const processedAttachments = attachments;
 
@@ -69,11 +70,11 @@ class ConversationService {
           attachments: attachments || [], // Optional: handle if passed
           oAuth2Client
         });
-        console.log(`Email sent to ${recipient.email} with Gmail response:`, gmailResponse.data);
+        logger.debug("Bulk email sent", { messageId: gmailResponse && gmailResponse.data && gmailResponse.data.id });
         await this.createConversationAndConversationMessages(tenantId, recipient.email, personalizedSubject, personalizedHtml, processedAttachments, gmailResponse.id, gmailResponse.globalMessageId);
         results.push({ email: recipient.email, status: 'sent' });
       } catch (err) {
-        console.error(`Failed to send bulk email to ${recipient.email}:`, err);
+        logger.error("Failed to send bulk email to a recipient:", err);
         results.push({ email: recipient.email, status: 'failed', error: err.message });
       }
     }
@@ -93,7 +94,7 @@ class ConversationService {
   }
 
   async createConversationAndConversationMessages(tenantId, email, personalizedSubject, personalizedHtml, processedAttachments, message_id = null, global_message_id = null) {
-    console.log("Creating conversation and message for email:", email, " tenantId:", tenantId, " message_id:", message_id, " global_message_id:", global_message_id, " personalizedSubject:", personalizedSubject);
+    logger.debug("Creating conversation and message", { tenantId, message_id, global_message_id });
     const result = await ConversationRepository.getLeadAndThreadByEmail(tenantId, email);
     const conversation = await ConversationRepository.upsertByThread({
       tenant_id: tenantId,

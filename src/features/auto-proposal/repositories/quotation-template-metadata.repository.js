@@ -1,4 +1,5 @@
 const AppDataSource = require("../../../config/data-source");
+const logger = require('../../../utils/logger');
 
 class QuotationTemplateRepository {
 
@@ -41,7 +42,7 @@ class QuotationTemplateRepository {
     `;
 
     const result = await AppDataSource.query(sql, [tenantId]);
-    console.log("Default Quotation Template found for tenant:", tenantId, ":", result[0]);
+    logger.debug("Default Quotation Template found for tenant:", tenantId, ":", result[0]);
     return result[0] || null;
   }
 
@@ -74,29 +75,29 @@ class QuotationTemplateRepository {
     return result || [];
   }
 
-  async deleteTemplate(templateId) {
+  async deleteTemplate(templateId, tenantId) {
     const sql = `
       UPDATE quotation_template_metadata
       SET 
         is_deleted = true,
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = $1
+      WHERE id = $1 AND tenant_id = $2
       RETURNING *;
     `;
 
-    const result = await AppDataSource.query(sql, [templateId]);
+    const result = await AppDataSource.query(sql, [templateId, tenantId]);
     return result[0] || null;
   }
 
-  async findById(templateId) {
+  async findById(templateId, tenantId) {
     const sql = `
       SELECT *
       FROM quotation_template_metadata
-      WHERE id = $1
+      WHERE id = $1 AND tenant_id = $2
       LIMIT 1;
     `;
 
-    const result = await AppDataSource.query(sql, [templateId]);
+    const result = await AppDataSource.query(sql, [templateId, tenantId]);
     return result[0] || null;
   }
 

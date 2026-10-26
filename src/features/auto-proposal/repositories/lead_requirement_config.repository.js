@@ -56,11 +56,11 @@ class LeadRequirementConfigRepository {
    * Update an existing config
    * Updated: Added base_price and pricing_model_id
    */
-  async update(id, data) {
+  async update(id, data, tenantId) {
     const sql = `
       UPDATE lead_requirement_config
       SET label=$1, field_key=$2, is_active=$3, base_price=$4, pricing_model_id=$5
-      WHERE id=$6 
+      WHERE id=$6 AND tenant_id=$7
       RETURNING *`;
 
     const values = [
@@ -69,7 +69,8 @@ class LeadRequirementConfigRepository {
       data.is_active,
       data.base_price,      // New field
       data.pricing_model_id, // New field
-      id
+      id,
+      tenantId
     ];
 
     const result = await db.query(sql, values);

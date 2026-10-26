@@ -48,12 +48,12 @@ async function sendQuotationEmail(senderEmail, url, price, oAuth2Client) {
     },
   });
 
-  console.log("Email sent:", response.data);
+  logger.debug("Email sent", { messageId: response.data && response.data.id });
   return response.data;
 }
 
 async function processAndSendDefaultEmail(tenantId, data, url, price, oAuth2Client) {
-  console.log(" tenantid : " + tenantId + " date : " + JSON.stringify(data) + " price: " + price);
+  logger.debug("Preparing default quotation email", { tenantId, price });
   if (data.lead_email) {
 
     try {
@@ -149,7 +149,7 @@ async function processAndSendDefaultEmail(tenantId, data, url, price, oAuth2Clie
         const arrayBuf = await attachmentRes.arrayBuffer();
         attachmentBase64 = Buffer.from(arrayBuf).toString('base64');
       } catch (err) {
-        console.error("Attachment fetch failed:", err.message);
+        logger.error("Attachment fetch failed:", err.message);
       }
 
       // 5. Build RFC 2822 Message (Using \r\n is CRITICAL)
@@ -202,24 +202,24 @@ async function processAndSendDefaultEmail(tenantId, data, url, price, oAuth2Clie
         },
       });
 
-      console.log("Email successfully sent:", response.data.id);
+      logger.debug("Email successfully sent:", response.data.id);
       return { success: true };
 
     } catch (error) {
-      console.error("Automation Service Error:", error);
+      logger.error("Automation Service Error:", error);
       throw error;
     }
   } else {
-    console.warn("Email not sent because lead_email is undefined")
+    logger.warn("Email not sent because lead_email is undefined")
   }
 
 }
 
 async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price, conversation_id, global_message_id, threadId, subject, oAuth2Client, content) {
-  console.log(`Sending email for tenant: ${tenantId} conversation_id: ${conversation_id} lead_email: ${data.lead_email} url: ${url} price: ${price} global_message_id: ${global_message_id} threadId: ${threadId} content: ${content}`);
+  logger.debug("Sending quotation email", { tenantId, conversation_id, price, global_message_id, threadId });
 
   if (!data.lead_email) {
-    console.warn("Email not sent because lead_email is undefined");
+    logger.warn("Email not sent because lead_email is undefined");
     return;
   }
 
@@ -233,7 +233,7 @@ async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price
     let subjectLine = "";
     const placeholderRegex = /{{(.*?)}}|\[(.*?)\]/g;
     const templateData = { ...data, price, url };
-    console.log(" data for email to add : " + JSON.stringify(templateData));
+    logger.debug("Rendering quotation email template", { tenantId });
 
     // Regex for placeholders {{key}} or [key]
 
@@ -271,7 +271,7 @@ async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price
       const arrayBuf = await attachmentRes.arrayBuffer();
       attachmentBase64 = Buffer.from(arrayBuf).toString('base64');
     } catch (err) {
-      console.error("Attachment fetch failed:", err.message);
+      logger.error("Attachment fetch failed:", err.message);
     }
 
     let finalSubject = '';
@@ -297,7 +297,7 @@ async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price
     } else {
       // 1. Fetch Template from Database
       const template = await quotationEmailTemplateRepo.findDefaultByTenant(tenantId);
-      console.log("templaete :: " + JSON.stringify(template));
+      logger.debug("templaete :: " + JSON.stringify(template));
 
 
       // 2. Determine Content Source
@@ -434,7 +434,7 @@ async function processAndSendDefaultEmailFromDragDrop(tenantId, data, url, price
     return { success: true, messageData: messageData };
 
   } catch (error) {
-    console.error("Email Service Error:", error);
+    logger.error("Email Service Error:", error);
     throw error;
   }
 }
@@ -489,7 +489,7 @@ async function sendGmailWithAttachments({ to, subject, html, attachments, oAuth2
           ""
         );
       } catch (error) {
-        console.error(`Failed to fetch attachment from ${file.url}:`, error.message);
+        logger.error(`Failed to fetch attachment from ${file.url}:`, error.message);
         // Continue with other attachments even if one fails
       }
     }
@@ -532,7 +532,7 @@ async function sendGmailWithAttachments({ to, subject, html, attachments, oAuth2
 }
 
 async function sendGmailRaw({ to, subject, html, global_message_id, threadId, oAuth2Client, attachments, attachmentBase64, filename }) {
-  console.log("Preparing to send email with subject:", subject, "to:", to, "in thread:", threadId, "replying to message ID:", global_message_id);
+  logger.debug("Preparing to send email", { threadId, global_message_id });
   const boundary = "__boundary_string_generated_123__";
   const CRLF = "\r\n";
 
@@ -615,7 +615,7 @@ async function sendGmailRaw({ to, subject, html, global_message_id, threadId, oA
           ""
         );
       } catch (error) {
-        console.error(`Failed to fetch attachment from ${file.url}:`, error.message);
+        logger.error(`Failed to fetch attachment from ${file.url}:`, error.message);
         // Continue with other attachments even if one fails
       }
     }
@@ -641,7 +641,7 @@ async function sendGmailRaw({ to, subject, html, global_message_id, threadId, oA
     },
   });
   const messageId = response.data.id;
-  console.log("Email successfully sent:", messageId);
+  logger.debug("Email successfully sent:", messageId);
 
   return { data: response.data, finalHtml: rawBody, finalSubject: replySubject };
 }

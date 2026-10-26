@@ -75,22 +75,22 @@ class AIService {
             lastUsed: null,
           });
 
-          console.log(`✅ Gemini API Key ${index + 1} configured`);
+          logger.debug(`✅ Gemini API Key ${index + 1} configured`);
         } catch (err) {
-          console.warn(`❌ Error setting up key ${index + 1}:`, err.message);
+          logger.warn(`❌ Error setting up key ${index + 1}:`, err.message);
         }
       });
 
       this.isConfigured = this.geminiModels.length > 0;
       if (!this.isConfigured) {
-        console.warn("⚠️ No Gemini models could be configured. AI service running in unconfigured mode.");
+        logger.warn("⚠️ No Gemini models could be configured. AI service running in unconfigured mode.");
       } else {
-        console.log(
+        logger.debug(
           `🎯 Total Gemini API keys configured: ${this.geminiModels.length}`
         );
       }
     } catch (err) {
-      console.warn("⚠️ Gemini setup warning:", err.message);
+      logger.warn("⚠️ Gemini setup warning:", err.message);
       this.isConfigured = false;
     }
   }
@@ -139,39 +139,39 @@ class AIService {
         throw error;
       }
 
-      console.log(`[Attempt ${i + 1}] Using Gemini API Key Index: ${modelInfo.keyIndex}`);
+      logger.debug(`[Attempt ${i + 1}] Using Gemini API Key Index: ${modelInfo.keyIndex}`);
 
       try {
         const model = modelInfo.client.getGenerativeModel({
           model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
         });
 
-        console.log("Sending request to Gemini...");
+        logger.debug("Sending request to Gemini...");
         const result = await model.generateContent(prompt);
         const response = await result.response;
 
         // Update statistics on successful call
         this.updateUsage(modelInfo);
-        console.log(`✅ Response fetched from Gen AI successfully using Key Index: ${modelInfo.keyIndex}`);
+        logger.debug(`✅ Response fetched from Gen AI successfully using Key Index: ${modelInfo.keyIndex}`);
 
         return response.text();
 
       } catch (err) {
         const errorMessage = err.message || "";
-        console.error(`❌ Error with Key Index ${modelInfo.keyIndex}:`, errorMessage);
+        logger.error(`❌ Error with Key Index ${modelInfo.keyIndex}:`, errorMessage);
 
         // Check for Rate Limit (429), Quota Exhausted, or Service Unavailable (503)
         const isRateLimit = errorMessage.includes("429") || errorMessage.toLowerCase().includes("quota");
         const isServiceUnavailable = errorMessage.includes("503");
 
         if ((isRateLimit || isServiceUnavailable) && i < retries - 1) {
-          console.warn(`⚠️ Key Index ${modelInfo.keyIndex} rate-limited or unavailable. Rotating immediately to the next key...`);
+          logger.warn(`⚠️ Key Index ${modelInfo.keyIndex} rate-limited or unavailable. Rotating immediately to the next key...`);
 
           // Optional: Add a short backoff pause only if it's a transient 503 server error
           if (isServiceUnavailable) {
             await new Promise((res) => setTimeout(res, 20000));
           }
-          console.log(`🔄 Rotating to the next Gemini API key due to error on index ${modelInfo.keyIndex}. Retrying... (Attempt ${i + 2} of ${retries})`);
+          logger.debug(`🔄 Rotating to the next Gemini API key due to error on index ${modelInfo.keyIndex}. Retrying... (Attempt ${i + 2} of ${retries})`);
           // Continue loop: loop restarts, picks up the NEXT key index via this.getNextApiKey()
           continue;
         } else {
@@ -246,9 +246,9 @@ class AIService {
 
       // 1. Fetch active concepts for this tenant
       const concepts = await conceptRepo.findAll(tenant_id);
-      console.log("Fetched concepts for tenant:", tenant_id, concepts.length);
+      logger.debug("Fetched concepts for tenant:", tenant_id, concepts.length);
       const conceptNames = concepts.map(c => c.name).join(', '); // e.g., "LITE, IMPACT, PREMIUM"
-      console.log("Fetched concepts for prompt:", conceptNames);
+      logger.debug("Fetched concepts for prompt:", conceptNames);
       // Fetch the full config objects instead of just keys
       
       const services_provided = configs.map(c => c.label).join(', ');
@@ -256,7 +256,7 @@ class AIService {
       // const dynamicFieldsPrompt = configs.map(c =>
       //   `- ${c.field_key}: (${c.label})`
       // ).join('\n');
-      console.log("services_provided:: " + services_provided);
+      logger.debug("services_provided:: " + services_provided);
       const pricingModels = await pricingModelRepository.findAll(tenant_id);
       const dynamicFieldsPrompt = configs
         .map(config => {
@@ -272,9 +272,9 @@ class AIService {
         acc[c.field_key] = "value or null";
         return acc;
       }, {});
-      console.log("dynamicJsonStructure: " + JSON.stringify(dynamicJsonStructure));
+      logger.debug("dynamicJsonStructure: " + JSON.stringify(dynamicJsonStructure));
       concepts.forEach(concept => {
-        console.log(`Concept: ${JSON.stringify(concept)}`);
+        logger.debug(`Concept: ${JSON.stringify(concept)}`);
       });
       // Example logic to prepare the prompt variables
       const conceptServicesMapping = concepts.map(c =>
@@ -493,7 +493,7 @@ class AIService {
           lastMessageWithDraft: lastMessageWithDraft
         };
       }
-      console.log("Before update event_type : " + parsed.event_type)
+      logger.debug("Before update event_type : " + parsed.event_type)
       // 2. Identify the services the AI actually extracted (keys with non-null values)
       const extractedKeys = Object.keys(parsed.dynamic_requirements || {})
         .filter(k => parsed.dynamic_requirements[k] !== null && parsed.dynamic_requirements[k] !== 0);
@@ -521,14 +521,14 @@ class AIService {
       // If we found a mathematical match, use it. 
       // If concepts was empty or no match found, bestMatch remains the AI's choice.
       parsed.event_type = bestMatch;
-      console.log("After update event_type : " + parsed.event_type)
+      logger.debug("After update event_type : " + parsed.event_type)
       return {
         type: parsed.intent,
         data: parsed,
         lastMessageWithDraft: lastMessageWithDraft
       };
     } catch (err) {
-      console.error("AI Generation Error:", err);
+      logger.error("AI Generation Error:", err);
       throw err;
     }
   }
@@ -566,9 +566,9 @@ class AIService {
     // 1. Construct the Discovery Prompt to find pre-requisite services
     // 1. Fetch active concepts for this tenant
     const concepts = await conceptRepo.findAll(tenant_id);
-    console.log("Fetched concepts for tenant:", tenant_id, concepts.length);
+    logger.debug("Fetched concepts for tenant:", tenant_id, concepts.length);
     const conceptNames = concepts.map(c => c.name).join(', '); // e.g., "LITE, IMPACT, PREMIUM"
-    console.log("Fetched concepts for prompt:", conceptNames);
+    logger.debug("Fetched concepts for prompt:", conceptNames);
     // Fetch the full config objects instead of just keys
     const configs = await leadRequirementConfigRepo.findByTenantAndActive(tenant_id);
 
@@ -620,11 +620,11 @@ class AIService {
       const result = await this.fetchAIResponse(discoveryPrompt);
 
       // 4. Return only the dynamic_requirements object for the database update
-      console.log("Consultant AI suggested:", JSON.stringify(result.dynamic_requirements));
+      logger.debug("Consultant AI suggested:", JSON.stringify(result.dynamic_requirements));
       return result.dynamic_requirements;
 
     } catch (error) {
-      console.error("Error in Consultant AI call:", error);
+      logger.error("Error in Consultant AI call:", error);
       return null;
     }
   }
@@ -632,14 +632,14 @@ class AIService {
   async generateProposalFromTemplate(data, tenantId) {
     // 1. Fetch the default template path from your metadata table
     const templateMetadata = await templateRepository.findDefaultByTenant(tenantId);
-    console.log("templateMetadata:: " + templateMetadata)
+    logger.debug("templateMetadata:: " + templateMetadata)
     let fileName = `quotation - ${crypto.randomUUID()}.pdf`;
     fileName = `proposals/${fileName}`; // Add proposals/ prefix here
     const localPath = path.join(__dirname, "../", fileName);
 
     if (!templateMetadata) {
       // Handle case where no template is found for the tenant
-      console.warn("No quotation template found , creating with static template");
+      logger.warn("No quotation template found , creating with static template");
       return await this.generateProposalWithoutQuotationTemplate(data, localPath, fileName);
     }
 
@@ -698,7 +698,7 @@ class AIService {
 
     // 4. Upload to GCS (Existing logic)
     const gcsUrl = await uploadToGCS(localPath, fileName);
-    console.log("Generated PDF GCS URL:", gcsUrl);
+    logger.debug("Generated PDF GCS URL:", gcsUrl);
     return { gcsUrl, fileName };
 
   }
@@ -721,7 +721,7 @@ class AIService {
 
       // 3. Replace Placeholders
       const templateData = { ...data, date: new Date().toLocaleDateString() };
-      console.log(templateData)
+      logger.debug("Rendering docx template", { tenantId })
       const zip = new PizZip(fileBuffer);
       // 1. Helper to fetch the image from your Signed URL
       const imageOptions = {
@@ -729,10 +729,10 @@ class AIService {
           try {
             // Only allowlisted https image hosts; tenants control this URL (SSRF guard)
             const image = await fetchAllowedImage(tagValue);
-            if (!image) console.warn("Refused to fetch non-allowlisted template image URL");
+            if (!image) logger.warn("Refused to fetch non-allowlisted template image URL");
             return image;
           } catch (err) {
-            console.error(`Failed to fetch image at ${tagValue}:`, err.message);
+            logger.error(`Failed to fetch image at ${tagValue}:`, err.message);
             return null;
           }
         },
@@ -773,10 +773,10 @@ class AIService {
       const gcsUrl = await uploadBufferToGCS(pdfBuffer, fileName);
       // 4. Upload to GCS (Existing logic)
       // const gcsUrl = await uploadToGCS(localPath, fileName);
-      console.log("Generated PDF GCS URL:", gcsUrl);
+      logger.debug("Generated PDF GCS URL:", gcsUrl);
       return { gcsUrl, fileName };
     } catch (error) {
-      console.error("CRITICAL GCS ERROR:", error.message);
+      logger.error("CRITICAL GCS ERROR:", error.message);
       throw error;
     }
   }
@@ -1065,7 +1065,7 @@ TEMPLATE DESIGN REQUIREMENTS:
         body: formattedBody
       };
     } catch (parseError) {
-      console.error("Failed to parse AI JSON. Raw response was:", aiResponse);
+      logger.error("Failed to parse AI JSON. Raw response was:", aiResponse);
       throw new Error("AI returned invalid JSON format");
     }
   }
@@ -1091,7 +1091,7 @@ Return ONLY a JSON object where the value is a single string formatted with mark
 { 
   "crux": "Here is the crux of the conversation:\n\n* **Core Objective:** [Details here]\n* **Key Requirements:** [Details here]\n* **Current Status:** [Details here]" 
 }`;
-    console.log(prompt);
+    logger.debug("Crux prompt built", { promptLength: prompt.length });
     const aiResponse = await this.callGenAI(prompt);
     const cleanJson = aiResponse.replace(/```json|```/g, "").trim();
     const result = JSON.parse(cleanJson);

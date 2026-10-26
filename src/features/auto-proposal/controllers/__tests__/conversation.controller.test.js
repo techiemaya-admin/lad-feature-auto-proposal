@@ -34,7 +34,9 @@ describe('ConversationController', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+    // Controller logs go through logger.debug, which only prints when DEBUG is set
+    process.env.DEBUG = 'true';
+    logSpy = jest.spyOn(console, 'debug').mockImplementation(() => {});
     jest.spyOn(console, 'error').mockImplementation(() => {});
     req = {
       tenantId: 'tenant-abc-123',
@@ -51,6 +53,7 @@ describe('ConversationController', () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+    delete process.env.DEBUG;
   });
 
   describe('sendBulkEmails', () => {

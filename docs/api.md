@@ -4,6 +4,8 @@ Comprehensive reference for all backend endpoints mounted in `src/app.js`.
 
 > **Base URL:** `http://localhost:3000`  
 > **Auth Header (required):** Every `/api/*` endpoint requires `Authorization: Bearer <jwt-token>`, except `POST /api/gmail/webhook` and `GET /api/social-integration/email/google/callback` (both called by Google). The token must carry `tenantId` and `userId` (or `id`); `roles: ["platform_admin"]` is needed to create or list tenants.  
+> **Rate limits:** `/api/*` is limited per user (default 300 requests/minute, `RATE_LIMIT_PER_MINUTE`) and AI endpoints more tightly (default 20/minute, `AI_RATE_LIMIT_PER_MINUTE`); excess requests get `429`.  
+> **Errors:** `5xx` responses always carry a generic `"Internal Server Error"` message; details are only logged server-side.  
 > **Tenant scope:** The tenant always comes from the token. `X-Tenant-Id` is optional and, if sent, must equal the token's `tenantId` (otherwise `403`). Any `:tenantId` / `:tenant_id` in a URL must also equal the token's tenant (otherwise `403`). The examples below still show `X-Tenant-Id`; add the `Authorization` header to each.
 
 ---
@@ -683,7 +685,7 @@ Integrations for linking user-scoped OAuth identities (e.g. Gmail) to power auto
 
 ### `GET /api/social-integration/email/google/callback`
 Public OAuth2 callback endpoint redirected from Google's consent screen. Receives `code`, `state` (a signed, 10-minute token issued by `/start`), and optional `error` (e.g. `access_denied`). Callbacks with a missing, forged or expired `state` are rejected.
-Returns a self-closing HTML document that communicates back to the parent window opener via `window.opener.postMessage(payload, targetOrigin)`.
+Returns a self-closing HTML document that communicates back to the parent window opener via `window.opener.postMessage(payload, FRONTEND_URL origin)`. **The callback does not link the account itself**: it hands the code to the frontend, which must finish with `POST /api/social-integration/email/google/complete` (see below). This stops a victim who is tricked into approving an attacker-started flow from linking their Gmail to the attacker's account. The code is never posted to a wildcard origin; if `FRONTEND_URL` is unset the callback shows an error.
 
 **Query Parameters:**
 * `code` (string): OAuth authorization code from Google (required for success).
@@ -692,12 +694,25 @@ Returns a self-closing HTML document that communicates back to the parent window
 * `error_description` (string, optional): Human-readable error description from Google.
 
 **HTML Bridge Message Events:**
-* **Success:** Dispatches `{ type: 'GOOGLE_AUTH_SUCCESS' }` and invokes `window.close()`.
+* **Code received:** Dispatches `{ type: 'GOOGLE_AUTH_CODE', code: string, state: string }` and invokes `window.close()`. The frontend must POST both values to `/email/google/complete` with the user's JWT.
+* **Success (only with `GOOGLE_OAUTH_LEGACY_CALLBACK=true`):** Dispatches `{ type: 'GOOGLE_AUTH_SUCCESS' }` and invokes `window.close()`.
 * **Error / Cancellation:** Dispatches `{ type: 'GOOGLE_AUTH_ERROR', error: string }` and invokes `window.close()`.
 
 ```bash
 curl -i "http://localhost:3000/api/social-integration/email/google/callback?code=<auth-code>&state=<base64-state>"
 ```
+
+### `POST /api/social-integration/email/google/complete`
+Finishes the Google OAuth flow for the authenticated user. Body: `{ "code": "<from GOOGLE_AUTH_CODE>", "state": "<from GOOGLE_AUTH_CODE>" }`. The signed `state` must have been issued to the same user and tenant as the JWT, otherwise `403`; an invalid or expired `state` gets `400`.
+
+```bash
+curl -i -X POST http://localhost:3000/api/social-integration/email/google/complete \
+  -H "Authorization: Bearer <jwt-token>" \
+  -H "Content-Type: application/json" \
+  -d '{ "code": "<auth-code>", "state": "<signed-state>" }'
+```
+
+**Response (200 OK):** `{ "success": true }`
 
 ### `POST /api/social-integration/email/google/start`
 Generates the Google OAuth authorization URL. The authenticated tenant and user from the JWT are signed into the `state` parameter; the user cannot be chosen via header, query or body.

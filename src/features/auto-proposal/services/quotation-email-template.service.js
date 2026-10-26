@@ -1,10 +1,11 @@
 // services/quotationEmail.service.js
 const repository = require('../repositories/quotation-email-template.repository');
+const { clientError } = require('../../../utils/http-errors');
 
 class QuotationEmailService {
   async createTemplate(tenantId, payload) {
     // Logic: Ensure subject line exists
-    if (!payload.subject) throw new Error("Subject line is required");
+    if (!payload.subject) throw clientError("Subject line is required", 400);
     return await repository.create({ ...payload, tenant_id: tenantId });
   }
 
@@ -14,7 +15,7 @@ class QuotationEmailService {
 
   async getTemplate(id, tenantId) {
     const template = await repository.findById(id, tenantId);
-    if (!template) throw new Error("Template not found");
+    if (!template) throw clientError("Template not found", 404);
     return template;
   }
 

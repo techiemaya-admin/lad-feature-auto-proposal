@@ -115,7 +115,7 @@ describe('TenantProfileController', () => {
       await controller.updateField(req, res);
 
       expect(res.status).toHaveBeenCalledWith(400);
-      expect(res.json).toHaveBeenCalledWith({ error: 'Update failed' });
+      expect(res.json).toHaveBeenCalledWith({ error: 'Internal Server Error' });
     });
   });
 
@@ -149,7 +149,7 @@ describe('TenantProfileController', () => {
       await controller.getLogoPreview(req, res);
 
       expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ error: 'DB Error' });
+      expect(res.json).toHaveBeenCalledWith({ error: 'Internal Server Error' });
     });
   });
 
@@ -204,7 +204,7 @@ describe('TenantProfileController', () => {
       await controller.uploadLogo(req, res);
 
       expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ error: 'GCS Upload Failed' });
+      expect(res.json).toHaveBeenCalledWith({ error: 'Internal Server Error' });
     });
   });
 });

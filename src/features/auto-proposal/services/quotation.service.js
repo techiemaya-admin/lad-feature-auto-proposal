@@ -31,7 +31,7 @@ async function generateQuotation(tenantId, options) {
     const defaultTemplate = await quotationTemplateMetadataRepository.findDefault(tenantId);
     quotationTemplateMetadataId = defaultTemplate ? defaultTemplate.id : null;
   } else {
-    const template = await quotationTemplateMetadataRepository.findById(tenantId, templateId);
+    const template = await quotationTemplateMetadataRepository.findById(templateId, tenantId);
     if (!template) {
       const err = new Error('Quotation template not found');
       err.statusCode = 404;

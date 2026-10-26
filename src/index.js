@@ -1,6 +1,7 @@
 require('dotenv').config();
 const app = require('./app');
 const { assertJwtConfig } = require('./middleware/auth.middleware');
+const { assertTokenEncryptionConfig } = require('./utils/token-crypto');
 const dataSource = require('./config/data-source');
 const logger = require('./utils/logger');
 
@@ -11,6 +12,9 @@ async function start() {
     assertJwtConfig(); // fail fast if JWT_SECRET is missing or weak
     if (!process.env.DB_PASSWORD) {
       throw new Error('DB_PASSWORD environment variable is required');
+    }
+    if (process.env.NODE_ENV === 'production') {
+      assertTokenEncryptionConfig(); // OAuth tokens must be encrypted at rest in production
     }
     await dataSource.initialize();
     app.listen(PORT, () => {

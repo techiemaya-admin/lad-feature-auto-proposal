@@ -11,6 +11,7 @@ router.use(tenantContext);
 router.get("/email/google/status", socialIntegrationController.getGoogleEmailStatus);
 router.post("/email/google/status", socialIntegrationController.getGoogleEmailStatus);
 router.post("/email/google/start", socialIntegrationController.initiateGoogle);
+router.post("/email/google/complete", socialIntegrationController.completeGoogle);
 router.post("/email/google/disconnect", socialIntegrationController.disconnectGoogle);
 
 module.exports = router;

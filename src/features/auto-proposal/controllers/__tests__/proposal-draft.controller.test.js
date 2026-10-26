@@ -71,17 +71,29 @@ describe('ProposalDraftController', () => {
       expect(res.status).toHaveBeenCalledWith(200);
     });
 
-    it('returns 400 with error message when service throws an error', async () => {
-      proposalDraftService.approveProposal.mockRejectedValue(
-        new Error('Proposal not found or already approved')
-      );
+    it('returns the client error status and message for expected failures', async () => {
+      const notFound = new Error('Proposal not found or already approved');
+      notFound.statusCode = 404;
+      proposalDraftService.approveProposal.mockRejectedValue(notFound);
 
       await proposalDraftController.approveProposalDraft(req, res);
 
-      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.status).toHaveBeenCalledWith(404);
       expect(res.json).toHaveBeenCalledWith({
         success: false,
         message: 'Proposal not found or already approved',
+      });
+    });
+
+    it('hides internal error details behind a generic 500', async () => {
+      proposalDraftService.approveProposal.mockRejectedValue(new Error('relation "proposal_draft" does not exist'));
+
+      await proposalDraftController.approveProposalDraft(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        message: 'Internal Server Error',
       });
     });
   });

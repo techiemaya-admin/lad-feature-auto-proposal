@@ -71,9 +71,9 @@ async function startWatch(email, tenantId) {
 }
 
 async function createProposalDraft(leadRequirementDetails, leadData, email_content, conversation_id, global_message_id, threadId, subject, oAuth2Client, content) {
-  logger.debug("Calculating final price for conversationid :", conversation_id, " lead requirement details :", leadRequirementDetails, " lead data : ", leadData, " email content : ", email_content);
+  logger.debug("Calculating final price", { conversation_id, leadRequirementId: leadRequirementDetails && leadRequirementDetails.id, leadId: leadData && leadData.id });
   const calculatedPriceDetails = await finalPriceCalculationRepository.generateFinalPrice(leadRequirementDetails.tenant_id, leadRequirementDetails.id, email_content, leadRequirementDetails.event_type);
-  const leadRequirementValues = await leadRequirementValueRepo.findByRequirementId(leadRequirementDetails.id);
+  const leadRequirementValues = await leadRequirementValueRepo.findByRequirementId(leadRequirementDetails.id, leadRequirementDetails.tenant_id);
   const services_given = leadRequirementValues.map(v => v.label).join(', ');
   logger.debug("Services given to tenant: ", services_given);
   if (Array.isArray(calculatedPriceDetails?.breakdown)) {
@@ -95,9 +95,7 @@ async function createProposalDraft(leadRequirementDetails, leadData, email_conte
 
     const tenantDetails = (await tenatDetailsRepo.findById(leadRequirementDetails.tenant_id)) || {};
     const tenantProfileDetails = (await tenantProfileRepository.findByTenantId(leadRequirementDetails.tenant_id)) || {};
-    logger.debug("tenantDetails : " + JSON.stringify(tenantDetails));
-    logger.debug("lead data : " + JSON.stringify(leadData));
-    logger.debug("tenant profile details : " + JSON.stringify(tenantProfileDetails));
+    logger.debug("Building proposal placeholders", { tenantId: leadRequirementDetails.tenant_id, leadId: leadData && leadData.id });
     const items = calculatedPriceDetails.breakdown.map(item => {
       const grossTotal = (item.count != null && item.base_unit_price != null)
         ? (Number(item.count) * Number(item.base_unit_price))
@@ -286,7 +284,7 @@ async function processIncomingEmail(tenantId, fullMessage, lead_id, messageId) {
   }
   const emailData = extractGmailData(fullMessage);
 
-  logger.debug("Processing incoming email:", { tenantId, emailData });
+  logger.debug("Processing incoming email", { tenantId, lead_id, messageId });
 
   // 2. Upsert the Conversation
   // This uses threadId to group messages into a single chat history
@@ -405,7 +403,7 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
       return;
     }
 
-    logger.debug("History response:", { historyData: history.data });
+    logger.debug("History response", { records: (history.data.history || []).length, historyId: history.data.historyId });
     const messages = history.data.history || [];
 
     for (const record of messages) {
@@ -428,12 +426,12 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
           const from = headers.find(h => h.name?.toLowerCase() === "from")?.value || "";
           const contact = parseContactInfo(from);
           const body = getEmailBody(fullMessage.data.payload);
-          logger.debug("Email payload parsed:", { subject, from, contact });
+          logger.debug("Email payload parsed", { messageId, hasSubject: !!subject });
           logger.debug("Checking if email is system generated...");
           if (contact && contact.email != email) {
             const leadData = await triggerNewLeadAutomation(tenantId, userId, contact.firstName, contact.lastName, contact.email);
             if (!leadData?.id) {
-              logger.warn("Skipping email processing: lead could not be created or resolved", { email: contact.email, messageId });
+              logger.warn("Skipping email processing: lead could not be created or resolved", { messageId });
               continue;
             }
             logger.info("Lead created from email", { leadId: leadData.id });
@@ -465,11 +463,11 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
                   oAuth2Client: oAuth2Client,
                   attachments: [{ filename: "Proposal.pdf", url: resultToReturn.proposalDetails.gcs_storage_path, type: "application/pdf" }], // Optional: handle if passed
                 });
-                logger.info("Sent AI-generated existing proposal email response", { to: contact.email, messageId: gmailResponse?.data?.id });
+                logger.info("Sent AI-generated existing proposal email response", { leadId: leadData && leadData.id, messageId: gmailResponse?.data?.id });
                 const id = gmailResponse.data.id;
                 await conversationService.createConversationAndConversationMessages(tenantId, contact.email, reSendSubject, content, [], id, global_message_id);
               } else if (type === "DISCOVERY_EMAIL") {
-                logger.info("Email classified as DISCOVERY_EMAIL; sending response", { to: contact.email });
+                logger.info("Email classified as DISCOVERY_EMAIL; sending response", { leadId: leadData && leadData.id });
                 const reSendSubject = subject.startsWith("Re:") ? subject : `Re: ${subject}`;
                 const gmailResponse = await gmailSendService.sendGmailRaw({
                   to: contact.email,
@@ -480,7 +478,7 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
                   oAuth2Client: oAuth2Client
                 });
                 const id = gmailResponse.data.id;
-                logger.info("Sent AI-generated discovery email response", { to: contact.email, messageId: id });
+                logger.info("Sent AI-generated discovery email response", { leadId: leadData && leadData.id, messageId: id });
                 await conversationService.createConversationAndConversationMessages(tenantId, contact.email, reSendSubject, content, [], id, global_message_id);
               } else if (type === "BUDGET_REQUEST" || type === "RETURNING_CLIENT_QUOTE") {
                 logger.debug("Lead requirement details resolved for draft:", { type, leadRequirementId: leadRequirementDetails?.id });
@@ -609,7 +607,7 @@ async function createLeadRequirementViaPrompt(body, leadData, tenant_id, convers
   const leadId = typeof leadData === 'object' ? leadData?.id : leadData;
   logger.debug("Processing lead requirement prompt", { leadId, tenant_id });
   try {
-    logger.debug("Testing AI prompt:", { prompt: body });
+    logger.debug("Testing AI prompt", { promptLength: body ? String(body).length : 0 });
     // Extract newly requested service config keys from the active custom configurations
     const activeConfigs = await lead_requirement_configRepository.findByTenantAndActive(tenant_id);
 

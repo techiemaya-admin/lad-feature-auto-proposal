@@ -103,7 +103,7 @@ describe('QuotationEmailTemplateController', () => {
       await quotationEmailTemplateController.listViaAuth(req, res);
 
       expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ error: 'DB failure' });
+      expect(res.json).toHaveBeenCalledWith({ error: 'Internal Server Error' });
     });
   });
 

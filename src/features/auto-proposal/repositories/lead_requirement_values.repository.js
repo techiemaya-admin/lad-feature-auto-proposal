@@ -1,5 +1,6 @@
 const db = require("../../../config/data-source");
 const leadRequirementConfigRepo = require("./lead_requirement_config.repository");
+const logger = require('../../../utils/logger');
 
 class LeadRequirementValuesRepository {
   /**
@@ -25,7 +26,7 @@ class LeadRequirementValuesRepository {
       const fieldId = fieldKeyMap[key];
 
       if (!fieldId) {
-        console.warn(`Field key "${key}" not found for tenant ${tenantId}. Skipping.`);
+        logger.warn(`Field key "${key}" not found for tenant ${tenantId}. Skipping.`);
         continue;
       }
 
@@ -59,12 +60,28 @@ class LeadRequirementValuesRepository {
         const savedValue = await this.upsert(valueData);
         results.push(savedValue);
       } catch (err) {
-        console.error(`Error upserting key ${key}:`, err);
+        logger.error(`Error upserting key ${key}:`, err);
       }
     }
 
     return results;
   }
+  /**
+   * True when the lead requirement belongs to the tenant (and, if given, the field is one of the tenant's configs).
+   */
+  async belongsToTenant(leadRequirementId, tenantId, fieldId = null) {
+    const sql = `
+      SELECT 1
+      FROM lead_requirement lr
+      WHERE lr.id = $1 AND lr.tenant_id = $2
+        AND ($3::uuid IS NULL OR EXISTS (
+          SELECT 1 FROM lead_requirement_config c WHERE c.id = $3::uuid AND c.tenant_id = $2
+        ))
+      LIMIT 1`;
+    const result = await db.query(sql, [leadRequirementId, tenantId, fieldId]);
+    return result.length > 0;
+  }
+
   async create(data) {
     const sql = `
       INSERT INTO lead_requirement_values 
@@ -88,32 +105,35 @@ class LeadRequirementValuesRepository {
    * Fetch all values for a specific Lead Requirement
    * Joins with config to get the labels/keys
    */
-  async findByRequirementId(leadRequirementId) {
+  async findByRequirementId(leadRequirementId, tenantId) {
     const sql = `
       SELECT v.*, c.field_key, c.label 
       FROM lead_requirement_values v
       JOIN lead_requirement_config c ON v.field_id = c.id
-      WHERE v.lead_requirement_id = $1`;
+      JOIN lead_requirement lr ON lr.id = v.lead_requirement_id
+      WHERE v.lead_requirement_id = $1 AND lr.tenant_id = $2`;
 
-    const result = await db.query(sql, [leadRequirementId]);
+    const result = await db.query(sql, [leadRequirementId, tenantId]);
     return result;
   }
 
   /**
    * Update a specific value by its ID
    */
-  async update(id, data) {
+  async update(id, data, tenantId) {
     const sql = `
-      UPDATE lead_requirement_values 
+      UPDATE lead_requirement_values v
       SET value_text = $1, value_number = $2, value_json = $3
-      WHERE id = $4 
-      RETURNING *`;
+      FROM lead_requirement lr
+      WHERE v.id = $4 AND lr.id = v.lead_requirement_id AND lr.tenant_id = $5
+      RETURNING v.*`;
 
     const values = [
       data.value_text || null,
       data.value_number || null,
       data.value_json ? JSON.stringify(data.value_json) : null,
-      id
+      id,
+      tenantId
     ];
 
     const result = await db.query(sql, values);
@@ -160,9 +180,13 @@ class LeadRequirementValuesRepository {
   /**
    * Delete a single value entry
    */
-  async delete(id) {
-    const sql = `DELETE FROM lead_requirement_values WHERE id = $1 RETURNING *`;
-    const result = await db.query(sql, [id]);
+  async delete(id, tenantId) {
+    const sql = `
+      DELETE FROM lead_requirement_values v
+      USING lead_requirement lr
+      WHERE v.id = $1 AND lr.id = v.lead_requirement_id AND lr.tenant_id = $2
+      RETURNING v.*`;
+    const result = await db.query(sql, [id, tenantId]);
     return result[0];
   }
 }

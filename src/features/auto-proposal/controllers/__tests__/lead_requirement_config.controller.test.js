@@ -70,8 +70,18 @@ describe('LeadRequirementConfigController', () => {
       expect(repo.update).toHaveBeenCalledWith('cfg-1', {
         label: 'Updated Label',
         tenant_id: 'tenant-123',
-      });
+      }, 'tenant-123');
       expect(res.json).toHaveBeenCalledWith({ id: 'cfg-1', label: 'Updated Label' });
+    });
+
+    it('returns 404 when the config does not belong to the tenant', async () => {
+      req.params = { id: 'other-tenant-cfg' };
+      req.body = { label: 'Hijack' };
+      repo.update.mockResolvedValue(undefined);
+
+      await controller.update(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(404);
     });
   });
 

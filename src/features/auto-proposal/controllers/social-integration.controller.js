@@ -1,4 +1,5 @@
 const userIdentityRepository = require("../repositories/user-identity.repository");
+const { clientMessage } = require('../../../utils/http-errors');
 const authService = require("../services/google-auth.service");
 const logger = require("../../../utils/logger");
 
@@ -23,30 +24,40 @@ function escapeHtml(str) {
         .replace(/'/g, '&#039;');
 }
 
+function getFrontendOrigin() {
+    if (!process.env.FRONTEND_URL) return null;
+    try {
+        return new URL(process.env.FRONTEND_URL).origin;
+    } catch (_) {
+        return process.env.FRONTEND_URL;
+    }
+}
+
 /**
  * Renders a lightweight self-closing HTML payload that posts a completion
  * message to the parent window opener and closes the popup.
+ * `message` overrides the posted payload (used to hand the authorization code to the
+ * frontend); it is only ever posted to FRONTEND_URL, never to a wildcard origin.
  */
-function renderPopupHtml({ success, error }) {
-    const payload = success
+function renderPopupHtml({ success, error, message }) {
+    const frontendOrigin = getFrontendOrigin();
+    if (message && !frontendOrigin) {
+        return renderPopupHtml({ success: false, error: 'Server misconfiguration: FRONTEND_URL is not set.' });
+    }
+    const payload = message || (success
         ? { type: 'GOOGLE_AUTH_SUCCESS' }
-        : { type: 'GOOGLE_AUTH_ERROR', error: error || 'Authentication failed' };
+        : { type: 'GOOGLE_AUTH_ERROR', error: error || 'Authentication failed' });
 
     const title = success ? 'Connected Successfully' : 'Authentication Failed';
-    const heading = success ? 'Connected Successfully!' : 'Authentication Failed';
-    const subtext = success
-        ? 'Your Gmail account has been linked. This window will close automatically.'
-        : escapeHtml(error || 'An error occurred during authentication.');
+    const heading = message ? 'Finishing connection…' : (success ? 'Connected Successfully!' : 'Authentication Failed');
+    const subtext = message
+        ? 'Returning you to the app. This window will close automatically.'
+        : success
+            ? 'Your Gmail account has been linked. This window will close automatically.'
+            : escapeHtml(error || 'An error occurred during authentication.');
     const color = success ? '#10b981' : '#ef4444';
 
-    let targetOrigin = '*';
-    if (process.env.FRONTEND_URL) {
-        try {
-            targetOrigin = new URL(process.env.FRONTEND_URL).origin;
-        } catch (_) {
-            targetOrigin = process.env.FRONTEND_URL;
-        }
-    }
+    const targetOrigin = frontendOrigin || '*';
     const safePayload = JSON.stringify(payload)
         .replace(/</g, '\\u003c')
         .replace(/>/g, '\\u003e');
@@ -169,7 +180,7 @@ async function getGoogleEmailStatus(req, res) {
         logger.error("Error checking Google email connection status", { error: error.message });
         return res.status(500).json({
             success: false,
-            error: error.message,
+            error: clientMessage(error),
         });
     }
 }
@@ -208,7 +219,7 @@ async function getGoogleEmailStatusWithOtherDetails(req, res) {
         logger.error("Error checking Google email connection status", { error: error.message });
         return res.status(500).json({
             success: false,
-            error: error.message,
+            error: clientMessage(error),
         });
     }
 }
@@ -269,16 +280,64 @@ async function googleCallback(req, res) {
             }));
         }
 
-        await authService.handleGoogleCallback(code, userId, tenantId);
+        if (process.env.GOOGLE_OAUTH_LEGACY_CALLBACK === 'true') {
+            // Transitional single-step flow (vulnerable to login-CSRF); prefer the two-step flow below.
+            logger.warn("GOOGLE_OAUTH_LEGACY_CALLBACK is enabled; completing Google OAuth without session binding");
+            await authService.handleGoogleCallback(code, userId, tenantId);
+            logger.info("Successfully completed Google OAuth callback", { tenantId, userId });
+            return res.status(200).send(renderPopupHtml({ success: true }));
+        }
 
-        logger.info("Successfully completed Google OAuth callback", { tenantId, userId });
-        return res.status(200).send(renderPopupHtml({ success: true }));
+        // Two-step flow: do not link here. Hand the code back to the frontend window that opened
+        // the popup; it finishes via POST /email/google/complete with the user's own JWT. A victim
+        // lured into completing an attacker-started flow never reaches the attacker's session.
+        res.set('Referrer-Policy', 'no-referrer');
+        res.set('Cache-Control', 'no-store');
+        return res.status(200).send(renderPopupHtml({
+            success: true,
+            message: { type: 'GOOGLE_AUTH_CODE', code, state }
+        }));
     } catch (error) {
         logger.error("Error handling Google callback", { error: error.message });
         return res.status(200).send(renderPopupHtml({
             success: false,
-            error: error.message || "Failed to complete Google authentication."
+            error: clientMessage(error, "Failed to complete Google authentication.")
         }));
+    }
+}
+
+/**
+ * Completes the Google OAuth flow for the authenticated caller. The signed state must have been
+ * issued to this same user and tenant, so a code obtained from someone else's browser is useless.
+ */
+async function completeGoogle(req, res) {
+    try {
+        const userId = resolveUserId(req);
+        const { code, state } = req.body || {};
+        if (!userId) {
+            return res.status(400).json({ success: false, error: "Authenticated user context is required." });
+        }
+        if (!code || !state) {
+            return res.status(400).json({ success: false, error: "code and state are required." });
+        }
+
+        let stateContext;
+        try {
+            stateContext = authService.verifyState(state);
+        } catch (err) {
+            return res.status(400).json({ success: false, error: "This connection request is invalid or has expired." });
+        }
+        if (stateContext.userId !== userId || stateContext.tenantId !== req.tenantId) {
+            logger.warn("Rejected Google OAuth completion for a state issued to another user", { tenantId: req.tenantId, userId });
+            return res.status(403).json({ success: false, error: "This connection request belongs to a different user." });
+        }
+
+        await authService.handleGoogleCallback(code, userId, req.tenantId);
+        logger.info("Successfully completed Google OAuth", { tenantId: req.tenantId, userId });
+        return res.status(200).json({ success: true });
+    } catch (error) {
+        logger.error("Error completing Google OAuth", { error: error.message });
+        return res.status(500).json({ success: false, error: clientMessage(error, "Failed to complete Google authentication.") });
     }
 }
 
@@ -315,7 +374,7 @@ async function disconnectGoogle(req, res) {
         return res.status(500).json({
             success: false,
             message: "Failed to cleanly disconnect Google account.",
-            error: error.message
+            error: clientMessage(error)
         });
     }
 }
@@ -324,6 +383,7 @@ module.exports = {
     getGoogleEmailStatus,
     initiateGoogle,
     googleCallback,
+    completeGoogle,
     disconnectGoogle,
     getGoogleEmailStatusWithOtherDetails,
     resolveUserId,

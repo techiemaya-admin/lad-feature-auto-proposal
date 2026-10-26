@@ -1,4 +1,5 @@
 const repository = require('../repositories/email-template.repository');
+const { clientMessage } = require('../../../utils/http-errors');
 const { uploadBufferToGCS } = require('../../../utils/gcsUploader');
 const { safeFileName } = require('../../../utils/upload');
 const mammoth = require("mammoth");
@@ -6,6 +7,7 @@ const { Storage } = require("@google-cloud/storage");
 
 const libre = require('libreoffice-convert');
 const path = require('path');
+const logger = require('../../../utils/logger');
 const storage = new Storage({
     keyFilename: process.env.GCS_KEY_FILE, // service-account.json
 });
@@ -63,15 +65,15 @@ class EmailTemplateService {
 
             libre.convert(fileBuffer, '.pdf', undefined, (err, pdfBuffer) => {
                 if (err) {
-                    console.error(`Error converting: ${err}`);
+                    logger.error(`Error converting: ${err}`);
                     return res.status(500).json({ error: "Conversion failed" });
                 }
                 res.contentType("application/pdf");
                 res.send(pdfBuffer);
             });
         } catch (error) {
-            console.error("Error in getVisualPreview:", error);
-            res.status(500).json({ error: error.message });
+            logger.error("Error in getVisualPreview:", error);
+            res.status(500).json({ error: clientMessage(error) });
         }
     }
 

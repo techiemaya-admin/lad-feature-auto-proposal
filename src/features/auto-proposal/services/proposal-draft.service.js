@@ -8,6 +8,7 @@ const gmailService = require("./gmail-send-email.service");
 const googleConfig = require("../../../config/google.config");
 const logger = require("../../../utils/logger");
 const { escapeHtml } = require("../../../utils/html");
+const { clientError } = require("../../../utils/http-errors");
 const { isAllowedImageUrl } = require("../../../utils/safe-url");
 
 class ProposalDraftService {
@@ -289,7 +290,7 @@ class ProposalDraftService {
       : await proposalRepo.findDraftById(proposalId);
 
     if (!proposal) {
-      throw new Error("Proposal not found or already approved");
+      throw clientError("Proposal not found or already approved", 404);
     }
 
     // 2️⃣ Get Lead (scope to proposal.tenant_id)
@@ -299,7 +300,7 @@ class ProposalDraftService {
     );
 
     if (!lead) {
-      throw new Error("Lead not found");
+      throw clientError("Lead not found", 404);
     }
 
     // 3️⃣ Update Status

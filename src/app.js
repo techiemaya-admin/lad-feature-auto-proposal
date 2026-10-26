@@ -2,7 +2,15 @@ const express = require('express');
 const cors = require('cors');
 const logger = require('./utils/logger');
 const authenticateJWT = require('./middleware/auth.middleware');
+const { createApiLimiter, createAiLimiter, AI_ROUTE_PREFIXES } = require('./middleware/rate-limit.middleware');
 const app = express();
+
+// Set TRUST_PROXY (e.g. "1" or "loopback") when running behind a load balancer so req.ip
+// is the client address used for IP-based rate limiting.
+if (process.env.TRUST_PROXY) {
+  const hops = Number(process.env.TRUST_PROXY);
+  app.set('trust proxy', Number.isInteger(hops) ? hops : process.env.TRUST_PROXY);
+}
 const corsOptions = {
   origin: 'http://localhost:3000', // Matches your frontend exactly
   credentials: true,               // Allows cookies/sessions when requested
@@ -36,7 +44,7 @@ app.use((req, res, next) => {
     express.json()(req, res, next);
   }
 });
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
 // Endpoints called by Google rather than by our users; they cannot carry our JWT.
 const PUBLIC_API_ROUTES = new Set([
@@ -50,6 +58,10 @@ app.use('/api', (req, res, next) => {
   if (PUBLIC_API_ROUTES.has(`${req.method} ${path}`)) return next();
   return authenticateJWT(req, res, next);
 });
+
+// Rate limits run after authentication so they can key on the user rather than the IP.
+app.use('/api', createApiLimiter());
+app.use(AI_ROUTE_PREFIXES, createAiLimiter());
 
 app.use("/api/gmail", gmailRoutes);
 
@@ -83,7 +95,11 @@ app.use('/api/social-integration', socialIntegrationRoutes);
 app.use((err, req, res, next) => {
   // Upload limit/type violations (multer) are client errors
   const status = err.statusCode || (err.name === 'MulterError' ? 400 : 500);
-  const message = err.message || 'Internal Server Error';
+  if (status >= 500) {
+    logger.error('Unhandled request error', { method: req.method, path: req.originalUrl.split('?')[0], error: err.message, stack: err.stack });
+  }
+  // Only client (4xx) errors carry their own message; server errors never leak internals
+  const message = status < 500 && err.message ? err.message : 'Internal Server Error';
   res.status(status).json({ error: message });
 });
 
