@@ -17,7 +17,7 @@ module.exports = new DataSource({
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT || '5432', 10),
   username: process.env.DB_USER || 'lad_dev',
-  password: process.env.DB_PASSWORD || 'lad_dev_pwd',
+  password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME || 'lad_dev',
   synchronize,
   logging,

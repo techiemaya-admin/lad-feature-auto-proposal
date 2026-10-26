@@ -1,5 +1,9 @@
 const express = require('express');
+const { tenantContext, enforceTenantParams } = require('../../../middleware/tenant-context');
 const router = express.Router();
+
+router.use(tenantContext);
+enforceTenantParams(router);
 const multer = require('multer');
 const controller = require('../controllers/email-template.controller');
 const quotationController = require('../controllers/quotation-email-template.controller');

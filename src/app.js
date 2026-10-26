@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const logger = require('./utils/logger');
+const authenticateJWT = require('./middleware/auth.middleware');
 const app = express();
 const corsOptions = {
   origin: 'http://localhost:3000', // Matches your frontend exactly
@@ -36,6 +37,20 @@ app.use((req, res, next) => {
   }
 });
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Endpoints called by Google rather than by our users; they cannot carry our JWT.
+const PUBLIC_API_ROUTES = new Set([
+  'POST /api/gmail/webhook',
+  'GET /api/social-integration/email/google/callback',
+]);
+
+// Every other /api route requires a verified JWT; tenant scope comes from the token.
+app.use('/api', (req, res, next) => {
+  const path = req.originalUrl.split('?')[0];
+  if (PUBLIC_API_ROUTES.has(`${req.method} ${path}`)) return next();
+  return authenticateJWT(req, res, next);
+});
+
 app.use("/api/gmail", gmailRoutes);
 
 

@@ -108,3 +108,57 @@ describe('Auth Middleware (authenticateJWT)', () => {
     process.env.NODE_ENV = 'test';
   });
 });
+
+describe('Auth Middleware hardening', () => {
+  const originalEnv = process.env;
+  const secret = 'test-jwt-secret-that-is-at-least-32-chars';
+  let res;
+  let next;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv, JWT_SECRET: secret };
+    delete process.env.JWT_ISSUER;
+    delete process.env.JWT_AUDIENCE;
+    res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() };
+    next = jest.fn();
+  });
+
+  afterAll(() => {
+    process.env = originalEnv;
+  });
+
+  it('rejects unsigned (alg: none) tokens', () => {
+    const token = jwt.sign({ tenantId: 't-1', userId: 'u-1' }, null, { algorithm: 'none' });
+    authenticateJWT({ headers: { authorization: `Bearer ${token}` } }, res, next);
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('enforces issuer when JWT_ISSUER is set', () => {
+    process.env.JWT_ISSUER = 'https://auth.example.com';
+    const token = jwt.sign({ tenantId: 't-1', userId: 'u-1' }, secret, { issuer: 'https://evil.example.com' });
+    authenticateJWT({ headers: { authorization: `Bearer ${token}` } }, res, next);
+    expect(res.status).toHaveBeenCalledWith(401);
+  });
+
+  it('sets req.roles from roles[] or role claims', () => {
+    const req1 = { headers: { authorization: `Bearer ${jwt.sign({ tenantId: 't', roles: ['platform_admin'] }, secret)}` } };
+    authenticateJWT(req1, res, next);
+    expect(req1.roles).toEqual(['platform_admin']);
+    expect(authenticateJWT.isPlatformAdmin(req1)).toBe(true);
+
+    const req2 = { headers: { authorization: `Bearer ${jwt.sign({ tenantId: 't', role: 'member' }, secret)}` } };
+    authenticateJWT(req2, res, next);
+    expect(req2.roles).toEqual(['member']);
+    expect(authenticateJWT.isPlatformAdmin(req2)).toBe(false);
+  });
+
+  it('assertJwtConfig throws when JWT_SECRET is missing or short', () => {
+    delete process.env.JWT_SECRET;
+    expect(() => authenticateJWT.assertJwtConfig()).toThrow();
+    process.env.JWT_SECRET = 'short';
+    expect(() => authenticateJWT.assertJwtConfig()).toThrow();
+    process.env.JWT_SECRET = secret;
+    expect(() => authenticateJWT.assertJwtConfig()).not.toThrow();
+  });
+});

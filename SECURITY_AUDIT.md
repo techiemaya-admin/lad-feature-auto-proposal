@@ -1,0 +1,311 @@
+# Security Audit — `lad-feature-auto-proposal` (`develop`)
+
+**Date:** 2026-10-26 · **Branch audited:** `develop` @ `8771b99` · **Scope:** the whole backend on `develop` (~10k lines of non-test JS: Express routes, middleware, controllers, services, raw-SQL repositories, config, utils, scripts, docs), the Gmail / Google OAuth / Pub/Sub, Google Cloud Storage and Gemini/OpenAI integrations, git history of **all** branches for secrets, and `npm audit` of the production dependencies.
+
+**Method:** Manual read of every route, middleware, controller and repository, plus the services on the email, OAuth, PDF and upload paths. A pattern scan of all repositories for dynamic SQL. A secret scan of every blob on every branch. Runtime tests of the Express app (no database) to confirm route protection.
+
+**Not covered:** The React frontend lives on the separate `Auto-proposal-frontend` branch, not on `develop`, so it is out of scope here. The earlier audit of `main` (commit `9d83c29`) covers older code that `develop` has replaced.
+
+> Secrets are shown as their first 6 characters only. Line numbers refer to `develop` @ `8771b99` (before the fixes).
+
+---
+
+## Summary
+
+| Severity | Count | Fixed on this branch |
+|---|---|---|
+| **Critical** | 4 | 4 (code); password rotation still required |
+| **High** | 4 | 0 |
+| **Medium** | 6 | 0 |
+| **Low** | 4 | 1 |
+| **Total** | **18** | |
+
+| # | Severity | Title | Status |
+|---|---|---|---|
+| 1 | Critical | Most API routes have no authentication; tenant taken from a spoofable header, URL or body | **Fixed** |
+| 2 | Critical | Anyone can list and create tenants | **Fixed** |
+| 3 | Critical | Gmail OAuth account-link hijack (unsigned `state`, trusted `X-User-Id`, default user) | **Fixed** |
+| 4 | Critical | Hardcoded database password fallback | **Fixed in code — rotate the password** |
+| 5 | High | Unauthenticated Pub/Sub webhook can replay mailbox history, which auto-sends proposals | Open — Needs verification |
+| 6 | High | HTML injection into headless Chrome (`--no-sandbox`) and server-side fetch of tenant-supplied URLs (SSRF) | Open — Needs verification |
+| 7 | High | Unrestricted file uploads (no type/size limits, raw filenames, 1-year public links) | Open |
+| 8 | High | Vulnerable production dependencies reachable from request paths (multer, body-parser, xmldom) | Open |
+| 9 | Medium | Cross-tenant access by record ID (templates, lead requirement values) | Open |
+| 10 | Medium | Internal error messages returned to clients | Open |
+| 11 | Medium | Customer emails and personal data written to logs | Open |
+| 12 | Medium | Gmail OAuth tokens stored in plaintext | Open — Needs verification |
+| 13 | Medium | OAuth `state` not bound to the browser session (login-CSRF) | Open (residual after #3) |
+| 14 | Medium | No rate limiting; 50 MB body limit; AI endpoints can run up cost | Open |
+| 15 | Low | JWT verification did not pin algorithms or check issuer/audience | **Fixed** |
+| 16 | Low | OAuth popup `postMessage` falls back to `*` target origin | Open |
+| 17 | Low | Missing security headers; CORS origin hardcoded to `localhost` | Open |
+| 18 | Low | Hardcoded fallback lead/tenant UUIDs in code and scripts | Open |
+
+---
+
+## Critical
+
+### Finding #1: Most API routes have no authentication; tenant taken from a spoofable header, URL or body
+
+* **Severity:** Critical · **Status:** Fixed
+* **OWASP:** A01:2021 – Broken Access Control (also A07:2021 – Identification and Authentication Failures)
+* **Location:** `src/middleware/tenant-context.js`, line 8; `src/app.js`, lines 39–66; route files including `src/features/auto-proposal/routes/tenant-profile.routes.js`, lines 8–18, and `quotation-email-template.routes.js`, lines 7–12
+* **Evidence:**
+  * Only `/api/email-conversations/*` and one email-template route verified a JWT.
+  * About 15 routers relied on `tenantContext`, which reads `const tenantId = req.headers['x-tenant-id'] || req.tenantId;`. The client header **takes priority** even over a verified token.
+  * Six routers (`tenant-profile`, `quotation-email-template`, `quotation-templates`, `email-templates`, `template-placeholder`, `ai-response`) had **no check at all** and took the tenant straight from the URL (`/:tenantId`).
+  * Controllers also fell back to `req.body.tenant_id` and `req.query.tenant_id`.
+  * ADR `docs/adr/0002-header-based-multitenancy.md` made this the documented design.
+* **Impact:** An anonymous attacker who knows or obtains a tenant UUID (see #2) could:
+  * read and change that tenant's leads, pricing, concepts, templates and company profile;
+  * upload files to its storage;
+  * spend the AI budget (`/api/ai-response/*`, `/api/gmail/test-prompt`);
+  * approve proposal drafts via `/api/proposal-draft/approve/:id`, which **emails quotations to the tenant's customers from the tenant's Gmail**;
+  * disconnect the tenant's Gmail integration.
+* **Fix (applied):**
+  * `src/app.js` requires a verified JWT on every `/api/*` route. The only exceptions are the two endpoints Google calls: `POST /api/gmail/webhook` and `GET /api/social-integration/email/google/callback`.
+  * `tenantContext` now uses only the token's `tenantId`. A different `X-Tenant-Id` gets `403`.
+  * The new `enforceTenantParams` checks every `:tenantId` / `:tenant_id` URL segment against the token on all affected routers.
+  * ADR 0002 is marked superseded.
+  * Tests: `src/__tests__/app.auth.test.js` probes 17 previously open routes plus header and URL spoofing.
+
+### Finding #2: Anyone can list and create tenants
+
+* **Severity:** Critical · **Status:** Fixed
+* **OWASP:** A01:2021 – Broken Access Control
+* **Location:** `src/features/auto-proposal/routes/tenant-route.js`, lines 8–10
+* **Evidence:** `POST /`, `GET /` and `GET /:id` had no middleware at all. `GET /api/tenants` returns every tenant's `id`, `name`, `slug` and `metadata`.
+* **Impact:** This hands out the full client list and every tenant UUID, which is all #1 needed for complete cross-tenant access. Anyone could also create unlimited tenants.
+* **Fix (applied):** Creating and listing tenants now requires the `platform_admin` role (`roles` or `role` claim). `GET /:id` is limited to platform admins or the caller's own tenant.
+
+### Finding #3: Gmail OAuth account-link hijack
+
+* **Severity:** Critical · **Status:** Fixed
+* **OWASP:** A01:2021 – Broken Access Control / A07:2021 – Identification and Authentication Failures
+* **Location:**
+  * `src/features/auto-proposal/services/google-auth.service.js`, lines 21–34
+  * `src/features/auto-proposal/controllers/social-integration.controller.js`, lines 5–19 and 268–290
+  * `src/features/auto-proposal/repositories/user-identity.repository.js`, line 147
+* **Evidence:**
+  * The OAuth `state` was plain `base64(JSON.stringify({ tenantId, userId }))`. Nothing signed it.
+  * The public callback decoded whatever state it received and called `handleGoogleCallback(code, userId, tenantId)`.
+  * That function upserts `user_identities` `ON CONFLICT (user_id, provider)` and starts a Gmail watch for the tenant.
+  * Separately, `resolveUserId` trusted an `X-User-Id` header (also in production). Outside production it also trusted `?userId=` and body `userId`, and fell back to a hardcoded default user (`b8c1ff...`).
+* **Impact:** An attacker could:
+  * build a consent URL with `state = base64({tenantId: victimTenant, userId: victimUser})`;
+  * approve it with **their own** Google account, which **replaces the victim's Gmail link with the attacker's**.
+
+  The victim's bulk emails and quotations (`getGoogleClientForUser`) then go out through the attacker's mailbox, so the attacker receives copies of client correspondence and pricing. The attacker's inbox is also wired into the victim tenant, so inbound mail they control creates leads and auto-proposals there. Through `X-User-Id`, anyone could also read whether any user has Gmail connected (and its address), or revoke and disconnect it.
+* **Fix (applied):**
+  * `state` is now a signed, 10-minute token (HMAC key derived from `OAUTH_STATE_SECRET` or `JWT_SECRET`, so it can't double as an API token) carrying the tenant and user from the caller's JWT.
+  * The callback rejects missing, forged or expired state.
+  * `resolveUserId` now only uses `req.userId` from the verified JWT. The header, query, body and default-user fallbacks are removed.
+  * Tests cover forged base64 state, the wrong signing key, expiry, and the state token failing as a bearer token.
+
+### Finding #4: Hardcoded database password fallback
+
+* **Severity:** Critical · **Status:** Fixed in code — **rotation still required**
+* **OWASP:** A07:2021 – Identification and Authentication Failures (CWE-798)
+* **Location:** `src/config/data-source.js`, line 20; `.env.example`, line 15. Also present at the tips of `auto-proposal-backend`, `google-connect`, `fix-pricing-rule-engine`, `feature/multiple-templates` and `email-templete-drag-and-drop`.
+* **Evidence:** `password: process.env.DB_PASSWORD || 'lad_de...'` together with `username: ... || 'lad_dev'`. The same value is published as the example in `.env.example`. It replaced the earlier fallback `l98378...` (removed in `1d68988`), which is still in history.
+* **Impact:** Any database using this password (or the earlier one) is open to anyone with repo access. The silent fallback means a deployment with no `DB_PASSWORD` connects using it instead of failing.
+* **Fix (applied):**
+  * The fallback is removed, and `.env.example` now has an empty `DB_PASSWORD=`.
+  * `src/index.js` refuses to start without `DB_PASSWORD`, and without a `JWT_SECRET` of 32+ characters.
+
+  **Still to do:** change this password on every database that uses it, and fix the other branches listed above (or retire them).
+
+---
+
+## High
+
+### Finding #5: Unauthenticated Pub/Sub webhook can replay mailbox history, which auto-sends proposals
+
+* **Severity:** High · **Status:** Open — Needs verification
+* **OWASP:** A07:2021 – Identification and Authentication Failures
+* **Location:**
+  * `src/features/auto-proposal/routes/gmail-routes.js`, line 8
+  * `src/features/auto-proposal/controllers/gmail-read-email.controller.js`, lines 37–55
+  * `src/features/auto-proposal/services/gmail-read-email.service.js`, lines 351–358 and 163
+* **Evidence:**
+  * `POST /api/gmail/webhook` accepts any body. It base64-decodes `message.data` and calls `fetchNewEmails(emailAddress, historyId)`. There is no check of Google's signed OIDC push token.
+  * When no history ID is stored for that mailbox, the **caller-supplied `historyId`** becomes the starting point.
+  * Each new inbound message runs lead creation, AI extraction and `processAndSendDefaultEmailFromDragDrop`, which **emails a quotation to the sender**.
+* **Impact:** Anyone who knows a connected Gmail address can trigger mailbox processing at will, running up Gemini/OpenAI costs. For a mailbox with no stored history, they can push the start back so that old emails are processed again, which can **send automated quotations to past contacts**.
+* **Fix:**
+  * Configure the Pub/Sub push subscription with an OIDC service account, and verify the `Authorization: Bearer` token in the webhook (issuer `accounts.google.com`, audience = the webhook URL, expected service-account email) with `google-auth-library`'s `OAuth2Client.verifyIdToken`.
+  * Never use the webhook's `historyId` as a starting point; on first sync, start from `users.getProfile().historyId`.
+
+### Finding #6: HTML injection into headless Chrome (`--no-sandbox`) and server-side fetch of tenant-supplied URLs (SSRF)
+
+* **Severity:** High · **Status:** Open — Needs verification
+* **OWASP:** A10:2021 – Server-Side Request Forgery (also A03:2021 – Injection)
+* **Location:**
+  * `src/features/auto-proposal/services/proposal-draft.service.js`, lines 197 and 216
+  * `src/features/auto-proposal/services/ai-response.service.js`, lines 660–669 and 712
+* **Evidence:**
+  * `generateProposalForLeadHtml` puts `lead_name`, `lead_email`, `company_logo`, `company_tagline` and other values into HTML **without escaping**. Puppeteer then renders it with `--no-sandbox` and `waitUntil: 'networkidle0'`.
+  * `lead_name` comes from the display name of **any inbound email**, so a stranger controls it.
+  * The `.docx` path calls `fetch(tagValue)` on the tenant's `company_logo` URL, which tenants set through `/api/tenant-profile/:id/update-field` (anonymous before #1).
+* **Impact:** A crafted sender name (e.g. `<iframe src="http://internal-host/...">`) makes the server's Chrome load internal URLs and print the result into a PDF that is **emailed back to the attacker**. The logo URL gives a direct server-side fetch of arbitrary URLs. Running Chrome without its sandbox makes any renderer bug far more serious.
+* **Fix:**
+  * HTML-escape every value inserted into the template.
+  * Block network requests from Puppeteer (`page.setRequestInterception(true)`, allowing only `data:` and an allowlisted CDN), and drop `--no-sandbox` (run as a non-root user).
+  * Validate `company_logo` (and the other URL fields) as `https:` URLs on an allowlist of hosts, and refuse private/link-local IPs when fetching.
+
+### Finding #7: Unrestricted file uploads
+
+* **Severity:** High · **Status:** Open (requires a login since #1)
+* **OWASP:** A04:2021 – Insecure Design
+* **Location:**
+  * `src/features/auto-proposal/routes/quotation-template-routes.js`, line 5
+  * `email-template.routes.js` and `tenant-profile.routes.js` (same `multer({ storage: memoryStorage() })`)
+  * `src/utils/gcsUploader.js`, lines 41 and 51
+* **Evidence:**
+  * Template and logo uploads have no `limits` and no `fileFilter`, so any type and any size is buffered in memory.
+  * The original filename goes into the object path unchanged.
+  * Logos and templates get 1-year signed URLs.
+  * Uploaded `.docx` files are parsed by mammoth/xmldom and LibreOffice.
+* **Impact:** Memory exhaustion (DoS); storage abuse; hostile files sitting in GCS with long-lived public links; and an attack surface on the document parsers (see #8).
+* **Fix:**
+  * Set `limits: { fileSize }` and a MIME/extension allowlist (`.docx` for templates; `png`/`jpeg`/`webp` for logos).
+  * Name objects with server-generated IDs.
+  * Shorten signed URL lifetimes, or serve files through an authenticated endpoint.
+
+### Finding #8: Vulnerable production dependencies reachable from request paths
+
+* **Severity:** High · **Status:** Open
+* **OWASP:** A06:2021 – Vulnerable and Outdated Components
+* **Location:** `package.json` / `package-lock.json`
+* **Evidence:** `npm audit --omit=dev` reports 25 advisories: 2 critical, 14 high, 9 moderate. The ones reachable from requests:
+
+  | Package | Advisory | Reachable via |
+  |---|---|---|
+  | `multer` (direct) | GHSA-wc9g-mqfw-jrwm, GHSA-qfvm-cv95-jqjf (DoS) | every upload route |
+  | `body-parser` | GHSA-27r3-jxmh-p828 (DoS on compressed bodies) | `express.json()` / `urlencoded()` |
+  | `xmldom` (via `mammoth`) | GHSA-crh6-fp67-6883 (critical) | parsing uploaded `.docx` templates |
+
+  Also flagged: `proxy-addr` (critical-rated, only matters with `trust proxy`, which is unset); the `puppeteer` chain (`extract-zip`, `basic-ftp`, `get-uri`; mostly install-time); `js-yaml`; `zod`.
+* **Impact:** Unauthenticated (now authenticated) denial of service, and misparsing of uploaded documents.
+* **Fix:** `npm audit fix`; upgrade `multer`, `express`, `mammoth` and `puppeteer` to patched versions; add an `npm audit --omit=dev --audit-level=high` gate in CI.
+
+---
+
+## Medium
+
+### Finding #9: Cross-tenant access by record ID
+
+* **Severity:** Medium · **Status:** Open
+* **OWASP:** A01:2021 – Broken Access Control (IDOR)
+* **Location:**
+  * `src/features/auto-proposal/services/quotation-template.service.js`, lines 28–29 and 60
+  * `src/features/auto-proposal/repositories/lead_requirement_values.repository.js`, lines 96, 109 and 164
+* **Evidence:** These queries filter by record ID only, with no `tenant_id`:
+  * quotation-template preview `findById(id)` and `deleteTemplate(templateId)`;
+  * `lead_requirement_values` `findByRequirementId`, `update` and `delete`.
+* **Impact:** Even with #1 fixed, any logged-in user of **any** tenant who knows a record's UUID can download or delete another tenant's quotation templates, and read, change or delete their lead requirement values.
+* **Fix:** Add `AND tenant_id = $n` (joining through `lead_requirement` for values) and pass `req.tenantId` from the controllers.
+
+### Finding #10: Internal error messages returned to clients
+
+* **Severity:** Medium · **Status:** Open
+* **OWASP:** A05:2021 – Security Misconfiguration (CWE-209)
+* **Location:** `src/app.js`, line 71, and about 40 controller `catch` blocks (e.g. `ai.response.controller.js`, `quotation-template.controller.js`, `social-integration.controller.js`)
+* **Evidence:** `res.status(500).json({ error: error.message })` everywhere.
+* **Impact:** Postgres, Google API and GCS error text (table and column names, bucket names, token errors) is sent to clients.
+* **Fix:** Return a generic message for 5xx responses and log the details server-side with a correlation ID.
+
+### Finding #11: Customer emails and personal data written to logs
+
+* **Severity:** Medium · **Status:** Open
+* **OWASP:** A09:2021 – Security Logging and Monitoring Failures
+* **Location:**
+  * `src/features/auto-proposal/services/gmail-send-email.service.js`, line 219
+  * `conversation.controller.js`, lines 10–120
+  * `concept.controller.js`, `pricing-rule.controller.js`, `gmail-read-email.service.js` (debug dumps of tenant and lead JSON)
+* **Evidence:** An unconditional `console.log` prints the lead's email address, the proposal link, the price and the **full email content** for every outbound quotation. The repo's own rules (`lad-agent.agent.md`) forbid `console.*` in production code.
+* **Impact:** Customer correspondence and personal data pile up in log storage, where far more people and systems can read them than can read the database.
+* **Fix:** Route everything through `logger`, log IDs instead of content, and redact email and phone values.
+
+### Finding #12: Gmail OAuth tokens stored in plaintext
+
+* **Severity:** Medium · **Status:** Open — Needs verification
+* **OWASP:** A02:2021 – Cryptographic Failures
+* **Location:** `src/features/auto-proposal/repositories/user-identity.repository.js`, lines 138–167
+* **Evidence:** `access_token` and `refresh_token` are written as plain columns.
+* **Impact:** Anyone who can read the database, a backup or the logs gains long-lived read and send access to every connected Gmail account.
+* **Fix:** Encrypt the tokens at the application level (KMS envelope encryption) and restrict database access. Verify whether the database or disk is already encrypted.
+
+### Finding #13: OAuth `state` not bound to the browser session
+
+* **Severity:** Medium · **Status:** Open (residual after #3)
+* **OWASP:** A07:2021 – Identification and Authentication Failures
+* **Location:** `src/features/auto-proposal/services/google-auth.service.js` (`createState` / `verifyState`)
+* **Evidence:** The signed state proves which user *started* the flow, but not that the same browser *finishes* it.
+* **Impact:** An attacker can start a flow for their own user and trick a victim into completing consent, which links the **victim's** Gmail to the attacker's user for up to 10 minutes after the state is issued.
+* **Fix:** Set an `HttpOnly`, `SameSite=Lax` nonce cookie when the popup opens, put its hash in the state, and compare the two in the callback. Track used nonces so each state works only once.
+
+### Finding #14: No rate limiting; 50 MB body limit; AI endpoints can run up cost
+
+* **Severity:** Medium · **Status:** Open
+* **OWASP:** A04:2021 – Insecure Design
+* **Location:** `src/app.js`, line 38; the AI routes (`/api/ai-response/*`, `/api/gmail/test-prompt`, `/api/email-conversations/email-ai-*`)
+* **Evidence:** `express.urlencoded({ limit: '50mb' })`, and no rate limiting anywhere.
+* **Impact:** Easy memory pressure, plus unbounded Gemini/OpenAI spend by any logged-in user.
+* **Fix:** Add `express-rate-limit` keyed per tenant/user, with tighter limits on AI routes; reduce body limits to what is actually needed.
+
+---
+
+## Low
+
+### Finding #15: JWT verification did not pin algorithms or check issuer/audience
+
+* **Severity:** Low · **Status:** Fixed
+* **OWASP:** A07:2021 – Identification and Authentication Failures
+* **Location:** `src/middleware/auth.middleware.js`, line 16
+* **Evidence:** `jwt.verify(token, secret)` with no `algorithms` option, and no startup check on the secret.
+* **Fix (applied):** HS256/384/512 are pinned; optional `JWT_ISSUER` / `JWT_AUDIENCE` checks were added; startup fails if `JWT_SECRET` is missing or shorter than 32 characters.
+
+### Finding #16: OAuth popup `postMessage` falls back to `*` target origin
+
+* **Severity:** Low · **Status:** Open
+* **OWASP:** A05:2021 – Security Misconfiguration
+* **Location:** `src/features/auto-proposal/controllers/social-integration.controller.js` (`renderPopupHtml`)
+* **Evidence:** When `FRONTEND_URL` is unset, `targetOrigin = '*'`. The payload only says success or failure, so little is exposed.
+* **Fix:** Require `FRONTEND_URL` in production and drop the wildcard fallback.
+
+### Finding #17: Missing security headers; CORS origin hardcoded to `localhost`
+
+* **Severity:** Low · **Status:** Open
+* **OWASP:** A05:2021 – Security Misconfiguration
+* **Location:** `src/app.js`, lines 5–11
+* **Evidence:** There is no `helmet` and `X-Powered-By` is on. CORS is fixed to `http://localhost:3000` with `credentials: true`, so production needs a code change, which tends to end with a wildcard.
+* **Fix:** `app.disable('x-powered-by')`; `helmet()`; read allowed CORS origins from an environment allowlist.
+
+### Finding #18: Hardcoded fallback lead/tenant UUIDs in code and scripts
+
+* **Severity:** Low · **Status:** Open
+* **OWASP:** A04:2021 – Insecure Design
+* **Location:** `src/features/auto-proposal/controllers/gmail-read-email.controller.js`, line 112 (`7cb095...`); `scripts/dev/smoke-test.js`, line 27, and `.env.example`, line 65 (`e0a3e9...`)
+* **Evidence:** If creating the test lead fails, the AI test endpoint quietly reuses a fixed lead ID. Scripts default to a real tenant ID.
+* **Impact:** Test data can attach to a real lead or tenant.
+* **Fix:** Fail instead of falling back. Require these IDs to come from environment variables in scripts.
+
+---
+
+## Reviewed with no finding
+
+* **SQL injection:** none. All repositories use parameterised `db.query(sql, params)`. The three places that build column names dynamically (`tenant-profile.repository.js` line 27, `tenant.repository.js` line 111, `pricingRule.repository.js` line 161) pick them from fixed allowlists.
+* **Command injection:** `docxToPdf.js` uses `execFile` with fixed arguments and server-generated temporary paths.
+* **Committed secrets:** no API keys, OAuth client secrets, refresh tokens, service-account keys or private keys appear in any blob on any branch. A `.env` file committed on `Auto-proposal-frontend` (`3de0392`) held only non-secret Vite settings. The only credential leaks are the database password fallbacks in #4.
+* **XSS in the OAuth popup:** error text is HTML-escaped and the JSON payload has `<`/`>` neutralised.
+
+## Breaking change: clients must send a JWT
+
+All `/api/*` calls (except the two Google endpoints) now need `Authorization: Bearer <JWT>` with `tenantId` and `userId` claims. That is the token `/api/email-conversations` already required. Clients that send only `X-Tenant-Id` will get `401`. Tenant administration needs `roles: ["platform_admin"]`.
+
+## Recommended order
+
+1. **Now:** deploy this branch together with the client change to send the JWT; rotate the database password(s) from #4; fix or retire the other branches that still have the fallback.
+2. **Next:** #5 (verify Pub/Sub tokens), #6 (escape the HTML, sandbox Puppeteer), #7 and #8 (upload limits, dependency upgrades), #9 (tenant filters on ID lookups).
+3. **Then:** #10–#14 and the Low findings.

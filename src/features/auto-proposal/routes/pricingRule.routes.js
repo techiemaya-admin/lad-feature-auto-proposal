@@ -1,9 +1,10 @@
 const express = require('express');
-const { tenantContext } = require('../../../middleware/tenant-context');
+const { tenantContext, enforceTenantParams } = require('../../../middleware/tenant-context');
 const router = express.Router();
 const controller = require('../controllers/pricing-rule.controller');
 
 router.use(tenantContext);
+enforceTenantParams(router);
 
 router.post('/', controller.create);
 router.get('/', controller.getAll);

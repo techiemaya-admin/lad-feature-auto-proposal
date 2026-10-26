@@ -3,8 +3,8 @@
 Comprehensive reference for all backend endpoints mounted in `src/app.js`.
 
 > **Base URL:** `http://localhost:3000`  
-> **Tenant Header:** Endpoints requiring tenant scoping must include `X-Tenant-Id: <tenant-uuid>`.  
-> **Auth Header:** Protected endpoints require `Authorization: Bearer <jwt-token>`.
+> **Auth Header (required):** Every `/api/*` endpoint requires `Authorization: Bearer <jwt-token>`, except `POST /api/gmail/webhook` and `GET /api/social-integration/email/google/callback` (both called by Google). The token must carry `tenantId` and `userId` (or `id`); `roles: ["platform_admin"]` is needed to create or list tenants.  
+> **Tenant scope:** The tenant always comes from the token. `X-Tenant-Id` is optional and, if sent, must equal the token's `tenantId` (otherwise `403`). Any `:tenantId` / `:tenant_id` in a URL must also equal the token's tenant (otherwise `403`). The examples below still show `X-Tenant-Id`; add the `Authorization` header to each.
 
 ---
 
@@ -681,12 +681,12 @@ Integrations for linking user-scoped OAuth identities (e.g. Gmail) to power auto
 > In production environments without session tokens, pass `X-User-Id: <user-uuid>` to isolate user identities. In development environments (`NODE_ENV !== 'production'`), requests fallback to the default seeded admin user.
 
 ### `GET /api/social-integration/email/google/callback`
-Public OAuth2 callback endpoint redirected from Google's consent screen. Receives `code`, `state` (base64-encoded `{ tenantId, userId }`), and optional `error` (e.g. `access_denied`).
+Public OAuth2 callback endpoint redirected from Google's consent screen. Receives `code`, `state` (a signed, 10-minute token issued by `/start`), and optional `error` (e.g. `access_denied`). Callbacks with a missing, forged or expired `state` are rejected.
 Returns a self-closing HTML document that communicates back to the parent window opener via `window.opener.postMessage(payload, targetOrigin)`.
 
 **Query Parameters:**
 * `code` (string): OAuth authorization code from Google (required for success).
-* `state` (string): Base64-encoded JSON `{ tenantId, userId }` or tenant ID string.
+* `state` (string): Signed state token from `/start`. Unsigned or plain-string state is rejected.
 * `error` (string, optional): Error code from Google if consent is cancelled or denied.
 * `error_description` (string, optional): Human-readable error description from Google.
 
@@ -699,7 +699,7 @@ curl -i "http://localhost:3000/api/social-integration/email/google/callback?code
 ```
 
 ### `POST /api/social-integration/email/google/start`
-Generates the Google OAuth authorization URL with encoded tenant and user context in the `state` parameter.
+Generates the Google OAuth authorization URL. The authenticated tenant and user from the JWT are signed into the `state` parameter; the user cannot be chosen via header, query or body.
 
 ```bash
 curl -i -X POST http://localhost:3000/api/social-integration/email/google/start \

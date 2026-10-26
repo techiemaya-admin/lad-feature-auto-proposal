@@ -1,9 +1,10 @@
 const express = require('express');
-const { tenantContext } = require('../../../middleware/tenant-context');
+const { tenantContext, enforceTenantParams } = require('../../../middleware/tenant-context');
 const router = express.Router({ mergeParams: true });
 const matrixController = require('../controllers/concept-pricing.controller');
 
 router.use(tenantContext);
+enforceTenantParams(router);
 
 router.post('/', matrixController.create);
 router.get('/', matrixController.listAll);

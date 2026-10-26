@@ -34,26 +34,70 @@ describe('GoogleAuthService', () => {
         });
     });
 
-    describe('getAuthUrl', () => {
-        it('generates an offline consent URL containing the provided tenant state', () => {
-            const tenantId = 'tenant-abc-123';
-            const url = googleAuthService.getAuthUrl(tenantId);
+    describe('getAuthUrl and OAuth state', () => {
+        const originalSecret = process.env.JWT_SECRET;
+        const originalStateSecret = process.env.OAUTH_STATE_SECRET;
+        const jwt = require('jsonwebtoken');
+
+        beforeEach(() => {
+            process.env.JWT_SECRET = 'test-jwt-secret-that-is-at-least-32-chars';
+            delete process.env.OAUTH_STATE_SECRET;
+        });
+
+        afterAll(() => {
+            process.env.JWT_SECRET = originalSecret;
+            if (originalStateSecret === undefined) delete process.env.OAUTH_STATE_SECRET;
+            else process.env.OAUTH_STATE_SECRET = originalStateSecret;
+        });
+
+        function stateFromUrl(url) {
+            return new URL(url).searchParams.get('state');
+        }
+
+        it('generates an offline consent URL with a signed state', () => {
+            const url = googleAuthService.getAuthUrl('tenant-abc-123', 'user-xyz-456');
 
             expect(typeof url).toBe('string');
             expect(url).toContain('access_type=offline');
             expect(url).toContain('prompt=consent');
-            expect(url).toContain(`state=${tenantId}`);
             expect(url).toContain('gmail.readonly');
             expect(url).toContain('gmail.send');
+            expect(googleAuthService.verifyState(stateFromUrl(url))).toEqual({
+                tenantId: 'tenant-abc-123',
+                userId: 'user-xyz-456',
+            });
         });
 
-        it('encodes base64 state payload containing both tenantId and userId when userId is provided', () => {
-            const tenantId = 'tenant-abc-123';
-            const userId = 'user-xyz-456';
-            const url = googleAuthService.getAuthUrl(tenantId, userId);
+        it('refuses to start OAuth without both tenantId and userId', () => {
+            expect(() => googleAuthService.getAuthUrl('tenant-abc-123')).toThrow();
+            expect(() => googleAuthService.getAuthUrl(null, 'user-xyz-456')).toThrow();
+        });
 
-            const expectedState = Buffer.from(JSON.stringify({ tenantId, userId })).toString('base64');
-            expect(url).toContain(`state=${encodeURIComponent(expectedState)}`);
+        it('rejects unsigned base64 JSON state', () => {
+            const forged = Buffer.from(JSON.stringify({ tenantId: 't', userId: 'u' })).toString('base64');
+            expect(() => googleAuthService.verifyState(forged)).toThrow();
+        });
+
+        it('rejects state signed with a different key', () => {
+            const forged = jwt.sign({ purpose: 'google_oauth_state', tenantId: 't', userId: 'u' }, 'attacker-key');
+            expect(() => googleAuthService.verifyState(forged)).toThrow();
+        });
+
+        it('rejects expired state', () => {
+            const url = googleAuthService.getAuthUrl('tenant-abc-123', 'user-xyz-456');
+            const state = stateFromUrl(url);
+            const realNow = Date.now;
+            try {
+                Date.now = () => realNow() + 11 * 60 * 1000;
+                expect(() => googleAuthService.verifyState(state)).toThrow();
+            } finally {
+                Date.now = realNow;
+            }
+        });
+
+        it('cannot be verified as an API bearer token with JWT_SECRET', () => {
+            const state = stateFromUrl(googleAuthService.getAuthUrl('tenant-abc-123', 'user-xyz-456'));
+            expect(() => jwt.verify(state, process.env.JWT_SECRET)).toThrow();
         });
     });
 

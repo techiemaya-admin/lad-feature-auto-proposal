@@ -1,7 +1,24 @@
+const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const { google } = require('googleapis');
 const userIdentityRepository = require('../repositories/user-identity.repository');
 const gmailService = require('./gmail-read-email.service');
 const logger = require('../../../utils/logger');
+
+const STATE_PURPOSE = 'google_oauth_state';
+const STATE_TTL = '10m';
+
+/**
+ * Key for signing OAuth state, derived from OAUTH_STATE_SECRET (or JWT_SECRET) so that a
+ * state token can never be replayed as an API bearer token.
+ */
+function getStateKey() {
+    const secret = process.env.OAUTH_STATE_SECRET || process.env.JWT_SECRET;
+    if (!secret) {
+        throw new Error('OAUTH_STATE_SECRET or JWT_SECRET must be configured');
+    }
+    return crypto.createHmac('sha256', secret).update(STATE_PURPOSE).digest();
+}
 
 class GoogleAuthService {
     /**
@@ -15,12 +32,33 @@ class GoogleAuthService {
         );
     }
 
-    getAuthUrl(tenantId, userId = null) {
+    /** Signs the authenticated tenant/user into a short-lived OAuth state value. */
+    createState(tenantId, userId) {
+        if (!tenantId || !userId) {
+            throw new Error('tenantId and userId are required to start Google OAuth');
+        }
+        return jwt.sign({ purpose: STATE_PURPOSE, tenantId, userId }, getStateKey(), {
+            algorithm: 'HS256',
+            expiresIn: STATE_TTL,
+        });
+    }
+
+    /** Verifies an OAuth state value; throws if it is forged, expired or malformed. */
+    verifyState(state) {
+        if (!state || typeof state !== 'string') {
+            throw new Error('Missing OAuth state');
+        }
+        const decoded = jwt.verify(state, getStateKey(), { algorithms: ['HS256'] });
+        if (decoded.purpose !== STATE_PURPOSE || !decoded.tenantId || !decoded.userId) {
+            throw new Error('Invalid OAuth state');
+        }
+        return { tenantId: decoded.tenantId, userId: decoded.userId };
+    }
+
+    getAuthUrl(tenantId, userId) {
         const client = this.createOAuth2Client();
         logger.info("Generating Google Auth URL", { tenantId, userId });
-        const statePayload = userId
-            ? Buffer.from(JSON.stringify({ tenantId, userId })).toString('base64')
-            : tenantId;
+        const statePayload = this.createState(tenantId, userId);
         return client.generateAuthUrl({
             access_type: 'offline', // Critical for getting the refresh_token
             prompt: 'consent',

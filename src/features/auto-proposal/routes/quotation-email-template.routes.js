@@ -1,6 +1,10 @@
 // routes/quotationEmail.routes.js
 const express = require('express');
+const { tenantContext, enforceTenantParams } = require('../../../middleware/tenant-context');
 const router = express.Router();
+
+router.use(tenantContext);
+enforceTenantParams(router);
 const controller = require('../controllers/quotation-email-template.controller');
 // const auth = require('../middleware/auth'); // Should provide req.user.tenant_id
 
