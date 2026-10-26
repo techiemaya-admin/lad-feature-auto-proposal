@@ -58,5 +58,4 @@ function isUuid(value) {
 
 module.exports = {
   validateBody,
-  isUuid,
 };

@@ -4,3 +4,18 @@ node_modules/
 .DS_Store
 .idea/
 *.iml
+service-account.json
+.rough
+.agents
+skills-lock.json
+prototypes/new-auto-proposal/backend/storage/
+prototypes/new-auto-proposal/logs/
+coverage
+oauth2.keys.json
+client_secret_*.json
+*.docx#
+.claude
+prototypes/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/

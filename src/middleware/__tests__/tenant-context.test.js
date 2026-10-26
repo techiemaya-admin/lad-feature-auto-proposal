@@ -1,74 +1,79 @@
-jest.mock('../../features/tenant/repositories/tenant.repository', () => ({
-  findById: jest.fn(),
-}));
-
-const tenantRepository = require('../../features/tenant/repositories/tenant.repository');
 const { tenantContext } = require('../tenant-context');
+const tenantRepository = require('../../features/auto-proposal/repositories/tenant.repository');
 
-const TENANT_ID = '11111111-1111-4111-8111-111111111111';
-const OTHER_TENANT_ID = '22222222-2222-4222-8222-222222222222';
+jest.mock('../../features/auto-proposal/repositories/tenant.repository');
 
-function mockRes() {
-  return { status: jest.fn().mockReturnThis(), json: jest.fn() };
-}
+describe('Tenant Context Middleware (tenantContext)', () => {
+  let req;
+  let res;
+  let next;
 
-describe('tenantContext', () => {
   beforeEach(() => {
-    tenantRepository.findById.mockReset();
+    jest.clearAllMocks();
+    req = {
+      headers: {},
+    };
+    res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn().mockReturnThis(),
+    };
+    next = jest.fn();
   });
 
-  it('sets req.tenantId from the authenticated token', async () => {
-    tenantRepository.findById.mockResolvedValue({ id: TENANT_ID });
-    const req = { auth: { tenantId: TENANT_ID }, headers: {} };
-    const next = jest.fn();
-
-    await tenantContext(req, mockRes(), next);
-
-    expect(tenantRepository.findById).toHaveBeenCalledWith(TENANT_ID);
-    expect(req.tenantId).toBe(TENANT_ID);
-    expect(next).toHaveBeenCalledWith();
-  });
-
-  it('returns 403 when the token has no tenant, even if X-Tenant-Id is sent', async () => {
-    const req = { auth: { tenantId: null }, headers: { 'x-tenant-id': TENANT_ID } };
-    const res = mockRes();
-    const next = jest.fn();
-
+  it('returns 400 when X-Tenant-Id header is missing', async () => {
     await tenantContext(req, res, next);
 
-    expect(res.status).toHaveBeenCalledWith(403);
-    expect(next).not.toHaveBeenCalled();
-    expect(tenantRepository.findById).not.toHaveBeenCalled();
-  });
-
-  it('returns 403 when X-Tenant-Id does not match the token tenant', async () => {
-    const req = { auth: { tenantId: TENANT_ID }, headers: { 'x-tenant-id': OTHER_TENANT_ID } };
-    const res = mockRes();
-    const next = jest.fn();
-
-    await tenantContext(req, res, next);
-
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ error: 'X-Tenant-Id header is required' });
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('returns 403 when the token tenant is not a UUID', async () => {
-    const req = { auth: { tenantId: 'not-a-uuid' }, headers: {} };
-    const res = mockRes();
-
-    await tenantContext(req, res, jest.fn());
-
-    expect(res.status).toHaveBeenCalledWith(403);
-    expect(tenantRepository.findById).not.toHaveBeenCalled();
-  });
-
-  it('returns 404 when the tenant does not exist', async () => {
+  it('returns 404 when tenant is not found in repository', async () => {
+    req.headers['x-tenant-id'] = 'non-existent-tenant-999';
     tenantRepository.findById.mockResolvedValue(null);
-    const req = { auth: { tenantId: TENANT_ID }, headers: {} };
-    const res = mockRes();
 
-    await tenantContext(req, res, jest.fn());
+    await tenantContext(req, res, next);
 
+    expect(tenantRepository.findById).toHaveBeenCalledWith('non-existent-tenant-999');
     expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Tenant not found' });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('sets req.tenantId and calls next() when tenant exists', async () => {
+    req.headers['x-tenant-id'] = 'tenant-valid-123';
+    const mockTenant = { id: 'tenant-valid-123', name: 'Acme Corp' };
+    tenantRepository.findById.mockResolvedValue(mockTenant);
+
+    await tenantContext(req, res, next);
+
+    expect(tenantRepository.findById).toHaveBeenCalledWith('tenant-valid-123');
+    expect(req.tenantId).toBe('tenant-valid-123');
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('resolves tenant from req.tenantId when X-Tenant-Id header is not set', async () => {
+    req.tenantId = 'tenant-from-jwt-456';
+    const mockTenant = { id: 'tenant-from-jwt-456', name: 'Acme Corp' };
+    tenantRepository.findById.mockResolvedValue(mockTenant);
+
+    await tenantContext(req, res, next);
+
+    expect(tenantRepository.findById).toHaveBeenCalledWith('tenant-from-jwt-456');
+    expect(req.tenantId).toBe('tenant-from-jwt-456');
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('passes repository errors to next()', async () => {
+    req.headers['x-tenant-id'] = 'tenant-valid-123';
+    const dbError = new Error('Database connection failure');
+    tenantRepository.findById.mockRejectedValue(dbError);
+
+    await tenantContext(req, res, next);
+
+    expect(next).toHaveBeenCalledWith(dbError);
+    expect(res.status).not.toHaveBeenCalled();
   });
 });

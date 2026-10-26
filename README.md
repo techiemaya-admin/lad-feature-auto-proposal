@@ -1,77 +1,83 @@
-# Rush Away – Quotation & Pricing System
+# Rush Away – Auto-Proposal & Dynamic Pricing Backend
 
-Node.js + Express backend. Multi-tenant quotation and pricing system with PostgreSQL and TypeORM.
+Multi-tenant Node.js + Express backend powering dynamic price calculation, automated quotation generation, and AI-driven client proposal workflows following LAD architecture standards.
 
-## Tech stack
+---
 
-- **Runtime:** Node.js 18+
-- **Framework:** Express.js
-- **Database:** PostgreSQL
-- **ORM:** TypeORM (plain JavaScript, EntitySchema)
-- **Language:** JavaScript only (no TypeScript)
+## Quick Start
 
-## Setup
+### 1. Configure Environment
+Copy the example environment file and configure your database and service credentials:
+```bash
+cp .env.example .env
+```
 
-1. Copy env and set DB credentials and `JWT_SECRET` (both required — the app refuses to start without them):
-   ```bash
-   cp .env.example .env
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Start PostgreSQL and ensure DB `lad_dev` exists (or set `DB_NAME` in `.env`).
-4. Run the app:
-   ```bash
-   npm run dev
-   ```
-   In development, TypeORM will create/update tables (`synchronize: true`). For production, use migrations and set `synchronize: false`.
+### 2. Install Dependencies
+```bash
+npm install
+```
 
-5. Run tests (optional):
-   ```bash
-   npm test
-   ```
-   Tests use Jest and mocks for repositories (no DB required for unit tests).
+### 3. Database Setup
+Ensure PostgreSQL is running with the database specified in `.env` (default: `lad_dev`).
 
-## API
+```bash
+# Run database migrations
+npm run migration:run
+```
 
-### Authentication
+### 4. Start the Application
+```bash
+# Development mode (with nodemon):
+npm run dev
 
-Every `/api/*` route requires `Authorization: Bearer <JWT>` (only `GET /health` is public). Tokens are verified with `JWT_SECRET` (HS256/384/512) and, if set, `JWT_ISSUER` / `JWT_AUDIENCE`. Expected claims:
+# Production mode:
+npm start
+```
 
-| Claim | Meaning |
-|---|---|
-| `sub` | User id (required) |
-| `tenant_id` | Tenant UUID the user belongs to — all tenant-scoped data is read/written for this tenant only |
-| `roles` | Optional string array; `platform_admin` is required to create or list tenants |
-| `exp` | Expiry (recommended) |
+### 5. Running Tests & Quality Checks
+```bash
+npm test         # Run unit tests
+npm run lint     # Lint source code
+```
 
-The tenant is taken **only** from the token. `X-Tenant-Id` is no longer needed; if a client still sends it, it must match the token's `tenant_id` or the request gets `403`.
+---
 
-Tenant endpoints: `POST /api/tenants` and `GET /api/tenants` require `platform_admin`; `GET /api/tenants/:id` is allowed for platform admins or for the caller's own tenant.
+## Project Structure
 
-- **Health:** `GET /health`
-- **Tenants:** `POST /api/tenants`, `GET /api/tenants`, `GET /api/tenants/:id`
-- **Locations:** `POST /api/locations`, `GET /api/locations`, `GET /api/locations/:id`
-- **Concepts:** `POST /api/concepts`, `GET /api/concepts`, `GET /api/concepts?location_id=...`, `GET /api/concepts/:id`, `POST /api/concepts/:conceptId/locations/:locationId`, `POST /api/concepts/:id/pricing` (body: `base_price`, optional `min_quantity`, `unit`, `location_multiplier`)
-- **Leads:** `POST /api/leads`, `GET /api/leads`, `GET /api/leads/:id`
-- **Pricing:** `POST /api/pricing/calculate` (body: `concept_id`, optional `location_id`, `quantity`, `lead_requirement_id`), `POST /api/pricing/rules` (body: `name`, `rule_type`, optional `parameters`, `evaluation_order`, `is_active`)
-- **Quotations:** `POST /api/quotations/generate` (body: `lead_requirement_id`, `concept_id`, optional `quantity`, `quotation_template_metadata_id`), `GET /api/quotations/lead/:leadId`, `GET /api/quotations/:id`
-- **Quotation templates:** `POST /api/quotation-templates` (body: `name`, optional `template_key`, `structure`, `is_default`), `GET /api/quotation-templates`, `GET /api/quotation-templates/:id`, `PATCH /api/quotation-templates/:id/default`
+```
+lad-feature-auto-proposal/
+├── CONTEXT.md               # Canonical domain glossary
+├── docs/                    # Central project documentation
+│   ├── adr/                 # Architecture Decision Records
+│   ├── agents/              # Agent guidelines & triage roles
+│   ├── api.md               # Complete API reference & curl examples
+│   ├── architecture.md      # LAD architecture & multi-tenancy rules
+│   └── frontend-sdk.md      # Client SDK-first integration guide
+├── migrations/              # TypeORM database migrations
+├── src/
+│   ├── config/              # Database & service configurations
+│   ├── middleware/          # Auth, tenant context & validation middleware
+│   ├── utils/               # Centralized logger & helper utilities
+│   ├── features/
+│   │   └── auto-proposal/   # Auto-proposal core feature module
+│   │       ├── controllers/ # HTTP parsing & orchestration
+│   │       ├── services/    # Business logic & AI pipelines
+│   │       ├── repositories/# TypeORM data access & tenant scoping
+│   │       ├── routes/      # Express route definitions
+│   │       └── dtos/        # Request & response data transfer shapes
+│   ├── app.js               # Express application initialization
+│   └── index.js             # Application entry point
+├── package.json             # Root dependencies & scripts
+└── README.md                # This file
+```
 
-## Example flows
+---
 
-1. **Create lead:** Create tenant → create location → create lead with `location_id`.
-2. **Generate quotation:** Create concept, link to location (ConceptLocation), add ConceptPricingMatrix row, optionally add PricingRule. Then `POST /api/quotations/generate` with `lead_requirement_id` and `concept_id`.
-3. **Calculate pricing only:** `POST /api/pricing/calculate` with `concept_id`, `location_id`, `quantity`.
+## Documentation Index
 
-## Project structure
-
-- `src/config/` – DataSource, base columns
-- `src/middleware/` – Tenant context
-- `src/features/**/entities/` – TypeORM EntitySchema (Tenant, Location, Concept, etc.)
-- `src/features/**/repositories/` – DB access only
-- `src/features/**/services/` – Business logic (including `pricing-engine.service.js`)
-- `src/features/**/controllers/` – HTTP handlers
-- `src/features/**/dtos/` – Request/response shapes
-- `src/features/**/modules/` – Feature routers
+- 📖 **[Domain Glossary](CONTEXT.md)**: Canonical domain terms and vocabulary boundaries.
+- 🚀 **[API Reference](docs/api.md)**: All 20 mounted endpoint groups with request/response payloads and `curl` examples.
+- 🏗️ **[Architecture Guidelines](docs/architecture.md)**: Multi-tenancy enforcement, clean layering, database schema rules, and AI pipelines.
+- 💻 **[Frontend SDK Guide](docs/frontend-sdk.md)**: SDK-first integration guide for web applications and client consumers.
+- 📋 **[Architecture Decision Records](docs/adr/)**: Architectural decisions on data access, tenancy scoping, and module packaging.
+- 🤖 **[Agent Guidelines](docs/agents/)**: Agent conventions, issue tracking, and triage labels.

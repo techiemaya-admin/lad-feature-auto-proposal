@@ -1,0 +1,128 @@
+const AppDataSource = require("../../../config/data-source");
+const crypto = require('crypto');
+
+const ALLOWED_FIELDS = [
+  'name',
+  'slug',
+  'status',
+  'plan_tier',
+  'email',
+  'phone',
+  'website',
+  'metadata'
+];
+
+class TenantRepository {
+  
+  // =====================================================
+  // CREATE TENANT
+  // =====================================================
+  async create(tenantData) {
+    const id = crypto.randomUUID();
+    const {
+      name,
+      slug,
+      status = 'trial',
+      plan_tier = 'free',
+      email = null,
+      phone = null,
+      website = null,
+      logo_url,
+      settings,
+      metadata = {}
+    } = tenantData;
+
+    const mergedMetadata = {
+      ...(typeof metadata === 'object' && metadata !== null ? metadata : {}),
+      ...(logo_url !== undefined ? { logo_url } : {}),
+      ...(settings !== undefined ? { settings } : {})
+    };
+
+    const sql = `
+      INSERT INTO tenants (id, name, slug, status, plan_tier, email, phone, website, metadata, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+      RETURNING *;
+    `;
+
+    const result = await AppDataSource.query(sql, [
+      id,
+      name,
+      slug || null,
+      status,
+      plan_tier,
+      email,
+      phone,
+      website,
+      JSON.stringify(mergedMetadata)
+    ]);
+
+    return result[0];
+  }
+
+  // =====================================================
+  // FIND BY ID
+  // =====================================================
+  async findById(id) {
+    const sql = `
+      SELECT * FROM tenants 
+      WHERE id = $1 ;
+    `;
+
+    const result = await AppDataSource.query(sql, [id]);
+    return result[0] || null;
+  }
+
+  // =====================================================
+  // FIND BY SLUG (Useful for subdomains/routing)
+  // =====================================================
+  async findBySlug(slug) {
+    const sql = `
+      SELECT * FROM tenants 
+      WHERE slug = $1 ;
+    `;
+
+    const result = await AppDataSource.query(sql, [slug]);
+    return result[0] || null;
+  }
+
+  // =====================================================
+  // FIND ALL (With Pagination)
+  // =====================================================
+  async findAll(limit = 100, offset = 0) {
+    const sql = `
+      SELECT * FROM tenants 
+      ORDER BY created_at DESC 
+      LIMIT $1 OFFSET $2;
+    `;
+
+    return await AppDataSource.query(sql, [limit, offset]);
+  }
+
+  // =====================================================
+  // UPDATE TENANT
+  // =====================================================
+  async update(id, updateData) {
+    if (!updateData || typeof updateData !== 'object') return null;
+
+    const fields = Object.keys(updateData).filter(field => ALLOWED_FIELDS.includes(field));
+    if (fields.length === 0) return null;
+
+    const setClause = fields
+      .map((field, index) => `${field} = $${index + 2}`)
+      .join(", ");
+    
+    const values = [id, ...fields.map(field => updateData[field])];
+
+    const sql = `
+      UPDATE tenants 
+      SET ${setClause}, updated_at = NOW() 
+      WHERE id = $1 
+      RETURNING *;
+    `;
+
+    const result = await AppDataSource.query(sql, values);
+    return result[0];
+  }
+}
+
+module.exports = new TenantRepository();
