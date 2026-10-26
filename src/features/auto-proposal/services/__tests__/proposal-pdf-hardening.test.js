@@ -62,6 +62,23 @@ describe('Puppeteer PDF renderer hardening', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requestHandlers.length = 0;
+    // Simulate a non-root service user so Chrome launches with its sandbox
+    jest.spyOn(process, 'getuid').mockReturnValue(1000);
+    delete process.env.PUPPETEER_DISABLE_SANDBOX;
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('launches Chrome with its sandbox enabled', async () => {
+    const puppeteer = require('puppeteer');
+    await aiService.generateProposalWithoutQuotationTemplate(baseData, '/tmp/x.pdf', 'proposals/x.pdf');
+
+    const options = puppeteer.launch.mock.calls[0][0];
+    expect(options.headless).toBe(true);
+    expect(options.args).not.toContain('--no-sandbox');
+    expect(options.args).not.toContain('--disable-setuid-sandbox');
   });
 
   it('disables JavaScript and blocks non-allowlisted requests', async () => {

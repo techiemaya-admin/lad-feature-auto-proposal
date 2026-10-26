@@ -15,7 +15,7 @@
 | Severity | Count | Fixed on this branch |
 |---|---|---|
 | **Critical** | 4 | 4 (code); password rotation still required |
-| **High** | 4 | 4 (residual items noted under #6 and #8) |
+| **High** | 4 | 4 |
 | **Medium** | 6 | 6 |
 | **Low** | 4 | 4 |
 | **Total** | **18** | |
@@ -27,9 +27,9 @@
 | 3 | Critical | Gmail OAuth account-link hijack (unsigned `state`, trusted `X-User-Id`, default user) | **Fixed** |
 | 4 | Critical | Hardcoded database password fallback | **Fixed in code — rotate the password** |
 | 5 | High | Unauthenticated Pub/Sub webhook can replay mailbox history, which auto-sends proposals | **Fixed** — set the Pub/Sub env vars |
-| 6 | High | HTML injection into headless Chrome (`--no-sandbox`) and server-side fetch of tenant-supplied URLs (SSRF) | **Fixed** (Chrome still runs without its sandbox) |
+| 6 | High | HTML injection into headless Chrome (`--no-sandbox`) and server-side fetch of tenant-supplied URLs (SSRF) | **Fixed** |
 | 7 | High | Unrestricted file uploads (no type/size limits, raw filenames, 1-year public links) | **Fixed** (1-year logo links kept) |
-| 8 | High | Vulnerable production dependencies reachable from request paths (multer, body-parser, xmldom) | **Fixed** (Puppeteer 25 needs Node 22) |
+| 8 | High | Vulnerable production dependencies reachable from request paths (multer, body-parser, xmldom) | **Fixed** |
 | 9 | Medium | Cross-tenant access by record ID (templates, lead requirement values) | **Fixed** |
 | 10 | Medium | Internal error messages returned to clients | **Fixed** |
 | 11 | Medium | Customer emails and personal data written to logs | **Fixed** |
@@ -143,7 +143,7 @@
 
 ### Finding #6: HTML injection into headless Chrome (`--no-sandbox`) and server-side fetch of tenant-supplied URLs (SSRF)
 
-* **Severity:** High · **Status:** Fixed (residual: Chrome sandbox still disabled)
+* **Severity:** High · **Status:** Fixed
 * **OWASP:** A10:2021 – Server-Side Request Forgery (also A03:2021 – Injection)
 * **Location:**
   * `src/features/auto-proposal/services/proposal-draft.service.js`, lines 197 and 216
@@ -163,7 +163,7 @@
   * The `.docx` image fetch goes through `fetchAllowedImage` (`src/utils/safe-url.js`): https, host allowlist (`storage.googleapis.com`, `cdn-icons-png.flaticon.com`, plus `ALLOWED_IMAGE_HOSTS`), no redirects, 10 s timeout, 5 MB cap, `image/*` only.
   * `PATCH /api/tenant-profile/:id/update-field` rejects a non-allowlisted `company_logo_url`, and any `*_url` link that isn't http(s).
   * Verified with a real Chromium: an injected `<img>`/`<iframe>` to a local server and a `<script>` caused zero requests and no script ran, and the PDF still rendered.
-  * **Residual:** `--no-sandbox` is kept, because removing it breaks Chrome when it runs as root in containers. Run the service as a non-root user and drop the flag.
+  * ~~**Residual:** `--no-sandbox` is kept.~~ **Resolved:** Chrome now launches with its sandbox (`src/utils/browser.js`). As root it refuses to start with a clear error instead of silently dropping the sandbox. `PUPPETEER_DISABLE_SANDBOX=true` is an explicit, logged opt-out. Verified as an unprivileged user: `chrome://sandbox` reports namespace and seccomp-BPF sandboxing ("You are adequately sandboxed"), and a proposal PDF still renders.
 
 ### Finding #7: Unrestricted file uploads
 
@@ -194,7 +194,7 @@
 
 ### Finding #8: Vulnerable production dependencies reachable from request paths
 
-* **Severity:** High · **Status:** Fixed (residual: Puppeteer chain)
+* **Severity:** High · **Status:** Fixed
 * **OWASP:** A06:2021 – Vulnerable and Outdated Components
 * **Location:** `package.json` / `package-lock.json`
 * **Evidence:** `npm audit --omit=dev` reports 25 advisories: 2 critical, 14 high, 9 moderate. The ones reachable from requests:
@@ -212,7 +212,7 @@
   * `npm audit fix` upgraded `multer` to 2.5.0, `express` to 4.22.3 (with `body-parser` 1.20.9 and `proxy-addr` 2.0.8), and the patched `js-yaml`, `brace-expansion` and `qs`. `package.json` now requires `express ^4.22.3` and `multer ^2.5.0`.
   * An npm `overrides` entry replaces the image module's `xmldom` 0.1.31 with the maintained `@xmldom/xmldom` 0.8.x. Rendering the repo's quotation template with an image produced identical output before and after.
   * Result: 25 advisories (2 critical, 14 high) down to 15 (**0 critical**, 10 high, 5 moderate).
-  * **Residual:** all 10 remaining highs are in `puppeteer` 24's browser-download and proxy code (`extract-zip`, `basic-ftp`, `get-uri`, `proxy-agent`, `zod` via `chromium-bidi`), which requests never reach. The fix is `puppeteer` 25, which requires Node ≥ 22.12 (this project declares Node ≥ 18). Upgrade both together. The moderates need `@google-cloud/storage` 8 (a major upgrade).
+  * ~~**Residual:** 10 highs in the `puppeteer` 24 chain.~~ **Resolved:** upgraded to `puppeteer` 25.16 and raised the required Node version to ≥ 22.12 (`engines`, `.nvmrc`). Production advisories are now **0 critical, 0 high**, 5 moderate. The moderates are all in the `@google-cloud/storage` 7 chain (`gaxios`, `teeny-request`, `retry-request`, `uuid`) and need a major upgrade to `@google-cloud/storage` 8.
 
 ---
 

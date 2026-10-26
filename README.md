@@ -13,9 +13,12 @@ cp .env.example .env
 ```
 
 ### 2. Install Dependencies
+Requires **Node.js 22.12 or newer** (see `.nvmrc`); Puppeteer 25 is ESM-only and is loaded with `require()`, which older Node versions do not support.
 ```bash
 npm install
 ```
+
+**Run the service as a non-root user.** Proposal PDFs are rendered in headless Chrome with its sandbox enabled, and Chrome cannot sandbox itself as root: as root, PDF rendering fails with a clear error. In containers, add a non-root `USER` (and keep the default seccomp profile, which allows the user namespaces Chrome needs). `PUPPETEER_DISABLE_SANDBOX=true` is a logged, last-resort opt-out.
 
 ### 3. Database Setup
 Ensure PostgreSQL is running with the database specified in `.env` (default: `lad_dev`).

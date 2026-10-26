@@ -13,7 +13,7 @@ const crypto = require('crypto');
 const PizZip = require("pizzip");
 const Docxtemplater = require("docxtemplater");
 const mammoth = require("mammoth");
-const puppeteer = require("puppeteer");
+const { launchBrowser } = require("../../src/utils/browser");
 const { Storage } = require('@google-cloud/storage');
 const quotationPlaceholderRepository = require('../../src/features/auto-proposal/repositories/quotation-placeholder.repository');
 const templateRepository = require('../../src/features/auto-proposal/repositories/quotation-template-metadata.repository');
@@ -73,7 +73,7 @@ async function runSmokeTest() {
     const filledDocxBuffer = doc.getZip().generate({ type: "nodebuffer" });
 
     const { value: htmlBody } = await mammoth.convertToHtml({ buffer: filledDocxBuffer });
-    browser = await puppeteer.launch({ headless: "new" });
+    browser = await launchBrowser();
     const page = await browser.newPage();
     await page.setContent(`<html><body>${htmlBody}</body></html>`, { waitUntil: 'networkidle0' });
     await page.pdf({ path: localPdfPath, format: 'A4' });
