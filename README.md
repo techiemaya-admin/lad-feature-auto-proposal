@@ -20,6 +20,12 @@ npm install
 ### 3. Database Setup
 Ensure PostgreSQL is running with the database specified in `.env` (default: `lad_dev`).
 
+`DB_PASSWORD` and `JWT_SECRET` (32+ characters) are required; the server refuses to start without them.
+
+### Authentication
+
+Every `/api/*` route requires `Authorization: Bearer <JWT>`, except the two endpoints Google calls (`POST /api/gmail/webhook`, `GET /api/social-integration/email/google/callback`). The token must carry `tenantId` and `userId` (or `id`). The tenant is taken only from the token: `X-Tenant-Id` and any `:tenantId` in a URL must match it or the request gets `403`. Creating and listing tenants requires `roles: ["platform_admin"]`. See `docs/api.md`.
+
 ```bash
 # Run database migrations
 npm run migration:run

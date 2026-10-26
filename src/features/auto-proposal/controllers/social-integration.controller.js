@@ -2,22 +2,12 @@ const userIdentityRepository = require("../repositories/user-identity.repository
 const authService = require("../services/google-auth.service");
 const logger = require("../../../utils/logger");
 
-const DEFAULT_DEV_USER_ID = 'b8c1ffa5-3000-4e85-bf56-237ba478aea2';
-
 /**
- * Resolves active user ID from request context, headers, query, or body.
- * In production, only trusted auth context (req.userId) or upstream gateway header (X-User-Id) is accepted.
- * Body/query overrides and the seeded default admin ID are restricted to non-production environments.
+ * Resolves the active user ID from the verified JWT (set by authenticateJWT).
+ * Headers, query and body are never trusted for user identity.
  */
 function resolveUserId(req) {
-    if (req.userId) return req.userId;
-    if (req.headers && req.headers['x-user-id']) return req.headers['x-user-id'];
-    if (process.env.NODE_ENV !== 'production') {
-        if (req.query && req.query.userId) return req.query.userId;
-        if (req.body && req.body.userId) return req.body.userId;
-        return DEFAULT_DEV_USER_ID;
-    }
-    return null;
+    return req.userId || null;
 }
 
 /**
@@ -155,7 +145,7 @@ async function getGoogleEmailStatus(req, res) {
         if (!userId) {
             return res.status(400).json({
                 success: false,
-                error: "User identification (X-User-Id header or auth context) is required."
+                error: "Authenticated user context is required."
             });
         }
 
@@ -190,7 +180,7 @@ async function getGoogleEmailStatusWithOtherDetails(req, res) {
         if (!userId) {
             return res.status(400).json({
                 success: false,
-                error: "User identification (X-User-Id header or auth context) is required."
+                error: "Authenticated user context is required."
             });
         }
 
@@ -228,7 +218,7 @@ async function initiateGoogle(req, res) {
         const userId = resolveUserId(req);
         if (!userId) {
             return res.status(400).json({
-                error: "User identification (X-User-Id header or auth context) is required."
+                error: "Authenticated user context is required."
             });
         }
 
@@ -265,25 +255,17 @@ async function googleCallback(req, res) {
             }));
         }
 
-        let tenantId = state;
-        let userId = null;
-
-        if (state) {
-            try {
-                const decodedState = JSON.parse(Buffer.from(state, 'base64').toString('utf8'));
-                if (decodedState.tenantId) tenantId = decodedState.tenantId;
-                if (decodedState.userId) userId = decodedState.userId;
-            } catch (err) {
-                logger.debug("State is plain string, not base64 JSON", { state });
-            }
-        }
-
-        userId = userId || resolveUserId(req);
-        if (!userId) {
-            logger.error("Google OAuth callback missing user ID context");
+        // The state is signed by initiateGoogle for the authenticated user; reject anything else
+        // so an attacker cannot bind their Google account to someone else's user.
+        let tenantId;
+        let userId;
+        try {
+            ({ tenantId, userId } = authService.verifyState(state));
+        } catch (err) {
+            logger.warn("Rejected Google OAuth callback with invalid state", { error: err.message });
             return res.status(200).send(renderPopupHtml({
                 success: false,
-                error: "User identification missing from OAuth state."
+                error: "This connection request is invalid or has expired. Please try connecting again."
             }));
         }
 
@@ -306,7 +288,7 @@ async function disconnectGoogle(req, res) {
         if (!userId) {
             return res.status(400).json({
                 success: false,
-                error: "User identification (X-User-Id header or auth context) is required."
+                error: "Authenticated user context is required."
             });
         }
 

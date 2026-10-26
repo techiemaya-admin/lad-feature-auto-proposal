@@ -6,6 +6,7 @@ jest.mock('../../repositories/user-identity.repository', () => ({
 
 jest.mock('../../services/google-auth.service', () => ({
   getAuthUrl: jest.fn(),
+  verifyState: jest.fn(),
   handleGoogleCallback: jest.fn(),
   revokeGoogleToken: jest.fn(),
 }));
@@ -41,88 +42,33 @@ describe('SocialIntegrationController', () => {
       expect(socialIntegrationController.resolveUserId(req)).toBe('user-explicit-1');
     });
 
-    it('uses x-user-id header when req.userId is absent', () => {
+    it('ignores x-user-id header, query and body userId when req.userId is absent', () => {
       delete req.userId;
-      req.headers['x-user-id'] = 'user-header-2';
-      expect(socialIntegrationController.resolveUserId(req)).toBe('user-header-2');
+      req.headers['x-user-id'] = 'attacker-header-user';
+      req.query.userId = 'attacker-query-user';
+      req.body.userId = 'attacker-body-user';
+      expect(socialIntegrationController.resolveUserId(req)).toBeNull();
     });
 
-    it('uses query parameter userId when req.userId and header are absent', () => {
-      delete req.userId;
-      req.query.userId = 'user-query-3';
-      expect(socialIntegrationController.resolveUserId(req)).toBe('user-query-3');
-    });
-
-    it('uses body userId when other sources are absent', () => {
-      delete req.userId;
-      req.body.userId = 'user-body-4';
-      expect(socialIntegrationController.resolveUserId(req)).toBe('user-body-4');
-    });
-
-    it('falls back to default seeded admin user ID when nothing is supplied in non-production environment', () => {
+    it('never falls back to a default user ID in non-production environments', () => {
       const oldEnv = process.env.NODE_ENV;
       try {
         process.env.NODE_ENV = 'development';
         delete req.userId;
-        req.headers = {};
-        req.query = {};
-        req.body = {};
-        expect(socialIntegrationController.resolveUserId(req)).toBe('b8c1ffa5-3000-4e85-bf56-237ba478aea2');
-      } finally {
-        process.env.NODE_ENV = oldEnv;
-      }
-    });
-
-    it('returns null when nothing is supplied in production environment', () => {
-      const oldEnv = process.env.NODE_ENV;
-      try {
-        process.env.NODE_ENV = 'production';
-        delete req.userId;
-        req.headers = {};
-        req.query = {};
-        req.body = {};
         expect(socialIntegrationController.resolveUserId(req)).toBeNull();
-      } finally {
-        process.env.NODE_ENV = oldEnv;
-      }
-    });
-
-    it('ignores query parameter and body userId in production environment', () => {
-      const oldEnv = process.env.NODE_ENV;
-      try {
-        process.env.NODE_ENV = 'production';
-        delete req.userId;
-        req.headers = {};
-        req.query = { userId: 'untrusted-query-user' };
-        req.body = { userId: 'untrusted-body-user' };
-        expect(socialIntegrationController.resolveUserId(req)).toBeNull();
-      } finally {
-        process.env.NODE_ENV = oldEnv;
-      }
-    });
-
-    it('still honors x-user-id header from trusted proxy/gateway in production environment', () => {
-      const oldEnv = process.env.NODE_ENV;
-      try {
-        process.env.NODE_ENV = 'production';
-        delete req.userId;
-        req.headers = { 'x-user-id': 'trusted-gateway-user' };
-        req.query = { userId: 'untrusted-query-user' };
-        req.body = { userId: 'untrusted-body-user' };
-        expect(socialIntegrationController.resolveUserId(req)).toBe('trusted-gateway-user');
       } finally {
         process.env.NODE_ENV = oldEnv;
       }
     });
   });
 
-  describe('Production Environment Guard (userId required)', () => {
+  describe('User identity required', () => {
     const oldEnv = process.env.NODE_ENV;
 
     beforeEach(() => {
       process.env.NODE_ENV = 'production';
       delete req.userId;
-      req.headers = {};
+      req.headers = { 'x-user-id': 'attacker-header-user' };
       req.query = {};
       req.body = {};
     });
@@ -131,29 +77,29 @@ describe('SocialIntegrationController', () => {
       process.env.NODE_ENV = oldEnv;
     });
 
-    it('getGoogleEmailStatus returns 400 in production when user ID cannot be resolved', async () => {
+    it('getGoogleEmailStatus returns 400 when no authenticated user ID is present', async () => {
       await socialIntegrationController.getGoogleEmailStatus(req, res);
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
         success: false,
-        error: expect.stringContaining('User identification'),
+        error: expect.stringContaining('Authenticated user context'),
       }));
     });
 
-    it('initiateGoogle returns 400 in production when user ID cannot be resolved', async () => {
+    it('initiateGoogle returns 400 when no authenticated user ID is present', async () => {
       await socialIntegrationController.initiateGoogle(req, res);
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-        error: expect.stringContaining('User identification'),
+        error: expect.stringContaining('Authenticated user context'),
       }));
     });
 
-    it('disconnectGoogle returns 400 in production when user ID cannot be resolved', async () => {
+    it('disconnectGoogle returns 400 when no authenticated user ID is present', async () => {
       await socialIntegrationController.disconnectGoogle(req, res);
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
         success: false,
-        error: expect.stringContaining('User identification'),
+        error: expect.stringContaining('Authenticated user context'),
       }));
     });
   });
@@ -307,23 +253,17 @@ describe('SocialIntegrationController', () => {
       expect(html).toContain('Authorization code missing');
     });
 
-    it('decodes base64 state, calls handleGoogleCallback, and responds with success HTML', async () => {
-      const statePayload = Buffer.from(
-        JSON.stringify({
-          tenantId: 'tenant-from-state',
-          userId: 'user-from-state',
-        })
-      ).toString('base64');
-
+    it('verifies signed state, calls handleGoogleCallback with its identity, and responds with success HTML', async () => {
       req.query = {
         code: 'google-auth-code-123',
-        state: statePayload,
+        state: 'signed-state-token',
       };
-
+      authService.verifyState.mockReturnValue({ tenantId: 'tenant-from-state', userId: 'user-from-state' });
       authService.handleGoogleCallback.mockResolvedValue();
 
       await socialIntegrationController.googleCallback(req, res);
 
+      expect(authService.verifyState).toHaveBeenCalledWith('signed-state-token');
       expect(authService.handleGoogleCallback).toHaveBeenCalledWith(
         'google-auth-code-123',
         'user-from-state',
@@ -336,33 +276,30 @@ describe('SocialIntegrationController', () => {
       expect(html).toContain('window.close()');
     });
 
-    it('handles plain string state fallback gracefully', async () => {
-      req.query = {
-        code: 'google-auth-code-456',
-        state: 'plain-tenant-id',
-      };
-      req.userId = 'user-test-123';
-
-      authService.handleGoogleCallback.mockResolvedValue();
+    it('rejects forged or unsigned state without linking any account', async () => {
+      const forgedState = Buffer.from(
+        JSON.stringify({ tenantId: 'victim-tenant', userId: 'victim-user' })
+      ).toString('base64');
+      req.query = { code: 'attacker-code', state: forgedState };
+      authService.verifyState.mockImplementation(() => {
+        throw new Error('invalid signature');
+      });
 
       await socialIntegrationController.googleCallback(req, res);
 
-      expect(authService.handleGoogleCallback).toHaveBeenCalledWith(
-        'google-auth-code-456',
-        'user-test-123',
-        'plain-tenant-id'
-      );
+      expect(authService.handleGoogleCallback).not.toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(200);
       const html = res.send.mock.calls[0][0];
-      expect(html).toContain('GOOGLE_AUTH_SUCCESS');
+      expect(html).toContain('GOOGLE_AUTH_ERROR');
+      expect(html).toContain('invalid or has expired');
     });
 
     it('handles callback service failure with error HTML and postMessage', async () => {
       req.query = {
         code: 'bad-code',
-        state: 'some-state',
+        state: 'signed-state-token',
       };
-
+      authService.verifyState.mockReturnValue({ tenantId: 'tenant-1', userId: 'user-1' });
       authService.handleGoogleCallback.mockRejectedValue(new Error('Invalid token exchange'));
 
       await socialIntegrationController.googleCallback(req, res);

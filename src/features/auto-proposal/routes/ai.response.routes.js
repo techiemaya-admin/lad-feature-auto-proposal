@@ -1,5 +1,9 @@
 const express = require('express');
+const { tenantContext, enforceTenantParams } = require('../../../middleware/tenant-context');
 const router = express.Router({ mergeParams: true });
+
+router.use(tenantContext);
+enforceTenantParams(router);
 const aiResponseController = require('../controllers/ai.response.controller');
 
 router.get('/suggest-concepts/:tenantId', aiResponseController.suggestConcepts);

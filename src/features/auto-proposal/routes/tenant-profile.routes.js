@@ -1,5 +1,9 @@
 const express = require('express');
+const { tenantContext, enforceTenantParams } = require('../../../middleware/tenant-context');
 const router = express.Router();
+
+router.use(tenantContext);
+enforceTenantParams(router);
 const controller = require('../controllers/tenant-profile.controller');
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage() });
