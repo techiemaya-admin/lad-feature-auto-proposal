@@ -201,7 +201,7 @@ describe('GmailReadEmailService - fetchNewEmails', () => {
     expect(tenatDetailsRepo.findById).not.toHaveBeenCalled();
   });
 
-  it('updates watch record via initializeWatch when DB historyId is null but webhook historyId is present', async () => {
+  it('ignores the webhook historyId as a starting point and uses the mailbox baseline instead', async () => {
     userIdentityRepository.findTenantContextByProviderUserId.mockResolvedValue({
       userIdentityId: 'ident-1',
       userId: 'user-1',
@@ -210,18 +210,21 @@ describe('GmailReadEmailService - fetchNewEmails', () => {
     tenatDetailsRepo.findById.mockResolvedValue({ id: 'tenant-123' });
     gmailWatchService.getLastHistoryId.mockResolvedValue(null);
     googleConfig.getGoogleClientForUser.mockResolvedValue({});
+    mockGetProfile.mockResolvedValue({ data: { historyId: 'profile-hist-999' } });
     mockHistoryList.mockResolvedValue({ data: { history: [] } });
 
-    await gmailReadEmailService.fetchNewEmails('user@example.com', 'hist-from-webhook');
+    await gmailReadEmailService.fetchNewEmails('user@example.com', 'attacker-chosen-old-hist');
 
     expect(gmailWatchService.initializeWatch).toHaveBeenCalledWith({
       tenant_id: 'tenant-123',
       user_identities_id: 'ident-1',
-      history_id: 'hist-from-webhook'
+      history_id: 'profile-hist-999'
     });
-    expect(gmailWatchRepository.create).not.toHaveBeenCalled();
+    expect(gmailWatchService.initializeWatch).not.toHaveBeenCalledWith(expect.objectContaining({
+      history_id: 'attacker-chosen-old-hist'
+    }));
     expect(mockHistoryList).toHaveBeenCalledWith(expect.objectContaining({
-      startHistoryId: 'hist-from-webhook'
+      startHistoryId: 'profile-hist-999'
     }));
   });
 

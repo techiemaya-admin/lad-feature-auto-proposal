@@ -345,23 +345,18 @@ async function fetchNewEmails(email, historyIdFromWebhook) {
   const tenatDetails = await tenatDetailsRepo.findById(tenantId);
 
   if (userIdentityId != null) {
-    let historyId = await gmailWatchService.getLastHistoryId(userIdentityId, tenantId);
+    const historyId = await gmailWatchService.getLastHistoryId(userIdentityId, tenantId);
     logger.debug("Last history ID lookup", { userIdentityId, historyId });
-
-    if (!historyId && historyIdFromWebhook) {
-      logger.debug("No history ID found in DB, updating watch record with webhook history ID", { historyIdFromWebhook });
-      await gmailWatchService.initializeWatch({
-        tenant_id: tenantId,
-        user_identities_id: userIdentityId,
-        history_id: historyIdFromWebhook
-      });
-      historyId = historyIdFromWebhook;
-    }
 
     const oAuth2Client = await googleConfig.getGoogleClientForUser(email);
     const gmail = google.gmail({ version: "v1", auth: oAuth2Client });
 
-    let startHistoryId = historyId || historyIdFromWebhook;
+    // Only ever resume from our own stored historyId. The webhook's historyId is not used as a
+    // starting point, so a push can never make us re-process (and auto-reply to) older mail.
+    let startHistoryId = historyId;
+    if (!historyId && historyIdFromWebhook) {
+      logger.debug("Ignoring webhook historyId as a starting point; using mailbox baseline instead", { historyIdFromWebhook });
+    }
 
     if (!startHistoryId) {
       logger.warn("No startHistoryId found in DB or webhook; attempting to sync current mailbox historyId", { email });

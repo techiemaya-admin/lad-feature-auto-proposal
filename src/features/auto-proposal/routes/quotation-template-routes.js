@@ -4,12 +4,11 @@ const router = express.Router();
 
 router.use(tenantContext);
 enforceTenantParams(router);
-const multer = require('multer');
 const controller = require('../controllers/quotation-template.controller');
-const upload = multer({ storage: multer.memoryStorage() });
+const { documentUpload } = require('../../../utils/upload');
 
 // 1. Upload .docx
-router.post('/upload/:tenantId', upload.single('file'), controller.uploadTemplate);
+router.post('/upload/:tenantId', documentUpload.single('file'), controller.uploadTemplate);
 
 // 2. Preview
 router.get('/:id/preview', controller.getPreview);

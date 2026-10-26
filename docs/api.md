@@ -547,10 +547,11 @@ curl -i -X POST http://localhost:3000/api/gmail/watch
 ```
 
 ### `POST /api/gmail/webhook`
-Receives push notifications from Google Pub/Sub for incoming emails.
+Receives push notifications from Google Pub/Sub for incoming emails. Requests must carry the OIDC token Pub/Sub attaches to authenticated push subscriptions (`Authorization: Bearer <google-id-token>`); it is verified against `PUBSUB_PUSH_AUDIENCE` and `PUBSUB_PUSH_SERVICE_ACCOUNT`. Unsigned or forged pushes get `401`.
 
 ```bash
 curl -i -X POST http://localhost:3000/api/gmail/webhook \
+  -H "Authorization: Bearer <google-oidc-token>" \
   -H "Content-Type: application/json" \
   -d '{ "message": { "data": "<base64-encoded-pubsub-data>" } }'
 ```

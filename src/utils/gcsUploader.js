@@ -1,6 +1,7 @@
 // utils/gcsUploader.js
 
 const { Storage } = require("@google-cloud/storage");
+const { safeFileName } = require("./upload");
 
 const storage = new Storage({
   keyFilename: process.env.GCS_KEY_FILE, // service-account.json
@@ -48,7 +49,7 @@ async function uploadBufferToGCS(buffer, destination, mimetype) {
  */
 async function uploadToGCSFromBase64(originalname, buffer, mimetype) {
   // Create a unique filename to prevent overwriting
-  const gcsFileName = `attachments/${Date.now()}-${originalname}`;
+  const gcsFileName = `attachments/${Date.now()}-${safeFileName(originalname)}`;
   const bucketName = process.env.GCS_BUCKET;
   const bucket = storage.bucket(bucketName);
 

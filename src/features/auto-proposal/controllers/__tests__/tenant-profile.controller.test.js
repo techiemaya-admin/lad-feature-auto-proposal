@@ -75,6 +75,29 @@ describe('TenantProfileController', () => {
       });
     });
 
+    it.each([
+      ['company_logo_url', 'http://169.254.169.254/computeMetadata/v1/'],
+      ['company_logo_url', 'https://evil.example.com/logo.png'],
+      ['linkedin_url', 'javascript:alert(1)'],
+      ['website_url', 'data:text/html,<script>alert(1)</script>'],
+    ])('rejects unsafe %s value %p with 400', async (field, value) => {
+      req.body = { field, value };
+
+      await controller.updateField(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(repository.updateField).not.toHaveBeenCalled();
+    });
+
+    it('accepts an allowlisted logo URL and http(s) links', async () => {
+      repository.updateField.mockResolvedValue({});
+      req.body = { field: 'company_logo_url', value: 'https://storage.googleapis.com/bucket/logo.png' };
+      await controller.updateField(req, res);
+      req.body = { field: 'linkedin_url', value: 'https://www.linkedin.com/company/acme' };
+      await controller.updateField(req, res);
+      expect(repository.updateField).toHaveBeenCalledTimes(2);
+    });
+
     it('returns 400 when neither field nor fieldName is provided', async () => {
       req.body = { value: 'some-value' };
 

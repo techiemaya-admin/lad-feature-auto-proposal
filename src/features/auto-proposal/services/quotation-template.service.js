@@ -1,5 +1,6 @@
 const repository = require('../repositories/quotation-template-metadata.repository');
 const { uploadBufferToGCS } = require('../../../utils/gcsUploader');
+const { safeFileName } = require('../../../utils/upload');
 const mammoth = require("mammoth");
 const { Storage } = require("@google-cloud/storage");
 
@@ -31,7 +32,7 @@ class QuotationTemplateService {
 
   async uploadAndSaveTemplate(tenantId, file, body) {
     const fileExt = path.extname(file.originalname);
-    const destination = `quotation-templates/${tenantId}/${Date.now()}_${file.originalname}`;
+    const destination = `quotation-templates/${tenantId}/${Date.now()}_${safeFileName(file.originalname)}`;
 
     // 1. Upload .docx to GCS
     const publicUrl = await uploadBufferToGCS(file.buffer, destination, file.mimetype);

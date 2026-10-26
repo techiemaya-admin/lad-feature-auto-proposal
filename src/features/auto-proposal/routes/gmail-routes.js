@@ -3,9 +3,10 @@ const router = express.Router();
 const gmailController = require("../controllers/gmail.controller");
 const gmailReadController = require("../controllers/gmail-read-email.controller");
 const { tenantContext } = require("../../../middleware/tenant-context");
+const { verifyPubSubPush } = require("../../../middleware/pubsub-auth.middleware");
 
-// Google Pub/Sub push webhook (must remain unauthenticated as Google does not send custom app headers)
-router.post("/webhook", gmailReadController.webhook);
+// Google Pub/Sub push webhook: no user JWT, but every push must carry Google's signed OIDC token
+router.post("/webhook", verifyPubSubPush, gmailReadController.webhook);
 
 // Enforce tenant isolation on all remaining Gmail endpoints
 router.use(tenantContext);
