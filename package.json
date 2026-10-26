@@ -14,7 +14,7 @@
     "smoke:test": "node scripts/dev/smoke-test.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.12.0"
   },
   "dependencies": {
     "@google-cloud/storage": "^7.19.0",
@@ -37,7 +37,7 @@
     "pdfkit": "^0.17.2",
     "pg": "^8.19.0",
     "pizzip": "^3.2.0",
-    "puppeteer": "^24.40.0",
+    "puppeteer": "^25.16.0",
     "typeorm": "^0.3.20"
   },
   "devDependencies": {

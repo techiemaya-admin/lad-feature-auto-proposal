@@ -5,7 +5,7 @@ const { generatePDF } = require("../../../utils/pdfGenerator");
 const { uploadToGCS } = require("../../../utils/gcsUploader");
 const logger = require("../../../utils/logger");
 const leadRequirementConfigRepo = require("../repositories/lead_requirement_config.repository");
-const puppeteer = require('puppeteer');
+const { launchBrowser } = require('../../../utils/browser');
 const proposalDraftService = require('./proposal-draft.service');
 const conceptRepo = require("../repositories/concept.repository");
 const PizZip = require("pizzip");
@@ -661,10 +661,7 @@ class AIService {
     // 2. Generate the HTML from the modal-copy template
     const html = await proposalDraftService.generateProposalForLeadHtml(data);
 
-    const browser = await puppeteer.launch({
-      headless: "new",
-      args: ['--no-sandbox']
-    });
+    const browser = await launchBrowser();
     try {
       const page = await browser.newPage();
 
