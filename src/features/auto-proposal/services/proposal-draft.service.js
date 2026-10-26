@@ -7,6 +7,8 @@ const userIdentityRepository = require("../repositories/user-identity.repository
 const gmailService = require("./gmail-send-email.service");
 const googleConfig = require("../../../config/google.config");
 const logger = require("../../../utils/logger");
+const { escapeHtml } = require("../../../utils/html");
+const { isAllowedImageUrl } = require("../../../utils/safe-url");
 
 class ProposalDraftService {
 
@@ -194,9 +196,9 @@ class ProposalDraftService {
     <body>
       <div class="quote-container">
         <div class="header">
-          ${company_logo ? `<img src="${company_logo}" alt="logo">` : ''}
+          ${isAllowedImageUrl(company_logo) ? `<img src="${escapeHtml(company_logo)}" alt="logo">` : ''}
           <h1>Sales Quotation</h1>
-          <p><i>${company_tagline}</i></p>
+          <p><i>${escapeHtml(company_tagline)}</i></p>
           <div class="header-details">
             <b>Date:</b> ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}<br>
             <b>Valid Until:</b> ${new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
@@ -206,15 +208,15 @@ class ProposalDraftService {
         <div class="address-grid">
           <div class="address-box">
               <b>From:</b>
-              ${company_name}<br>
-              Email: ${company_email}<br>
-              Phone: ${company_phone}<br>
-              Website: ${company_website || 'N/A'}
+              ${escapeHtml(company_name)}<br>
+              Email: ${escapeHtml(company_email)}<br>
+              Phone: ${escapeHtml(company_phone)}<br>
+              Website: ${escapeHtml(company_website || 'N/A')}
           </div>
           <div class="address-box text-right">
             <b>To:</b>
-            ${lead_name}<br>
-            Email: ${lead_email}
+            ${escapeHtml(lead_name)}<br>
+            Email: ${escapeHtml(lead_email)}
           </div>
         </div>
 
@@ -230,8 +232,8 @@ class ProposalDraftService {
           <tbody>
             ${items.map(item => `
               <tr>
-                <td>${item.description}</td>
-                <td class="text-right">${item.qty}</td>
+                <td>${escapeHtml(item.description)}</td>
+                <td class="text-right">${escapeHtml(item.qty)}</td>
                 <td class="text-right">₹${Number(item.unit_price).toLocaleString()}</td>
                 <td class="text-right">₹${Number(item.line_total).toLocaleString()}</td>
               </tr>

@@ -127,10 +127,30 @@ describe('API authentication and tenant isolation', () => {
     expect((await request('GET', `/api/tenants/${TENANT_B}`, bearer({ tenantId: TENANT_A }))).status).toBe(403);
   });
 
-  it('keeps the Google Pub/Sub webhook reachable without a JWT', async () => {
+  describe('Google Pub/Sub webhook', () => {
+    const pubsubAuth = require('../middleware/pubsub-auth.middleware');
     const data = Buffer.from(JSON.stringify({ emailAddress: 'x@example.com', historyId: '1' })).toString('base64');
-    const res = await request('POST', '/api/gmail/webhook', {}, { message: { data } });
-    expect(res.status).toBe(200);
+
+    beforeEach(() => {
+      process.env.PUBSUB_PUSH_AUDIENCE = 'https://api.example.com/api/gmail/webhook';
+      process.env.PUBSUB_PUSH_SERVICE_ACCOUNT = 'push@project.iam.gserviceaccount.com';
+      pubsubAuth._setClientForTests({
+        verifyIdToken: jest.fn(async ({ idToken }) => {
+          if (idToken !== 'google-signed-token') throw new Error('invalid');
+          return { getPayload: () => ({ iss: 'https://accounts.google.com', email: 'push@project.iam.gserviceaccount.com', email_verified: true }) };
+        }),
+      });
+    });
+
+    it('rejects forged pushes without Google\'s OIDC token', async () => {
+      const res = await request('POST', '/api/gmail/webhook', {}, { message: { data } });
+      expect(res.status).toBe(401);
+    });
+
+    it('accepts pushes with a valid Google OIDC token and no user JWT', async () => {
+      const res = await request('POST', '/api/gmail/webhook', { authorization: 'Bearer google-signed-token' }, { message: { data } });
+      expect(res.status).toBe(200);
+    });
   });
 
   it('keeps the Google OAuth callback reachable but rejects unsigned state', async () => {

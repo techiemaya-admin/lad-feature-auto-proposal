@@ -1,5 +1,6 @@
 const repository = require('../repositories/email-template.repository');
 const { uploadBufferToGCS } = require('../../../utils/gcsUploader');
+const { safeFileName } = require('../../../utils/upload');
 const mammoth = require("mammoth");
 const { Storage } = require("@google-cloud/storage");
 
@@ -26,7 +27,7 @@ class EmailTemplateService {
         return await repository.findAllByTenant(tenantId);
     }
     async uploadAndSave(tenantId, file, body) {
-        const destination = `email-templates/${tenantId}/${Date.now()}_${file.originalname}`;
+        const destination = `email-templates/${tenantId}/${Date.now()}_${safeFileName(file.originalname)}`;
 
         // 1. Upload .docx to GCS
         const publicUrl = await uploadBufferToGCS(file.buffer, destination, file.mimetype);

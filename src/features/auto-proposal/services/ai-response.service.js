@@ -26,6 +26,7 @@ const storage = new Storage({
 
 const ImageModule = require("docxtemplater-image-module-free");
 const { convertDocxBufferToPdf } = require("../../../utils/docxToPdf");
+const { isAllowedPdfAssetUrl, fetchAllowedImage } = require("../../../utils/safe-url");
 const conversationMessageRepository = require("../repositories/conversation-message.repository");
 const tenantRepository = require("../repositories/tenant.repository");
 const tenantProfileRepository = require("../repositories/tenant-profile.repository");
@@ -657,26 +658,43 @@ class AIService {
 
 
   async generateProposalWithoutQuotationTemplate(data, localPath, fileName) {
+    // 2. Generate the HTML from the modal-copy template
+    const html = await proposalDraftService.generateProposalForLeadHtml(data);
+
     const browser = await puppeteer.launch({
       headless: "new",
       args: ['--no-sandbox']
     });
-    const page = await browser.newPage();
+    try {
+      const page = await browser.newPage();
 
-    // 2. Generate the HTML from the modal-copy template
-    const html = await proposalDraftService.generateProposalForLeadHtml(data);
+      // The HTML includes values from inbound emails; never run scripts or let it reach
+      // anything but allowlisted image/font hosts (prevents SSRF via the renderer).
+      await page.setJavaScriptEnabled(false);
+      await page.setRequestInterception(true);
+      page.on('request', (request) => {
+        const url = request.url();
+        if (url.startsWith('data:') || url === 'about:blank' || isAllowedPdfAssetUrl(url)) {
+          request.continue();
+        } else {
+          logger.warn("Blocked PDF renderer request", { url: url.slice(0, 200) });
+          request.abort();
+        }
+      });
 
-    await page.setContent(html, { waitUntil: 'networkidle0' });
+      await page.setContent(html, { waitUntil: 'networkidle0' });
 
-    // 3. Print to PDF in Landscape to match the modal width
-    await page.pdf({
-      path: localPath,
-      format: 'A4',
-      landscape: true,
-      printBackground: true, // MUST be true for the indigo background
-      margin: { top: '0', right: '0', bottom: '0', left: '0' }
-    });
-    await browser.close();
+      // 3. Print to PDF in Landscape to match the modal width
+      await page.pdf({
+        path: localPath,
+        format: 'A4',
+        landscape: true,
+        printBackground: true, // MUST be true for the indigo background
+        margin: { top: '0', right: '0', bottom: '0', left: '0' }
+      });
+    } finally {
+      await browser.close();
+    }
 
     // 4. Upload to GCS (Existing logic)
     const gcsUrl = await uploadToGCS(localPath, fileName);
@@ -709,10 +727,10 @@ class AIService {
       const imageOptions = {
         getImage: async (tagValue) => {
           try {
-            const res = await fetch(tagValue);
-            if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-            const arrayBuf = await res.arrayBuffer();
-            return Buffer.from(arrayBuf);
+            // Only allowlisted https image hosts; tenants control this URL (SSRF guard)
+            const image = await fetchAllowedImage(tagValue);
+            if (!image) console.warn("Refused to fetch non-allowlisted template image URL");
+            return image;
           } catch (err) {
             console.error(`Failed to fetch image at ${tagValue}:`, err.message);
             return null;

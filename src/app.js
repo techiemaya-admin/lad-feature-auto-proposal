@@ -81,7 +81,8 @@ app.use('/api/email-conversations', conversationRoutes);
 app.use('/api/social-integration', socialIntegrationRoutes);
 
 app.use((err, req, res, next) => {
-  const status = err.statusCode || 500;
+  // Upload limit/type violations (multer) are client errors
+  const status = err.statusCode || (err.name === 'MulterError' ? 400 : 500);
   const message = err.message || 'Internal Server Error';
   res.status(status).json({ error: message });
 });

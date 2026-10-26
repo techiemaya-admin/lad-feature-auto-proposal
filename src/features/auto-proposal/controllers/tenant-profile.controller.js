@@ -1,6 +1,22 @@
 const repository = require('../repositories/tenant-profile.repository');
 const { uploadBufferToGCS } = require('../../../utils/gcsUploader');
 const logger = require('../../../utils/logger');
+const { isAllowedImageUrl, isHttpUrl } = require('../../../utils/safe-url');
+const { safeFileName } = require('../../../utils/upload');
+
+const LINK_FIELDS = ['whatsapp_url', 'linkedin_url', 'instagram_url', 'website_url'];
+
+/** Returns an error message if the value is not acceptable for the field, else null. */
+function validateProfileField(field, value) {
+    if (value === null || value === undefined || value === '') return null;
+    if (field === 'company_logo_url' && !isAllowedImageUrl(value)) {
+        return 'company_logo_url must be an https URL on an allowed image host';
+    }
+    if (LINK_FIELDS.includes(field) && !isHttpUrl(value)) {
+        return `${field} must be an http(s) URL`;
+    }
+    return null;
+}
 
 class TenantProfileController {
     async getProfile(req, res) {
@@ -25,6 +41,8 @@ class TenantProfileController {
             const value = req.body.value !== undefined ? req.body.value : req.body.fieldValue;
 
             if (!field) return res.status(400).json({ error: "Field name is required" });
+            const validationError = validateProfileField(field, value);
+            if (validationError) return res.status(400).json({ error: validationError });
 
             const updatedProfile = await repository.updateField(tenantId, field, value);
             res.status(200).json({
@@ -64,7 +82,7 @@ class TenantProfileController {
             if (!file) return res.status(400).json({ error: "No image file provided" });
             logger.debug("File details:", file);
             // 1. Generate unique path in GCS
-            const destination = `logos/${tenantId}/${Date.now()}_${file.originalname}`;
+            const destination = `logos/${tenantId}/${Date.now()}_${safeFileName(file.originalname)}`;
 
             // 2. Upload to GCS
             const publicUrl = await uploadBufferToGCS(file.buffer, destination, file.mimetype);

@@ -15,7 +15,7 @@
 | Severity | Count | Fixed on this branch |
 |---|---|---|
 | **Critical** | 4 | 4 (code); password rotation still required |
-| **High** | 4 | 0 |
+| **High** | 4 | 4 (residual items noted under #6 and #8) |
 | **Medium** | 6 | 0 |
 | **Low** | 4 | 1 |
 | **Total** | **18** | |
@@ -26,10 +26,10 @@
 | 2 | Critical | Anyone can list and create tenants | **Fixed** |
 | 3 | Critical | Gmail OAuth account-link hijack (unsigned `state`, trusted `X-User-Id`, default user) | **Fixed** |
 | 4 | Critical | Hardcoded database password fallback | **Fixed in code — rotate the password** |
-| 5 | High | Unauthenticated Pub/Sub webhook can replay mailbox history, which auto-sends proposals | Open — Needs verification |
-| 6 | High | HTML injection into headless Chrome (`--no-sandbox`) and server-side fetch of tenant-supplied URLs (SSRF) | Open — Needs verification |
-| 7 | High | Unrestricted file uploads (no type/size limits, raw filenames, 1-year public links) | Open |
-| 8 | High | Vulnerable production dependencies reachable from request paths (multer, body-parser, xmldom) | Open |
+| 5 | High | Unauthenticated Pub/Sub webhook can replay mailbox history, which auto-sends proposals | **Fixed** — set the Pub/Sub env vars |
+| 6 | High | HTML injection into headless Chrome (`--no-sandbox`) and server-side fetch of tenant-supplied URLs (SSRF) | **Fixed** (Chrome still runs without its sandbox) |
+| 7 | High | Unrestricted file uploads (no type/size limits, raw filenames, 1-year public links) | **Fixed** (1-year logo links kept) |
+| 8 | High | Vulnerable production dependencies reachable from request paths (multer, body-parser, xmldom) | **Fixed** (Puppeteer 25 needs Node 22) |
 | 9 | Medium | Cross-tenant access by record ID (templates, lead requirement values) | Open |
 | 10 | Medium | Internal error messages returned to clients | Open |
 | 11 | Medium | Customer emails and personal data written to logs | Open |
@@ -121,7 +121,7 @@
 
 ### Finding #5: Unauthenticated Pub/Sub webhook can replay mailbox history, which auto-sends proposals
 
-* **Severity:** High · **Status:** Open — Needs verification
+* **Severity:** High · **Status:** Fixed
 * **OWASP:** A07:2021 – Identification and Authentication Failures
 * **Location:**
   * `src/features/auto-proposal/routes/gmail-routes.js`, line 8
@@ -135,10 +135,15 @@
 * **Fix:**
   * Configure the Pub/Sub push subscription with an OIDC service account, and verify the `Authorization: Bearer` token in the webhook (issuer `accounts.google.com`, audience = the webhook URL, expected service-account email) with `google-auth-library`'s `OAuth2Client.verifyIdToken`.
   * Never use the webhook's `historyId` as a starting point; on first sync, start from `users.getProfile().historyId`.
+* **Fix (applied):**
+  * New `src/middleware/pubsub-auth.middleware.js` verifies the OIDC token on every push: Google signature, `PUBSUB_PUSH_AUDIENCE`, issuer `accounts.google.com`, and a verified email equal to `PUBSUB_PUSH_SERVICE_ACCOUNT`.
+  * It fails closed when unconfigured. `PUBSUB_SKIP_VERIFY=true` bypasses it for local development only and is ignored in production.
+  * `fetchNewEmails` no longer uses the webhook's `historyId` as a starting point; with nothing stored it starts from the mailbox's current `historyId`.
+  * **Deploy step:** enable authentication on the push subscription (`gcloud pubsub subscriptions update <sub> --push-auth-service-account=<sa> --push-auth-token-audience=<webhook-url>`) and set the two env vars, or Gmail notifications will be rejected.
 
 ### Finding #6: HTML injection into headless Chrome (`--no-sandbox`) and server-side fetch of tenant-supplied URLs (SSRF)
 
-* **Severity:** High · **Status:** Open — Needs verification
+* **Severity:** High · **Status:** Fixed (residual: Chrome sandbox still disabled)
 * **OWASP:** A10:2021 – Server-Side Request Forgery (also A03:2021 – Injection)
 * **Location:**
   * `src/features/auto-proposal/services/proposal-draft.service.js`, lines 197 and 216
@@ -152,10 +157,17 @@
   * HTML-escape every value inserted into the template.
   * Block network requests from Puppeteer (`page.setRequestInterception(true)`, allowing only `data:` and an allowlisted CDN), and drop `--no-sandbox` (run as a non-root user).
   * Validate `company_logo` (and the other URL fields) as `https:` URLs on an allowlist of hosts, and refuse private/link-local IPs when fetching.
+* **Fix (applied):**
+  * Every value in `generateProposalForLeadHtml` is HTML-escaped (`src/utils/html.js`). The logo renders only if it is an allowlisted `https` URL.
+  * Puppeteer now runs with JavaScript off and request interception on. Only `data:` URLs, allowlisted image hosts and Google Fonts load; everything else is aborted and logged. The browser now always closes, even when rendering fails.
+  * The `.docx` image fetch goes through `fetchAllowedImage` (`src/utils/safe-url.js`): https, host allowlist (`storage.googleapis.com`, `cdn-icons-png.flaticon.com`, plus `ALLOWED_IMAGE_HOSTS`), no redirects, 10 s timeout, 5 MB cap, `image/*` only.
+  * `PATCH /api/tenant-profile/:id/update-field` rejects a non-allowlisted `company_logo_url`, and any `*_url` link that isn't http(s).
+  * Verified with a real Chromium: an injected `<img>`/`<iframe>` to a local server and a `<script>` caused zero requests and no script ran, and the PDF still rendered.
+  * **Residual:** `--no-sandbox` is kept, because removing it breaks Chrome when it runs as root in containers. Run the service as a non-root user and drop the flag.
 
 ### Finding #7: Unrestricted file uploads
 
-* **Severity:** High · **Status:** Open (requires a login since #1)
+* **Severity:** High · **Status:** Fixed (residual: 1-year signed logo URLs)
 * **OWASP:** A04:2021 – Insecure Design
 * **Location:**
   * `src/features/auto-proposal/routes/quotation-template-routes.js`, line 5
@@ -165,16 +177,24 @@
   * Template and logo uploads have no `limits` and no `fileFilter`, so any type and any size is buffered in memory.
   * The original filename goes into the object path unchanged.
   * Logos and templates get 1-year signed URLs.
-  * Uploaded `.docx` files are parsed by mammoth/xmldom and LibreOffice.
+  * Uploaded `.docx` files are parsed by mammoth, docxtemplater and LibreOffice.
 * **Impact:** Memory exhaustion (DoS); storage abuse; hostile files sitting in GCS with long-lived public links; and an attack surface on the document parsers (see #8).
 * **Fix:**
   * Set `limits: { fileSize }` and a MIME/extension allowlist (`.docx` for templates; `png`/`jpeg`/`webp` for logos).
   * Name objects with server-generated IDs.
   * Shorten signed URL lifetimes, or serve files through an authenticated endpoint.
+* **Fix (applied):**
+  * New `src/utils/upload.js`:
+    * templates must be `.docx` (DOCX MIME or `application/octet-stream`), at most 10 MB, one file;
+    * logos must be PNG/JPEG/WebP/GIF (no SVG), at most 2 MB;
+    * conversation attachments keep their 50 MB limit, now with one file per request.
+  * Every client filename is reduced to `[A-Za-z0-9._-]` (max 100 characters, no directories) before it becomes part of a GCS object path.
+  * Limit and type violations return `400` instead of `500`.
+  * **Residual:** logo URLs keep their 1-year signed lifetime because they are embedded in outgoing emails; consider a public, non-guessable logo bucket instead.
 
 ### Finding #8: Vulnerable production dependencies reachable from request paths
 
-* **Severity:** High · **Status:** Open
+* **Severity:** High · **Status:** Fixed (residual: Puppeteer chain)
 * **OWASP:** A06:2021 – Vulnerable and Outdated Components
 * **Location:** `package.json` / `package-lock.json`
 * **Evidence:** `npm audit --omit=dev` reports 25 advisories: 2 critical, 14 high, 9 moderate. The ones reachable from requests:
@@ -183,11 +203,16 @@
   |---|---|---|
   | `multer` (direct) | GHSA-wc9g-mqfw-jrwm, GHSA-qfvm-cv95-jqjf (DoS) | every upload route |
   | `body-parser` | GHSA-27r3-jxmh-p828 (DoS on compressed bodies) | `express.json()` / `urlencoded()` |
-  | `xmldom` (via `mammoth`) | GHSA-crh6-fp67-6883 (critical) | parsing uploaded `.docx` templates |
+  | `xmldom` 0.1.31 (via `docxtemplater-image-module-free`, unmaintained since 2022) | GHSA-crh6-fp67-6883 (critical) | rendering tenant `.docx` templates with images |
 
   Also flagged: `proxy-addr` (critical-rated, only matters with `trust proxy`, which is unset); the `puppeteer` chain (`extract-zip`, `basic-ftp`, `get-uri`; mostly install-time); `js-yaml`; `zod`.
 * **Impact:** Unauthenticated (now authenticated) denial of service, and misparsing of uploaded documents.
 * **Fix:** `npm audit fix`; upgrade `multer`, `express`, `mammoth` and `puppeteer` to patched versions; add an `npm audit --omit=dev --audit-level=high` gate in CI.
+* **Fix (applied):**
+  * `npm audit fix` upgraded `multer` to 2.5.0, `express` to 4.22.3 (with `body-parser` 1.20.9 and `proxy-addr` 2.0.8), and the patched `js-yaml`, `brace-expansion` and `qs`. `package.json` now requires `express ^4.22.3` and `multer ^2.5.0`.
+  * An npm `overrides` entry replaces the image module's `xmldom` 0.1.31 with the maintained `@xmldom/xmldom` 0.8.x. Rendering the repo's quotation template with an image produced identical output before and after.
+  * Result: 25 advisories (2 critical, 14 high) down to 15 (**0 critical**, 10 high, 5 moderate).
+  * **Residual:** all 10 remaining highs are in `puppeteer` 24's browser-download and proxy code (`extract-zip`, `basic-ftp`, `get-uri`, `proxy-agent`, `zod` via `chromium-bidi`), which requests never reach. The fix is `puppeteer` 25, which requires Node ≥ 22.12 (this project declares Node ≥ 18). Upgrade both together. The moderates need `@google-cloud/storage` 8 (a major upgrade).
 
 ---
 
