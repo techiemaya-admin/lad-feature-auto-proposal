@@ -82,8 +82,13 @@ async function testprompt(req, res) {
     const explicitLeadId = req.leadId || req.body?.leadId || req.query?.leadId || req.body?.leadData?.id;
 
     if (explicitLeadId) {
+      // A caller-supplied lead must belong to the caller's tenant
+      const existingLead = await leadRepo.findById(explicitLeadId, tenantId);
+      if (!existingLead) {
+        return res.status(404).json({ error: "Lead not found" });
+      }
       leadData = {
-        id: explicitLeadId,
+        id: existingLead.id,
         first_name: req.body?.first_name || req.body?.leadData?.first_name || "Test",
         last_name: req.body?.last_name || req.body?.leadData?.last_name || "Lead",
         email: req.body?.email || req.body?.leadData?.email || "test.lead@example.com",
@@ -105,17 +110,12 @@ async function testprompt(req, res) {
           leadData = created;
         }
       } catch (err) {
-        logger.debug("Dynamic test lead creation fallback:", err.message);
+        logger.error("Failed to create test lead for AI prompt:", err);
       }
 
+      // Never fall back to a fixed lead ID: it could attach test data to a real lead
       if (!leadData) {
-        leadData = {
-          id: "7cb0954d-ba2c-4224-969c-a3fa353a68fd",
-          first_name: req.body?.first_name || req.body?.leadData?.first_name || "Test",
-          last_name: req.body?.last_name || req.body?.leadData?.last_name || "Lead",
-          email: req.body?.email || req.body?.leadData?.email || "test.lead@example.com",
-          phone: req.body?.phone || req.body?.leadData?.phone || "1234567890",
-        };
+        return res.status(500).json({ error: "Internal Server Error" });
       }
     }
 

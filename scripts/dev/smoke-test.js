@@ -24,7 +24,10 @@ const nullParser = (tag) => ({
 });
 
 async function runSmokeTest() {
-  const tenantId = process.env.DEV_TEST_TENANT_ID || process.env.DEFAULT_TENANT_ID || "e0a3e9ca-3f46-4bb0-ac10-a91b5c1d20b5";
+  const tenantId = process.env.DEV_TEST_TENANT_ID;
+  if (!tenantId) {
+    throw new Error('Set DEV_TEST_TENANT_ID to the tenant to run the smoke test against');
+  }
   console.log(`[Smoke Test] Starting test for Tenant: ${tenantId}...`);
 
   let browser;

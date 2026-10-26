@@ -18,8 +18,10 @@ jest.mock('../../services/ai-response.service', () => ({
 
 const gmailReadEmailController = require('../gmail-read-email.controller');
 const gmailService = require('../../services/gmail-read-email.service');
+const leadRepo = require('../../repositories/lead.repository');
 
 jest.mock('../../services/gmail-read-email.service');
+jest.mock('../../repositories/lead.repository');
 
 describe('GmailReadEmailController', () => {
   let req;
@@ -41,6 +43,10 @@ describe('GmailReadEmailController', () => {
   });
 
   describe('testprompt', () => {
+    beforeEach(() => {
+      leadRepo.create.mockResolvedValue({ id: 'lead-created-1', email: 'test.lead@example.com', tenant_id: 'tenant-test-123' });
+    });
+
     it('sends a 200 OK JSON response with generated draft and requirements', async () => {
       const mockLeadReq = { id: 'req-1', tenant_id: 'tenant-test-123' };
       const mockValues = [{ label: 'Photography', price: 500 }];
@@ -54,15 +60,16 @@ describe('GmailReadEmailController', () => {
 
       await gmailReadEmailController.testprompt(req, res);
 
+      expect(leadRepo.create).toHaveBeenCalledWith(expect.objectContaining({ tenant_id: 'tenant-test-123' }));
       expect(gmailService.createLeadRequirementViaPrompt).toHaveBeenCalledWith(
         'Need photography and videography for wedding',
-        '7cb0954d-ba2c-4224-969c-a3fa353a68fd',
+        'lead-created-1',
         'tenant-test-123'
       );
       expect(gmailService.createProposalDraft).toHaveBeenCalledWith(
         mockLeadReq,
         expect.objectContaining({
-          id: '7cb0954d-ba2c-4224-969c-a3fa353a68fd',
+          id: 'lead-created-1',
           email: 'test.lead@example.com',
         }),
         'Need photography and videography for wedding'
@@ -77,6 +84,26 @@ describe('GmailReadEmailController', () => {
           draft: mockDraft,
         },
       });
+    });
+
+    it('fails instead of falling back to a fixed lead when the test lead cannot be created', async () => {
+      leadRepo.create.mockRejectedValue(new Error('insert failed'));
+
+      await gmailReadEmailController.testprompt(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(gmailService.createLeadRequirementViaPrompt).not.toHaveBeenCalled();
+    });
+
+    it('rejects an explicit leadId that does not belong to the caller\'s tenant', async () => {
+      req.body.leadId = 'lead-of-another-tenant';
+      leadRepo.findById.mockResolvedValue(undefined);
+
+      await gmailReadEmailController.testprompt(req, res);
+
+      expect(leadRepo.findById).toHaveBeenCalledWith('lead-of-another-tenant', 'tenant-test-123');
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(gmailService.createLeadRequirementViaPrompt).not.toHaveBeenCalled();
     });
 
     it('returns a 400 Bad Request when X-Tenant-Id is missing', async () => {

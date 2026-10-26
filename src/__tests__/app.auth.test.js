@@ -55,7 +55,7 @@ function request(method, path, headers = {}, body) {
     }, (res) => {
       let data = '';
       res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => resolve({ status: res.statusCode, body: data }));
+      res.on('end', () => resolve({ status: res.statusCode, body: data, headers: res.headers }));
     });
     req.on('error', reject);
     if (payload) req.write(payload);
@@ -69,6 +69,21 @@ function bearer(claims) {
 
 describe('API authentication and tenant isolation', () => {
   beforeEach(() => jest.clearAllMocks());
+
+  it('sends security headers and hides the framework', async () => {
+    const res = await request('GET', '/health');
+    expect(res.headers['x-powered-by']).toBeUndefined();
+    expect(res.headers['x-content-type-options']).toBe('nosniff');
+    expect(res.headers['strict-transport-security']).toBeDefined();
+    expect(res.headers['content-security-policy']).toBeDefined();
+  });
+
+  it('only allows the configured frontend origin via CORS', async () => {
+    const allowed = await request('GET', '/health', { origin: 'http://localhost:3000' });
+    const other = await request('GET', '/health', { origin: 'https://evil.example.com' });
+    expect(allowed.headers['access-control-allow-origin']).toBe('http://localhost:3000');
+    expect(other.headers['access-control-allow-origin']).toBeUndefined();
+  });
 
   it('keeps /health public', async () => {
     expect((await request('GET', '/health')).status).toBe(200);
