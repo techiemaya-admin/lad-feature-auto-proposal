@@ -5,6 +5,10 @@ const isTest = process.env.NODE_ENV === 'test';
 const isDev = process.env.NODE_ENV === 'development';
 const isProd = process.env.NODE_ENV === 'production';
 
+if (!process.env.DB_PASSWORD) {
+  throw new Error('DB_PASSWORD environment variable is required');
+}
+
 // Enable synchronize in development and test environments
 // In production, use migrations instead
 const synchronize = !isProd;
@@ -15,7 +19,7 @@ module.exports = new DataSource({
   host: process.env.DB_HOST || 'localhost',
   port: parseInt(process.env.DB_PORT || '5432', 10),
   username: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'l9837801673L#',
+  password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME || 'lad_dev',
   synchronize,
   logging,

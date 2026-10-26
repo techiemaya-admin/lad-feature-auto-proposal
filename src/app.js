@@ -1,4 +1,5 @@
 const express = require('express');
+const { authenticate } = require('./middleware/auth');
 const tenantModule = require('./features/tenant/modules/tenant.module');
 const locationModule = require('./features/location/modules/location.module');
 const conceptModule = require('./features/concept/modules/concept.module');
@@ -14,6 +15,9 @@ app.use(express.json());
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// Every /api route requires a verified bearer token; tenant scope comes from the token.
+app.use('/api', authenticate);
 
 app.use('/api/tenants', tenantModule);
 app.use('/api/locations', locationModule);

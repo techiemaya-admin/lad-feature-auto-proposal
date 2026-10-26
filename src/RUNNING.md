@@ -9,7 +9,7 @@ npm install
 2. Copy example env and edit DB settings:
 ```powershell
 Copy-Item .env.example .env
-# edit .env with your editor to set DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD
+# edit .env with your editor to set DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD and JWT_SECRET (both required)
 ```
 
 3. Create the database (example using `psql`):
@@ -37,4 +37,4 @@ npx jest
 Notes:
 - The app reads `.env` via `src/index.js` using `dotenv`.
 - In development (`NODE_ENV=development`) TypeORM `synchronize` is enabled. For production set `NODE_ENV=production` and run migrations instead of relying on `synchronize`.
-- Tenant-scoped APIs require `X-Tenant-Id` header (except tenant management endpoints).
+- All `/api/*` routes require `Authorization: Bearer <JWT>`; the tenant comes from the token's `tenant_id` claim (see README → Authentication).

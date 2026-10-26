@@ -24,9 +24,9 @@
 
 | # | Severity | Title | Status |
 |---|---|---|---|
-| 1 | Critical | No authentication; tenant identity taken from a client-supplied header | Confirmed (code) |
-| 2 | Critical | Unauthenticated tenant listing/creation leaks every tenant ID | Confirmed (code) |
-| 3 | Critical | Hardcoded database password in source and git history | Confirmed (code + runtime) |
+| 1 | Critical | No authentication; tenant identity taken from a client-supplied header | **Fixed in code** |
+| 2 | Critical | Unauthenticated tenant listing/creation leaks every tenant ID | **Fixed in code** |
+| 3 | Critical | Hardcoded database password in source and git history | **Fixed in code — rotation still required** |
 | 4 | High | DB schema auto-sync enabled unless `NODE_ENV` is exactly `production` | Confirmed (runtime); prod value Needs verification |
 | 5 | High | Reachable vulnerable dependency: `body-parser` DoS (GHSA-27r3-jxmh-p828) | Needs verification |
 | 6 | Medium | Raw internal error messages returned to clients | Confirmed (runtime) |
@@ -43,6 +43,8 @@
 ---
 
 ## Critical
+
+> **Remediation status:** Findings #1–#3 are fixed in code on this branch. All `/api/*` routes now require a verified JWT (`src/middleware/auth.js`). The tenant comes only from the token's `tenant_id` claim (`src/middleware/tenant-context.js`), and a mismatched `X-Tenant-Id` gets `403`. Creating and listing tenants requires `platform_admin`. The DB password fallback is removed, and the app refuses to start without `DB_PASSWORD` and a strong `JWT_SECRET`. **Still open (operational):** rotate the leaked DB password, and make sure the token issuer sets the `sub`, `tenant_id` and `roles` claims. Note that #7 (ownership checks) still needs its own fix.
 
 ### Finding #1: No authentication; tenant identity taken from a client-supplied header
 

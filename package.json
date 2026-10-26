@@ -15,10 +15,11 @@
     "node": ">=18"
   },
   "dependencies": {
-    "dotenv": "^16.4.5",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
+    "dotenv": "^16.4.5",
     "express": "^4.21.0",
+    "jsonwebtoken": "^9.0.3",
     "pg": "^8.13.0",
     "typeorm": "^0.3.20",
     "uuid": "^10.0.0"
