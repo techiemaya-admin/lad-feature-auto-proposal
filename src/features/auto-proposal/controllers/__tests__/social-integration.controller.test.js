@@ -32,6 +32,7 @@ describe('SocialIntegrationController', () => {
       status: jest.fn().mockReturnThis(),
       json: jest.fn().mockReturnThis(),
       send: jest.fn().mockReturnThis(),
+      set: jest.fn().mockReturnThis(),
     };
   });
 
@@ -239,6 +240,19 @@ describe('SocialIntegrationController', () => {
       expect(html).toContain('GOOGLE_AUTH_ERROR');
       expect(html).toContain('access_denied');
       expect(html).toContain('window.close()');
+    });
+
+    it('serves the popup with a strict nonce-based CSP that matches its script', async () => {
+      req.query = { error: 'access_denied' };
+
+      await socialIntegrationController.googleCallback(req, res);
+
+      const cspCall = res.set.mock.calls.find(([name]) => name === 'Content-Security-Policy');
+      expect(cspCall).toBeDefined();
+      const nonce = /'nonce-([^']+)'/.exec(cspCall[1])[1];
+      expect(cspCall[1]).toContain("default-src 'none'");
+      expect(cspCall[1]).toContain("frame-ancestors 'none'");
+      expect(res.send.mock.calls[0][0]).toContain(`<script nonce="${nonce}">`);
     });
 
     it('handles missing authorization code with error HTML', async () => {
@@ -476,11 +490,20 @@ describe('SocialIntegrationController', () => {
       expect(html).toContain('&lt;/script&gt;&lt;script&gt;');
     });
 
-    it('falls back to wildcard targetOrigin if FRONTEND_URL is unset', () => {
+    it('never posts to a wildcard origin when FRONTEND_URL is unset', () => {
       delete process.env.FRONTEND_URL;
       const html = socialIntegrationController.renderPopupHtml({ success: true });
 
-      expect(html).toContain('window.opener.postMessage({"type":"GOOGLE_AUTH_SUCCESS"}, "*")');
+      expect(html).not.toContain('"*"');
+      expect(html).toContain('window.opener && null');
+    });
+
+    it('uses no inline event handlers and tags its script with the nonce', () => {
+      process.env.FRONTEND_URL = 'http://localhost:3000';
+      const html = socialIntegrationController.renderPopupHtml({ success: true, nonce: 'abc123' });
+
+      expect(html).not.toMatch(/onclick=/i);
+      expect(html).toContain('<script nonce="abc123">');
     });
   });
 });

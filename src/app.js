@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const logger = require('./utils/logger');
 const authenticateJWT = require('./middleware/auth.middleware');
 const { createApiLimiter, createAiLimiter, AI_ROUTE_PREFIXES } = require('./middleware/rate-limit.middleware');
@@ -11,8 +12,34 @@ if (process.env.TRUST_PROXY) {
   const hops = Number(process.env.TRUST_PROXY);
   app.set('trust proxy', Number.isInteger(hops) ? hops : process.env.TRUST_PROXY);
 }
+app.disable('x-powered-by');
+app.use(helmet({
+  // The Google OAuth popup page must keep its link to the frontend window that opened it
+  crossOriginOpenerPolicy: { policy: 'unsafe-none' },
+  // The frontend runs on another origin and loads API responses (e.g. template previews)
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
+
+/**
+ * Allowed browser origins: CORS_ORIGINS (comma-separated), else FRONTEND_URL's origin,
+ * else the local development frontend.
+ */
+function allowedCorsOrigins() {
+  if (process.env.CORS_ORIGINS) {
+    return process.env.CORS_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean);
+  }
+  if (process.env.FRONTEND_URL) {
+    try {
+      return [new URL(process.env.FRONTEND_URL).origin];
+    } catch (_) {
+      logger.warn('FRONTEND_URL is not a valid URL; falling back to the local development CORS origin');
+    }
+  }
+  return ['http://localhost:3000'];
+}
+
 const corsOptions = {
-  origin: 'http://localhost:3000', // Matches your frontend exactly
+  origin: allowedCorsOrigins(),
   credentials: true,               // Allows cookies/sessions when requested
   optionsSuccessStatus: 200        // Some legacy browsers choke on 204
 };

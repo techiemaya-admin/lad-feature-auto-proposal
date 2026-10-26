@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const userIdentityRepository = require("../repositories/user-identity.repository");
 const { clientMessage } = require('../../../utils/http-errors');
 const authService = require("../services/google-auth.service");
@@ -39,10 +40,10 @@ function getFrontendOrigin() {
  * `message` overrides the posted payload (used to hand the authorization code to the
  * frontend); it is only ever posted to FRONTEND_URL, never to a wildcard origin.
  */
-function renderPopupHtml({ success, error, message }) {
+function renderPopupHtml({ success, error, message, nonce }) {
     const frontendOrigin = getFrontendOrigin();
     if (message && !frontendOrigin) {
-        return renderPopupHtml({ success: false, error: 'Server misconfiguration: FRONTEND_URL is not set.' });
+        return renderPopupHtml({ success: false, error: 'Server misconfiguration: FRONTEND_URL is not set.', nonce });
     }
     const payload = message || (success
         ? { type: 'GOOGLE_AUTH_SUCCESS' }
@@ -57,7 +58,9 @@ function renderPopupHtml({ success, error, message }) {
             : escapeHtml(error || 'An error occurred during authentication.');
     const color = success ? '#10b981' : '#ef4444';
 
-    const targetOrigin = frontendOrigin || '*';
+    // Without a configured frontend origin nothing is posted: never broadcast to '*'
+    const targetOrigin = frontendOrigin;
+    const nonceAttr = nonce ? ` nonce="${escapeHtml(nonce)}"` : '';
     const safePayload = JSON.stringify(payload)
         .replace(/</g, '\\u003c')
         .replace(/>/g, '\\u003e');
@@ -128,12 +131,13 @@ function renderPopupHtml({ success, error, message }) {
     <div class="icon">${success ? '&#10003;' : '&#9888;'}</div>
     <h2>${heading}</h2>
     <p>${subtext}</p>
-    <button onclick="window.close()">Close Window</button>
+    <button id="close-window">Close Window</button>
   </div>
-  <script>
+  <script${nonceAttr}>
     (function() {
+      document.getElementById('close-window').addEventListener('click', function() { window.close(); });
       try {
-        if (window.opener) {
+        if (window.opener && ${JSON.stringify(targetOrigin)}) {
           window.opener.postMessage(${safePayload}, ${JSON.stringify(targetOrigin)});
         }
       } catch (e) {
@@ -148,6 +152,17 @@ function renderPopupHtml({ success, error, message }) {
   </script>
 </body>
 </html>`;
+}
+
+/**
+ * Sends the OAuth popup page with a per-response CSP: only its own nonce'd inline script
+ * may run, nothing can be loaded, and the page cannot be framed.
+ */
+function sendPopup(res, options) {
+    const nonce = crypto.randomBytes(16).toString('base64');
+    res.set('Content-Security-Policy',
+        `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`);
+    return res.status(200).send(renderPopupHtml({ ...options, nonce }));
 }
 
 async function getGoogleEmailStatus(req, res) {
@@ -251,19 +266,19 @@ async function googleCallback(req, res) {
         if (oauthError) {
             const errorMsg = oauthErrorDesc ? `${oauthError} (${oauthErrorDesc})` : oauthError;
             logger.warn("Google OAuth callback received error parameter", { error: oauthError, description: oauthErrorDesc });
-            return res.status(200).send(renderPopupHtml({
+            return sendPopup(res, {
                 success: false,
                 error: `Google authorization denied: ${errorMsg}`
-            }));
+            });
         }
 
         // 2. Ensure code is provided
         if (!code) {
             logger.warn("Google OAuth callback missing authorization code", { query: req.query });
-            return res.status(200).send(renderPopupHtml({
+            return sendPopup(res, {
                 success: false,
                 error: "Authorization code missing from Google response."
-            }));
+            });
         }
 
         // The state is signed by initiateGoogle for the authenticated user; reject anything else
@@ -274,10 +289,10 @@ async function googleCallback(req, res) {
             ({ tenantId, userId } = authService.verifyState(state));
         } catch (err) {
             logger.warn("Rejected Google OAuth callback with invalid state", { error: err.message });
-            return res.status(200).send(renderPopupHtml({
+            return sendPopup(res, {
                 success: false,
                 error: "This connection request is invalid or has expired. Please try connecting again."
-            }));
+            });
         }
 
         if (process.env.GOOGLE_OAUTH_LEGACY_CALLBACK === 'true') {
@@ -285,7 +300,7 @@ async function googleCallback(req, res) {
             logger.warn("GOOGLE_OAUTH_LEGACY_CALLBACK is enabled; completing Google OAuth without session binding");
             await authService.handleGoogleCallback(code, userId, tenantId);
             logger.info("Successfully completed Google OAuth callback", { tenantId, userId });
-            return res.status(200).send(renderPopupHtml({ success: true }));
+            return sendPopup(res, { success: true });
         }
 
         // Two-step flow: do not link here. Hand the code back to the frontend window that opened
@@ -293,16 +308,16 @@ async function googleCallback(req, res) {
         // lured into completing an attacker-started flow never reaches the attacker's session.
         res.set('Referrer-Policy', 'no-referrer');
         res.set('Cache-Control', 'no-store');
-        return res.status(200).send(renderPopupHtml({
+        return sendPopup(res, {
             success: true,
             message: { type: 'GOOGLE_AUTH_CODE', code, state }
-        }));
+        });
     } catch (error) {
         logger.error("Error handling Google callback", { error: error.message });
-        return res.status(200).send(renderPopupHtml({
+        return sendPopup(res, {
             success: false,
             error: clientMessage(error, "Failed to complete Google authentication.")
-        }));
+        });
     }
 }
 

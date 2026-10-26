@@ -17,7 +17,7 @@
 | **Critical** | 4 | 4 (code); password rotation still required |
 | **High** | 4 | 4 (residual items noted under #6 and #8) |
 | **Medium** | 6 | 6 |
-| **Low** | 4 | 1 |
+| **Low** | 4 | 4 |
 | **Total** | **18** | |
 
 | # | Severity | Title | Status |
@@ -37,9 +37,9 @@
 | 13 | Medium | OAuth `state` not bound to the browser session (login-CSRF) | **Fixed** — needs frontend change |
 | 14 | Medium | No rate limiting; 50 MB body limit; AI endpoints can run up cost | **Fixed** (per-process limits) |
 | 15 | Low | JWT verification did not pin algorithms or check issuer/audience | **Fixed** |
-| 16 | Low | OAuth popup `postMessage` falls back to `*` target origin | Open |
-| 17 | Low | Missing security headers; CORS origin hardcoded to `localhost` | Open |
-| 18 | Low | Hardcoded fallback lead/tenant UUIDs in code and scripts | Open |
+| 16 | Low | OAuth popup `postMessage` falls back to `*` target origin | **Fixed** |
+| 17 | Low | Missing security headers; CORS origin hardcoded to `localhost` | **Fixed** |
+| 18 | Low | Hardcoded fallback lead/tenant UUIDs in code and scripts | **Fixed** |
 
 ---
 
@@ -335,28 +335,40 @@
 
 ### Finding #16: OAuth popup `postMessage` falls back to `*` target origin
 
-* **Severity:** Low · **Status:** Open
+* **Severity:** Low · **Status:** Fixed
 * **OWASP:** A05:2021 – Security Misconfiguration
 * **Location:** `src/features/auto-proposal/controllers/social-integration.controller.js` (`renderPopupHtml`)
 * **Evidence:** When `FRONTEND_URL` is unset, `targetOrigin = '*'`. The payload only says success or failure, so little is exposed.
 * **Fix:** Require `FRONTEND_URL` in production and drop the wildcard fallback.
+* **Fix (applied):** The wildcard fallback is gone. Without `FRONTEND_URL` the popup posts nothing, and the authorization code was already refused in that case.
 
 ### Finding #17: Missing security headers; CORS origin hardcoded to `localhost`
 
-* **Severity:** Low · **Status:** Open
+* **Severity:** Low · **Status:** Fixed
 * **OWASP:** A05:2021 – Security Misconfiguration
 * **Location:** `src/app.js`, lines 5–11
 * **Evidence:** There is no `helmet` and `X-Powered-By` is on. CORS is fixed to `http://localhost:3000` with `credentials: true`, so production needs a code change, which tends to end with a wildcard.
 * **Fix:** `app.disable('x-powered-by')`; `helmet()`; read allowed CORS origins from an environment allowlist.
+* **Fix (applied):**
+  * `X-Powered-By` is disabled and `helmet` sets HSTS, `nosniff`, `X-Frame-Options`, `Referrer-Policy`, a default CSP and related headers.
+  * Two defaults are deliberately relaxed: `Cross-Origin-Opener-Policy: unsafe-none`, so the OAuth popup keeps its opener, and `Cross-Origin-Resource-Policy: cross-origin`, so the separately hosted frontend can load API responses.
+  * The OAuth popup page gets its own strict policy: `default-src 'none'`, a per-response nonce on its single script, `frame-ancestors 'none'`. Its inline `onclick` was replaced so it runs under that policy.
+  * CORS origins come from `CORS_ORIGINS` (comma-separated), else `FRONTEND_URL`, else the local dev frontend.
+  * Verified in a real Chromium: the popup still delivers `GOOGLE_AUTH_CODE` to the frontend window, with no CSP violations.
 
 ### Finding #18: Hardcoded fallback lead/tenant UUIDs in code and scripts
 
-* **Severity:** Low · **Status:** Open
+* **Severity:** Low · **Status:** Fixed
 * **OWASP:** A04:2021 – Insecure Design
 * **Location:** `src/features/auto-proposal/controllers/gmail-read-email.controller.js`, line 112 (`7cb095...`); `scripts/dev/smoke-test.js`, line 27, and `.env.example`, line 65 (`e0a3e9...`)
 * **Evidence:** If creating the test lead fails, the AI test endpoint quietly reuses a fixed lead ID. Scripts default to a real tenant ID.
 * **Impact:** Test data can attach to a real lead or tenant.
 * **Fix:** Fail instead of falling back. Require these IDs to come from environment variables in scripts.
+* **Fix (applied):**
+  * `test-prompt` now returns an error when it can't create its test lead.
+  * A caller-supplied `leadId` must belong to the caller's tenant (otherwise `404`); previously any ID was accepted.
+  * `smoke-test.js` requires `DEV_TEST_TENANT_ID`, and the real tenant ID is removed from `.env.example`.
+  * No hardcoded tenant, lead or user IDs remain outside tests.
 
 ---
 
