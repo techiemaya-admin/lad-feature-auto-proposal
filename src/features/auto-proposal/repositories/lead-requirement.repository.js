@@ -1,9 +1,10 @@
 const AppDataSource = require("../../../config/data-source");
+const logger = require('../../../utils/logger');
 
 class LeadRequirementRepository {
 
   async create(data) {
-    console.log("Creating lead requirement with data:", data);
+    logger.debug("Creating lead requirement", { tenantId: data && data.tenant_id, leadId: data && data.lead_id });
     const sql = `
       INSERT INTO lead_requirement
       (tenant_id, lead_id, metadata, location, event_type, duration, event_category, services_requested, client_type, inquiry_type, support_level)
@@ -26,7 +27,7 @@ class LeadRequirementRepository {
     ];
 
     const result = await AppDataSource.query(sql, values);
-    console.log("Lead requirement created with ID:", result[0].id);
+    logger.debug("Lead requirement created with ID:", result[0].id);
     return result[0];
   }
 

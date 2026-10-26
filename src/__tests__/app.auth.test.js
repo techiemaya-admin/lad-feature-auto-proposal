@@ -92,6 +92,7 @@ describe('API authentication and tenant isolation', () => {
     ['PATCH', '/api/proposal-draft/approve/some-id'],
     ['POST', '/api/gmail/test-prompt'],
     ['POST', '/api/social-integration/email/google/disconnect'],
+    ['POST', '/api/social-integration/email/google/complete'],
     ['GET', '/api/email-conversations/contacts'],
   ];
 
@@ -159,6 +160,15 @@ describe('API authentication and tenant isolation', () => {
     expect(res.status).toBe(200);
     expect(res.body).toContain('GOOGLE_AUTH_ERROR');
     expect(googleAuthService.handleGoogleCallback).not.toHaveBeenCalled();
+  });
+
+  it('never returns internal error details from the global error handler', async () => {
+    const tenantRepository = require('../features/auto-proposal/repositories/tenant.repository');
+    tenantRepository.findById.mockRejectedValueOnce(new Error('connect ECONNREFUSED 10.0.0.12:5432'));
+    const res = await request('GET', '/api/leads', bearer({ tenantId: TENANT_A }));
+    expect(res.status).toBe(500);
+    expect(res.body).toContain('Internal Server Error');
+    expect(res.body).not.toContain('ECONNREFUSED');
   });
 
   it('does not let a query string make a protected route public', async () => {

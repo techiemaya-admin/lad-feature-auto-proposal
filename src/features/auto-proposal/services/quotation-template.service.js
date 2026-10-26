@@ -1,4 +1,5 @@
 const repository = require('../repositories/quotation-template-metadata.repository');
+const { clientMessage } = require('../../../utils/http-errors');
 const { uploadBufferToGCS } = require('../../../utils/gcsUploader');
 const { safeFileName } = require('../../../utils/upload');
 const mammoth = require("mammoth");
@@ -6,6 +7,7 @@ const { Storage } = require("@google-cloud/storage");
 
 const libre = require('libreoffice-convert');
 const path = require('path');
+const logger = require('../../../utils/logger');
 const storage = new Storage({
   keyFilename: process.env.GCS_KEY_FILE, // service-account.json
 });
@@ -26,8 +28,8 @@ class QuotationTemplateService {
     return await repository.setAsDefault(tenantId, templateId);
   }
 
-  async deleteTemplate(templateId) {
-    return await repository.deleteTemplate(templateId);
+  async deleteTemplate(templateId, tenantId) {
+    return await repository.deleteTemplate(templateId, tenantId);
   }
 
   async uploadAndSaveTemplate(tenantId, file, body) {
@@ -56,9 +58,12 @@ class QuotationTemplateService {
   async getVisualPreview(req, res) {
     try {
       const { id } = req.params;
-      console.log("Fetch by id : " + id)
+      logger.debug("Fetch by id : " + id)
 
-      const template = await repository.findById(id);
+      const template = await repository.findById(id, req.tenantId);
+      if (!template) {
+        return res.status(404).json({ error: "Template not found" });
+      }
       const [fileBuffer] = await bucket.file(template.storage_path).download();
 
       // Pass the path directly if the library supports it, 
@@ -67,15 +72,15 @@ class QuotationTemplateService {
 
       libre.convert(fileBuffer, '.pdf', undefined, (err, pdfBuffer) => {
         if (err) {
-          console.error(`Error converting: ${err}`);
+          logger.error(`Error converting: ${err}`);
           return res.status(500).json({ error: "Conversion failed" });
         }
         res.contentType("application/pdf");
         res.send(pdfBuffer);
       });
     } catch (error) {
-      console.error("Error in getVisualPreview:", error);
-      res.status(500).json({ error: error.message });
+      logger.error("Error in getVisualPreview:", error);
+      res.status(500).json({ error: clientMessage(error) });
     }
   }
 

@@ -16,7 +16,7 @@
 |---|---|---|
 | **Critical** | 4 | 4 (code); password rotation still required |
 | **High** | 4 | 4 (residual items noted under #6 and #8) |
-| **Medium** | 6 | 0 |
+| **Medium** | 6 | 6 |
 | **Low** | 4 | 1 |
 | **Total** | **18** | |
 
@@ -30,12 +30,12 @@
 | 6 | High | HTML injection into headless Chrome (`--no-sandbox`) and server-side fetch of tenant-supplied URLs (SSRF) | **Fixed** (Chrome still runs without its sandbox) |
 | 7 | High | Unrestricted file uploads (no type/size limits, raw filenames, 1-year public links) | **Fixed** (1-year logo links kept) |
 | 8 | High | Vulnerable production dependencies reachable from request paths (multer, body-parser, xmldom) | **Fixed** (Puppeteer 25 needs Node 22) |
-| 9 | Medium | Cross-tenant access by record ID (templates, lead requirement values) | Open |
-| 10 | Medium | Internal error messages returned to clients | Open |
-| 11 | Medium | Customer emails and personal data written to logs | Open |
-| 12 | Medium | Gmail OAuth tokens stored in plaintext | Open — Needs verification |
-| 13 | Medium | OAuth `state` not bound to the browser session (login-CSRF) | Open (residual after #3) |
-| 14 | Medium | No rate limiting; 50 MB body limit; AI endpoints can run up cost | Open |
+| 9 | Medium | Cross-tenant access by record ID (templates, lead requirement values) | **Fixed** |
+| 10 | Medium | Internal error messages returned to clients | **Fixed** |
+| 11 | Medium | Customer emails and personal data written to logs | **Fixed** |
+| 12 | Medium | Gmail OAuth tokens stored in plaintext | **Fixed** — set key, run migration |
+| 13 | Medium | OAuth `state` not bound to the browser session (login-CSRF) | **Fixed** — needs frontend change |
+| 14 | Medium | No rate limiting; 50 MB body limit; AI endpoints can run up cost | **Fixed** (per-process limits) |
 | 15 | Low | JWT verification did not pin algorithms or check issuer/audience | **Fixed** |
 | 16 | Low | OAuth popup `postMessage` falls back to `*` target origin | Open |
 | 17 | Low | Missing security headers; CORS origin hardcoded to `localhost` | Open |
@@ -220,7 +220,7 @@
 
 ### Finding #9: Cross-tenant access by record ID
 
-* **Severity:** Medium · **Status:** Open
+* **Severity:** Medium · **Status:** Fixed
 * **OWASP:** A01:2021 – Broken Access Control (IDOR)
 * **Location:**
   * `src/features/auto-proposal/services/quotation-template.service.js`, lines 28–29 and 60
@@ -230,19 +230,32 @@
   * `lead_requirement_values` `findByRequirementId`, `update` and `delete`.
 * **Impact:** Even with #1 fixed, any logged-in user of **any** tenant who knows a record's UUID can download or delete another tenant's quotation templates, and read, change or delete their lead requirement values.
 * **Fix:** Add `AND tenant_id = $n` (joining through `lead_requirement` for values) and pass `req.tenantId` from the controllers.
+* **Fix (applied):**
+  * Quotation template `findById` / `deleteTemplate` now require the tenant. Preview and delete return `404` for another tenant's template.
+  * `lead_requirement_values` reads, updates and deletes are scoped through `lead_requirement.tenant_id`.
+  * `create` first checks that the lead requirement (and the field, for single values) belongs to the caller's tenant.
+  * **Also found and fixed:**
+    * `lead_requirement_config.update` (`PUT /api/lead-requirement-config/:id`) also updated by ID only; it is now scoped to the tenant.
+    * `quotation.service.js` called `findById(tenantId, templateId)` with the arguments reversed. It now passes them in the right order.
 
 ### Finding #10: Internal error messages returned to clients
 
-* **Severity:** Medium · **Status:** Open
+* **Severity:** Medium · **Status:** Fixed
 * **OWASP:** A05:2021 – Security Misconfiguration (CWE-209)
 * **Location:** `src/app.js`, line 71, and about 40 controller `catch` blocks (e.g. `ai.response.controller.js`, `quotation-template.controller.js`, `social-integration.controller.js`)
 * **Evidence:** `res.status(500).json({ error: error.message })` everywhere.
 * **Impact:** Postgres, Google API and GCS error text (table and column names, bucket names, token errors) is sent to clients.
 * **Fix:** Return a generic message for 5xx responses and log the details server-side with a correlation ID.
+* **Fix (applied):**
+  * New `src/utils/http-errors.js`. `clientMessage(err)` returns an error's message only when it was deliberately marked as a client error (`clientError(...)` / a 4xx `statusCode`); anything else becomes `"Internal Server Error"`. All ~40 controller responses use it.
+  * Intentional errors ("Template not found", "Invalid field name", "Proposal not found…", "Subject line is required") are now thrown with a 4xx status, so users still see them.
+  * The global handler logs 5xx details server-side and never echoes them.
+  * Proposal approval now returns `404` / `500` instead of `400` for everything.
+  * **Not done:** correlation IDs (no request-ID infrastructure exists yet).
 
 ### Finding #11: Customer emails and personal data written to logs
 
-* **Severity:** Medium · **Status:** Open
+* **Severity:** Medium · **Status:** Fixed
 * **OWASP:** A09:2021 – Security Logging and Monitoring Failures
 * **Location:**
   * `src/features/auto-proposal/services/gmail-send-email.service.js`, line 219
@@ -251,33 +264,62 @@
 * **Evidence:** An unconditional `console.log` prints the lead's email address, the proposal link, the price and the **full email content** for every outbound quotation. The repo's own rules (`lad-agent.agent.md`) forbid `console.*` in production code.
 * **Impact:** Customer correspondence and personal data pile up in log storage, where far more people and systems can read them than can read the database.
 * **Fix:** Route everything through `logger`, log IDs instead of content, and redact email and phone values.
+* **Fix (applied):**
+  * All server-side `console.*` calls (~125) now go through `logger`; routine ones are `debug`, which only prints when `DEBUG` is set.
+  * The logger now redacts: errors are logged as name / message / code / status / stack only. HTTP-client errors such as `GaxiosError` used to carry the request config, **including `Authorization: Bearer` access tokens**.
+  * Keys like `access_token`, `refresh_token`, `authorization`, `password`, `secret` and `api-key` are masked at any depth, and buffers are summarised.
+  * The lines that dumped email content, prompts, sender and recipient addresses, lead data or Gmail responses now log IDs and counts only, even with `DEBUG` on.
 
 ### Finding #12: Gmail OAuth tokens stored in plaintext
 
-* **Severity:** Medium · **Status:** Open — Needs verification
+* **Severity:** Medium · **Status:** Fixed — deploy steps required
 * **OWASP:** A02:2021 – Cryptographic Failures
 * **Location:** `src/features/auto-proposal/repositories/user-identity.repository.js`, lines 138–167
 * **Evidence:** `access_token` and `refresh_token` are written as plain columns.
 * **Impact:** Anyone who can read the database, a backup or the logs gains long-lived read and send access to every connected Gmail account.
 * **Fix:** Encrypt the tokens at the application level (KMS envelope encryption) and restrict database access. Verify whether the database or disk is already encrypted.
+* **Fix (applied):**
+  * `src/utils/token-crypto.js` encrypts access and refresh tokens with AES-256-GCM (random IV, authenticated) using `TOKEN_ENCRYPTION_KEY`.
+  * `user-identity.repository.js` encrypts on every write and decrypts on every read, so callers are unchanged. Legacy plaintext rows still read correctly.
+  * The server refuses to start in production without the key. Outside production it warns and stores plaintext.
+  * **Deploy steps:**
+    1. Generate the key and keep it in a secret manager.
+    2. Set `TOKEN_ENCRYPTION_KEY`.
+    3. Run `node scripts/maintenance/encrypt-existing-tokens.js` once.
+
+    Losing the key means every user must reconnect Gmail.
+  * **Residual:** a KMS-managed key (envelope encryption, rotation) would be stronger than a static key in an environment variable.
 
 ### Finding #13: OAuth `state` not bound to the browser session
 
-* **Severity:** Medium · **Status:** Open (residual after #3)
+* **Severity:** Medium · **Status:** Fixed — requires a frontend change
 * **OWASP:** A07:2021 – Identification and Authentication Failures
 * **Location:** `src/features/auto-proposal/services/google-auth.service.js` (`createState` / `verifyState`)
 * **Evidence:** The signed state proves which user *started* the flow, but not that the same browser *finishes* it.
 * **Impact:** An attacker can start a flow for their own user and trick a victim into completing consent, which links the **victim's** Gmail to the attacker's user for up to 10 minutes after the state is issued.
 * **Fix:** Set an `HttpOnly`, `SameSite=Lax` nonce cookie when the popup opens, put its hash in the state, and compare the two in the callback. Track used nonces so each state works only once.
+* **Fix (applied):** The callback no longer links anything.
+  * It posts `{ type: 'GOOGLE_AUTH_CODE', code, state }` to the opener, only ever to the `FRONTEND_URL` origin (it refuses if that is unset), with `Referrer-Policy: no-referrer`.
+  * The frontend finishes with the new authenticated `POST /api/social-integration/email/google/complete`. That endpoint links the account only if the signed state was issued to the **same user and tenant as the caller's JWT**, otherwise `403`.
+  * In the attack, the code stays in the victim's browser, and the victim's own session doesn't match the attacker's state.
+  * Why not the cookie approach: this API authenticates with bearer tokens, not cookies. A nonce cookie set during the flow would be set in the victim's browser just as easily, because the attacker can hand the victim the flow link.
+  * **Deploy step:** update the frontend to handle `GOOGLE_AUTH_CODE` by POSTing `code` and `state` to `/complete`, and set `FRONTEND_URL`. `GOOGLE_OAUTH_LEGACY_CALLBACK=true` restores the old single-step behaviour as a temporary rollout switch; remove it once the frontend is updated.
 
 ### Finding #14: No rate limiting; 50 MB body limit; AI endpoints can run up cost
 
-* **Severity:** Medium · **Status:** Open
+* **Severity:** Medium · **Status:** Fixed (residual: per-process limits)
 * **OWASP:** A04:2021 – Insecure Design
 * **Location:** `src/app.js`, line 38; the AI routes (`/api/ai-response/*`, `/api/gmail/test-prompt`, `/api/email-conversations/email-ai-*`)
 * **Evidence:** `express.urlencoded({ limit: '50mb' })`, and no rate limiting anywhere.
 * **Impact:** Easy memory pressure, plus unbounded Gemini/OpenAI spend by any logged-in user.
 * **Fix:** Add `express-rate-limit` keyed per tenant/user, with tighter limits on AI routes; reduce body limits to what is actually needed.
+* **Fix (applied):**
+  * `express-rate-limit` runs after authentication and is keyed per tenant and user, or per IP when unauthenticated.
+  * `/api/*` defaults to 300 requests/minute (`RATE_LIMIT_PER_MINUTE`); the AI endpoints default to 20/minute (`AI_RATE_LIMIT_PER_MINUTE`). Excess requests get `429`.
+  * The verified Pub/Sub webhook is exempt, because Google delivers from shared IPs.
+  * `urlencoded` bodies are capped at 1 MB (was 50 MB).
+  * `TRUST_PROXY` sets Express's `trust proxy` so IP keys are real client IPs behind a load balancer.
+  * **Residual:** the in-memory store applies limits per process; with several instances, use a shared store (e.g. Redis).
 
 ---
 

@@ -21,6 +21,22 @@ describe('LeadRequirementValuesController', () => {
   });
 
   describe('create', () => {
+    beforeEach(() => {
+      leadRequirementValuesRepo.belongsToTenant.mockResolvedValue(true);
+    });
+
+    it('returns 404 and writes nothing when the lead requirement belongs to another tenant', async () => {
+      req.body = { lead_requirement_id: 'other-tenant-req', field_id: 'field-1', value_number: 1 };
+      leadRequirementValuesRepo.belongsToTenant.mockResolvedValue(false);
+
+      await controller.create(req, res, next);
+
+      expect(leadRequirementValuesRepo.belongsToTenant).toHaveBeenCalledWith('other-tenant-req', 'tenant-123', 'field-1');
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(leadRequirementValuesRepo.create).not.toHaveBeenCalled();
+      expect(leadRequirementValuesRepo.saveRequirementValues).not.toHaveBeenCalled();
+    });
+
     it('saves dynamic requirements batch when provided', async () => {
       req.body = {
         lead_requirement_id: 'req-1',
@@ -64,6 +80,36 @@ describe('LeadRequirementValuesController', () => {
       await controller.create(req, res, next);
 
       expect(next).toHaveBeenCalledWith(error);
+    });
+  });
+
+  describe('get / update / delete are tenant-scoped', () => {
+    it('passes req.tenantId to every lookup', async () => {
+      req.params = { id: 'x-1' };
+      leadRequirementValuesRepo.findByRequirementId.mockResolvedValue([]);
+      leadRequirementValuesRepo.update.mockResolvedValue({ id: 'x-1' });
+      leadRequirementValuesRepo.delete.mockResolvedValue({ id: 'x-1' });
+
+      await controller.get(req, res, next);
+      await controller.update(req, res, next);
+      await controller.delete(req, res, next);
+
+      expect(leadRequirementValuesRepo.findByRequirementId).toHaveBeenCalledWith('x-1', 'tenant-123');
+      expect(leadRequirementValuesRepo.update).toHaveBeenCalledWith('x-1', {}, 'tenant-123');
+      expect(leadRequirementValuesRepo.delete).toHaveBeenCalledWith('x-1', 'tenant-123');
+    });
+
+    it('returns 404 when another tenant\'s value is updated or deleted', async () => {
+      req.params = { id: 'other-tenant-value' };
+      leadRequirementValuesRepo.update.mockResolvedValue(undefined);
+      leadRequirementValuesRepo.delete.mockResolvedValue(undefined);
+
+      await controller.update(req, res, next);
+      await controller.delete(req, res, next);
+
+      expect(res.status).toHaveBeenCalledTimes(2);
+      expect(res.status).toHaveBeenNthCalledWith(1, 404);
+      expect(res.status).toHaveBeenNthCalledWith(2, 404);
     });
   });
 });

@@ -1,5 +1,7 @@
 const quotationPlaceholderRepository = require('../repositories/quotation-placeholder.repository');
 
+const { clientMessage } = require('../../../utils/http-errors');
+const logger = require('../../../utils/logger');
 class QuotationPlaceholderController {
     async getPlaceholders(req, res) {
         try {
@@ -8,8 +10,8 @@ class QuotationPlaceholderController {
             const data = await quotationPlaceholderRepository.findByTenant(tenantId);
             res.json({ success: true, data: data, total: Array.isArray(data) ? data.length : 0 });
         } catch (error) {
-            console.log("Error fetching placeholders for tenant:", error);
-            res.status(500).json({ success: false, message: error.message });
+            logger.debug("Error fetching placeholders for tenant:", error);
+            res.status(500).json({ success: false, message: clientMessage(error) });
         }
     }
 }

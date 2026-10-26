@@ -144,7 +144,7 @@ describe('SocialIntegrationController', () => {
       expect(res.status).toHaveBeenCalledWith(500);
       expect(res.json).toHaveBeenCalledWith({
         success: false,
-        error: 'Database error',
+        error: 'Internal Server Error',
       });
     });
   });
@@ -189,7 +189,7 @@ describe('SocialIntegrationController', () => {
       expect(res.status).toHaveBeenCalledWith(500);
       expect(res.json).toHaveBeenCalledWith({
         success: false,
-        error: 'DB failure',
+        error: 'Internal Server Error',
       });
     });
   });
@@ -253,27 +253,61 @@ describe('SocialIntegrationController', () => {
       expect(html).toContain('Authorization code missing');
     });
 
-    it('verifies signed state, calls handleGoogleCallback with its identity, and responds with success HTML', async () => {
-      req.query = {
-        code: 'google-auth-code-123',
-        state: 'signed-state-token',
-      };
+    it('verifies signed state and hands the code to the frontend origin without linking anything', async () => {
+      const oldFrontend = process.env.FRONTEND_URL;
+      process.env.FRONTEND_URL = 'https://app.example.com/dashboard';
+      res.set = jest.fn().mockReturnThis();
+      req.query = { code: 'google-auth-code-123', state: 'signed-state-token' };
+      authService.verifyState.mockReturnValue({ tenantId: 'tenant-from-state', userId: 'user-from-state' });
+
+      try {
+        await socialIntegrationController.googleCallback(req, res);
+      } finally {
+        process.env.FRONTEND_URL = oldFrontend;
+      }
+
+      expect(authService.verifyState).toHaveBeenCalledWith('signed-state-token');
+      expect(authService.handleGoogleCallback).not.toHaveBeenCalled();
+      expect(res.set).toHaveBeenCalledWith('Referrer-Policy', 'no-referrer');
+      const html = res.send.mock.calls[0][0];
+      expect(html).toContain('GOOGLE_AUTH_CODE');
+      expect(html).toContain('google-auth-code-123');
+      expect(html).toContain('"https://app.example.com")');
+      expect(html).not.toContain(', "*")');
+    });
+
+    it('refuses to post the code anywhere when FRONTEND_URL is unset', async () => {
+      const oldFrontend = process.env.FRONTEND_URL;
+      delete process.env.FRONTEND_URL;
+      res.set = jest.fn().mockReturnThis();
+      req.query = { code: 'google-auth-code-123', state: 'signed-state-token' };
+      authService.verifyState.mockReturnValue({ tenantId: 't', userId: 'u' });
+
+      try {
+        await socialIntegrationController.googleCallback(req, res);
+      } finally {
+        process.env.FRONTEND_URL = oldFrontend;
+      }
+
+      const html = res.send.mock.calls[0][0];
+      expect(html).toContain('GOOGLE_AUTH_ERROR');
+      expect(html).not.toContain('google-auth-code-123');
+    });
+
+    it('links in the callback only when GOOGLE_OAUTH_LEGACY_CALLBACK=true', async () => {
+      process.env.GOOGLE_OAUTH_LEGACY_CALLBACK = 'true';
+      req.query = { code: 'google-auth-code-123', state: 'signed-state-token' };
       authService.verifyState.mockReturnValue({ tenantId: 'tenant-from-state', userId: 'user-from-state' });
       authService.handleGoogleCallback.mockResolvedValue();
 
-      await socialIntegrationController.googleCallback(req, res);
+      try {
+        await socialIntegrationController.googleCallback(req, res);
+      } finally {
+        delete process.env.GOOGLE_OAUTH_LEGACY_CALLBACK;
+      }
 
-      expect(authService.verifyState).toHaveBeenCalledWith('signed-state-token');
-      expect(authService.handleGoogleCallback).toHaveBeenCalledWith(
-        'google-auth-code-123',
-        'user-from-state',
-        'tenant-from-state'
-      );
-      expect(res.status).toHaveBeenCalledWith(200);
-      const html = res.send.mock.calls[0][0];
-      expect(html).toContain('GOOGLE_AUTH_SUCCESS');
-      expect(html).toContain('Connected Successfully!');
-      expect(html).toContain('window.close()');
+      expect(authService.handleGoogleCallback).toHaveBeenCalledWith('google-auth-code-123', 'user-from-state', 'tenant-from-state');
+      expect(res.send.mock.calls[0][0]).toContain('GOOGLE_AUTH_SUCCESS');
     });
 
     it('rejects forged or unsigned state without linking any account', async () => {
@@ -294,7 +328,8 @@ describe('SocialIntegrationController', () => {
       expect(html).toContain('invalid or has expired');
     });
 
-    it('handles callback service failure with error HTML and postMessage', async () => {
+    it('handles callback service failure with error HTML and postMessage (legacy flow)', async () => {
+      process.env.GOOGLE_OAUTH_LEGACY_CALLBACK = 'true';
       req.query = {
         code: 'bad-code',
         state: 'signed-state-token',
@@ -307,7 +342,54 @@ describe('SocialIntegrationController', () => {
       expect(res.status).toHaveBeenCalledWith(200);
       const html = res.send.mock.calls[0][0];
       expect(html).toContain('GOOGLE_AUTH_ERROR');
-      expect(html).toContain('Invalid token exchange');
+      expect(html).toContain('Failed to complete Google authentication.');
+      expect(html).not.toContain('Invalid token exchange');
+      delete process.env.GOOGLE_OAUTH_LEGACY_CALLBACK;
+    });
+  });
+
+  describe('completeGoogle', () => {
+    beforeEach(() => {
+      req.body = { code: 'google-auth-code', state: 'signed-state' };
+    });
+
+    it('links the account when the state was issued to the same user and tenant', async () => {
+      authService.verifyState.mockReturnValue({ tenantId: req.tenantId, userId: req.userId });
+      authService.handleGoogleCallback.mockResolvedValue();
+
+      await socialIntegrationController.completeGoogle(req, res);
+
+      expect(authService.handleGoogleCallback).toHaveBeenCalledWith('google-auth-code', req.userId, req.tenantId);
+      expect(res.status).toHaveBeenCalledWith(200);
+    });
+
+    it('rejects a state issued to a different user (login-CSRF)', async () => {
+      authService.verifyState.mockReturnValue({ tenantId: req.tenantId, userId: 'attacker-user' });
+
+      await socialIntegrationController.completeGoogle(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(authService.handleGoogleCallback).not.toHaveBeenCalled();
+    });
+
+    it('rejects a state issued for a different tenant', async () => {
+      authService.verifyState.mockReturnValue({ tenantId: 'other-tenant', userId: req.userId });
+
+      await socialIntegrationController.completeGoogle(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(authService.handleGoogleCallback).not.toHaveBeenCalled();
+    });
+
+    it('rejects invalid state and missing parameters', async () => {
+      authService.verifyState.mockImplementation(() => { throw new Error('bad'); });
+      await socialIntegrationController.completeGoogle(req, res);
+      req.body = {};
+      await socialIntegrationController.completeGoogle(req, res);
+
+      expect(res.status).toHaveBeenNthCalledWith(1, 400);
+      expect(res.status).toHaveBeenNthCalledWith(2, 400);
+      expect(authService.handleGoogleCallback).not.toHaveBeenCalled();
     });
   });
 
@@ -359,7 +441,7 @@ describe('SocialIntegrationController', () => {
       expect(res.json).toHaveBeenCalledWith({
         success: false,
         message: 'Failed to cleanly disconnect Google account.',
-        error: 'DB disconnect error',
+        error: 'Internal Server Error',
       });
     });
   });

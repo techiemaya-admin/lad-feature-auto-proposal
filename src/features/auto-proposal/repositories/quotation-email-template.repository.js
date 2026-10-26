@@ -1,9 +1,10 @@
 // repositories/quotationEmail.repository.js
 const db = require("../../../config/data-source");
+const logger = require('../../../utils/logger');
 
 class QuotationEmailRepository {
   async create(data) {
-    console.log("create " + JSON.stringify(data));
+    logger.debug("create " + JSON.stringify(data));
     if (data.is_default) {
       await this.clearDefaults(data.tenant_id);
       data.is_default = true;
@@ -54,7 +55,7 @@ class QuotationEmailRepository {
   }
 
   async update(id, tenant_id, data) {
-    console.log("create " + JSON.stringify(data))
+    logger.debug("create " + JSON.stringify(data))
     if (data.is_default) {
       await this.clearDefaults(data.tenant_id);
 

@@ -109,7 +109,7 @@ describe('GmailReadEmailController', () => {
       await gmailReadEmailController.testprompt(req, res);
 
       expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ error: 'AI Service Unavailable' });
+      expect(res.json).toHaveBeenCalledWith({ error: 'Internal Server Error' });
     });
   });
 
@@ -159,7 +159,7 @@ describe('GmailReadEmailController', () => {
       await gmailReadEmailController.startWatch(req, res);
 
       expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ error: 'Google PubSub error' });
+      expect(res.json).toHaveBeenCalledWith({ error: 'Internal Server Error' });
     });
   });
 });

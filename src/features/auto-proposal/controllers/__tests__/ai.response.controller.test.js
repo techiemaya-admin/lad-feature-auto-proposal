@@ -157,7 +157,7 @@ describe('AiResponseController', () => {
       await controller.suggestConcepts(req, res);
 
       expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({ error: 'Database error' });
+      expect(res.json).toHaveBeenCalledWith({ error: 'Internal Server Error' });
     });
   });
 });

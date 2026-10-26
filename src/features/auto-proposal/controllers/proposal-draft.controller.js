@@ -1,4 +1,5 @@
 const proposalDraftService = require("../services/proposal-draft.service");
+const { clientMessage } = require('../../../utils/http-errors');
 const logger = require("../../../utils/logger");
 
 exports.approveProposalDraft = async (req, res) => {
@@ -16,9 +17,9 @@ exports.approveProposalDraft = async (req, res) => {
 
   } catch (error) {
     logger.error("Error approving proposal draft:", error);
-    return res.status(400).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
-      message: error.message
+      message: clientMessage(error)
     });
   }
 };

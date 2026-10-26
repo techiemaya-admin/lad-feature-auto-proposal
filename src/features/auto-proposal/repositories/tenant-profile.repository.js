@@ -1,4 +1,5 @@
 const db = require('../../../config/data-source'); // Adjust path to your DB config
+const { clientError } = require('../../../utils/http-errors');
 
 class TenantProfileRepository {
     async findByTenantId(tenantId) {
@@ -20,7 +21,7 @@ class TenantProfileRepository {
         ];
 
         if (!allowedFields.includes(fieldName)) {
-            throw new Error(`Invalid field name: ${fieldName}`);
+            throw clientError(`Invalid field name: ${fieldName}`, 400);
         }
 
         const query = `

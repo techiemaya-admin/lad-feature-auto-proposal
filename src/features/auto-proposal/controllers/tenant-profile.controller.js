@@ -1,4 +1,5 @@
 const repository = require('../repositories/tenant-profile.repository');
+const { clientMessage } = require('../../../utils/http-errors');
 const { uploadBufferToGCS } = require('../../../utils/gcsUploader');
 const logger = require('../../../utils/logger');
 const { isAllowedImageUrl, isHttpUrl } = require('../../../utils/safe-url');
@@ -51,7 +52,7 @@ class TenantProfileController {
             });
         } catch (error) {
             logger.error("Error in updateField:", error);
-            res.status(400).json({ error: error.message });
+            res.status(400).json({ error: clientMessage(error) });
         }
     }
 
@@ -70,7 +71,7 @@ class TenantProfileController {
             });
         } catch (error) {
             logger.error("Error in getLogoPreview:", error);
-            res.status(500).json({ error: error.message });
+            res.status(500).json({ error: clientMessage(error) });
         }
     }
 
@@ -97,7 +98,7 @@ class TenantProfileController {
             });
         } catch (error) {
             logger.error("Logo Upload Error:", error);
-            res.status(500).json({ error: error.message });
+            res.status(500).json({ error: clientMessage(error) });
         }
     }
 }

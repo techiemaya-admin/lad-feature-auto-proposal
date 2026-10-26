@@ -2,6 +2,7 @@ const dataSource = require("../../../config/data-source"); // adjust path
 const conceptRepository = require("./concept.repository");
 const aiService = require("../services/ai-response.service");
 const leadRequirementValueRepository = require("./lead_requirement_values.repository");
+const logger = require('../../../utils/logger');
 
 
 async function calculateFinalPrice(tenantId, leadRequirementId, event_type) {
@@ -15,31 +16,31 @@ async function calculateFinalPrice(tenantId, leadRequirementId, event_type) {
     WHERE cv.lead_requirement_id = $1 AND cfg.tenant_id = $2 AND cfg.is_active = true`,
     [leadRequirementId, tenantId]
   );
-  console.log("1. Raw Lead Data Fetched:", JSON.stringify(leadData));
+  logger.debug("1. Lead requirement values fetched", { count: Array.isArray(leadData) ? leadData.length : 0 });
 
   const inputValues = {};
   leadData.forEach(row => { inputValues[row.field_id] = Number(row.value_number) || 0; });
-  console.log("2. Transformed Input Values (Conditions):", JSON.stringify(inputValues));
+  logger.debug("2. Transformed Input Values (Conditions):", JSON.stringify(inputValues));
 
   const rulesRes = await db.query(
     `SELECT * FROM pricing_rules WHERE tenant_id = $1 AND is_active = true AND is_deleted = false`,
     [tenantId]
   );
   const allRules = rulesRes;
-  console.log("3. All Active Pricing Rules:", JSON.stringify(allRules));
+  logger.debug("3. All Active Pricing Rules:", JSON.stringify(allRules));
 
   const concepts = await conceptRepository.findAllWithRequirements(tenantId);
-  console.log("4. Available Concepts with Mappings:", JSON.stringify(concepts));
+  logger.debug("4. Available Concepts with Mappings:", JSON.stringify(concepts));
 
   const results = [];
 
   for (const concept of concepts) {
     const conceptFieldIds = concept.requirement_configs.map(rc => rc.id);
     const leadFieldIds = leadData.map(ld => ld.field_id);
-    console.log(`5. Checking Concept [${concept.name}]. Required IDs:`, JSON.stringify(conceptFieldIds), " lead requirement field ids : " + JSON.stringify(leadFieldIds));
+    logger.debug(`5. Checking Concept [${concept.name}]. Required IDs:`, JSON.stringify(conceptFieldIds), " lead requirement field ids : " + JSON.stringify(leadFieldIds));
 
     const isMatch = conceptFieldIds.every(id => leadFieldIds.includes(id));
-    console.log(`6. Does Lead Match Concept [${concept.name}]?`, isMatch);
+    logger.debug(`6. Does Lead Match Concept [${concept.name}]?`, isMatch);
 
     if (!isMatch) continue;
 
@@ -82,11 +83,11 @@ async function calculateFinalPrice(tenantId, leadRequirementId, event_type) {
 
       // --- HANDLE SERVICES OUTSIDE THE CONCEPT (ADD-ONS) VS INSIDE ---
       if (!conceptFieldIds.includes(item.field_id)) {
-        console.log(`7a. Item [${item.label}] is an ADD-ON. Checking Service Rules.`);
-        console.log(`7b. Rule Result for Add-on [${item.label}]:`, JSON.stringify(ruleResult));
+        logger.debug(`7a. Item [${item.label}] is an ADD-ON. Checking Service Rules.`);
+        logger.debug(`7b. Rule Result for Add-on [${item.label}]:`, JSON.stringify(ruleResult));
         addonServicesSubtotal += itemFinalPrice;
       } else {
-        console.log(`8. Item [${item.label}] is INSIDE Concept. Adding discounted amount ${itemFinalPrice} to Concept Bucket.`);
+        logger.debug(`8. Item [${item.label}] is INSIDE Concept. Adding discounted amount ${itemFinalPrice} to Concept Bucket.`);
         conceptServicesSubtotal += itemFinalPrice;
       }
 
@@ -109,15 +110,15 @@ async function calculateFinalPrice(tenantId, leadRequirementId, event_type) {
       totalSurcharge += itemSurcharge;
     }
 
-    console.log(`9. Concept Bucket Subtotal: ${conceptServicesSubtotal}`);
-    console.log(`10. Add-on Bucket Subtotal: ${addonServicesSubtotal}`);
+    logger.debug(`9. Concept Bucket Subtotal: ${conceptServicesSubtotal}`);
+    logger.debug(`10. Add-on Bucket Subtotal: ${addonServicesSubtotal}`);
 
     // --- APPLY PACKAGE RULE (ONLY TO THE CONCEPT BUCKET) ---
     const packageRules = allRules.filter(r => r.target_type === 'package' && r.concept_id === concept.id);
-    console.log(`11. Package Rules found for [${concept.name}]:`, JSON.stringify(packageRules));
+    logger.debug(`11. Package Rules found for [${concept.name}]:`, JSON.stringify(packageRules));
 
     const packageResult = applyRuleMathWithDetails(conceptServicesSubtotal, packageRules, inputValues, true);
-    console.log(`12. Package Rule Application Result:`, JSON.stringify(packageResult));
+    logger.debug(`12. Package Rule Application Result:`, JSON.stringify(packageResult));
 
     const finalPackagePrice = packageResult.finalAmount;
     totalDiscount += packageResult.discount;
@@ -126,14 +127,14 @@ async function calculateFinalPrice(tenantId, leadRequirementId, event_type) {
     totalSurchargePercentage += packageResult.surchargePercentage;
 
     let finalPrice = finalPackagePrice + addonServicesSubtotal;
-    console.log(`13. Calculated Final Price (Package + Addons): ${finalPrice}`);
+    logger.debug(`13. Calculated Final Price (Package + Addons): ${finalPrice}`);
 
     if (concept.minimum_cost && finalPrice < Number(concept.minimum_cost)) {
-      console.log(`14. MINIMUM COST TRIGGERED. Raising ${finalPrice} to ${concept.minimum_cost}`);
+      logger.debug(`14. MINIMUM COST TRIGGERED. Raising ${finalPrice} to ${concept.minimum_cost}`);
       const minCost = Number(concept.minimum_cost);
       const adjustmentAmount = minCost - finalPrice;
       currentTotalBasePrice = currentTotalBasePrice + adjustmentAmount
-      console.log(`14. MINIMUM COST TRIGGERED. Adding adjustment of ${adjustmentAmount}`);
+      logger.debug(`14. MINIMUM COST TRIGGERED. Adding adjustment of ${adjustmentAmount}`);
 
       // Add a row to the breakdown to justify the price jump
 
@@ -165,7 +166,7 @@ async function calculateFinalPrice(tenantId, leadRequirementId, event_type) {
       applied_package_rules: packageResult.appliedRules
     };
 
-    console.log(`15. Final Concept Object:`, JSON.stringify(finalResponse));
+    logger.debug(`15. Final Concept Object:`, JSON.stringify(finalResponse));
     results.push(finalResponse);
   }
   // --- FALLBACK LOGIC REMAINS SAME ---
@@ -184,14 +185,14 @@ async function calculateFinalPrice(tenantId, leadRequirementId, event_type) {
       const base = Number(item.base_price) || 0;
       const itemBasePrice = (item.pricing_model === 'Fixed') ? base : (base * count);
       totalBasePrice = totalBasePrice + itemBasePrice;
-      console.log(`Calculating price for standalone service item: ${item.label} with base price ${itemBasePrice} with total base price : ${totalBasePrice}`);
+      logger.debug(`Calculating price for standalone service item: ${item.label} with base price ${itemBasePrice} with total base price : ${totalBasePrice}`);
 
       // In fallback mode, every service is treated as a standalone service
       const serviceRules = allRules.filter(r => r.target_type === 'service' && r.requirement_config_id === item.field_id);
-      console.log(`Applying pricing rules for standalone service item: ${item.label}`, JSON.stringify(serviceRules));
+      logger.debug(`Applying pricing rules for standalone service item: ${item.label}`, JSON.stringify(serviceRules));
 
       const ruleResult = applyRuleMathWithDetails(itemBasePrice, serviceRules, inputValues);
-      console.log(`Result after applying rules for item ${item.label}: `, JSON.stringify(ruleResult));
+      logger.debug(`Result after applying rules for item ${item.label}: `, JSON.stringify(ruleResult));
 
       breakdown.push({
         key: item.field_key,
@@ -204,7 +205,7 @@ async function calculateFinalPrice(tenantId, leadRequirementId, event_type) {
         applied_rules: ruleResult.appliedRules
       });
 
-      console.log(`Breakdown for item ${item.label}:`, JSON.stringify(breakdown[breakdown.length - 1]));
+      logger.debug(`Breakdown for item ${item.label}:`, JSON.stringify(breakdown[breakdown.length - 1]));
 
       grandTotal += ruleResult.finalAmount;
       totalDiscount += ruleResult.discount;
@@ -229,7 +230,7 @@ async function calculateFinalPrice(tenantId, leadRequirementId, event_type) {
   }
 
 
-  console.log("Price calculate before matching event_type/concept name of lead requiremnt :" + JSON.stringify(results))
+  logger.debug("Price calculate before matching event_type/concept name of lead requiremnt :" + JSON.stringify(results))
   if (results.length > 1) {
     const selectedConcept = results.find(item =>
       item.concept_name.toLowerCase() === event_type.toLowerCase()
@@ -242,20 +243,20 @@ async function calculateFinalPrice(tenantId, leadRequirementId, event_type) {
 async function generateFinalPrice(tenantId, leadRequirementId, emailContent, event_type) {
   // First Attempt
   let results = await calculateFinalPrice(tenantId, leadRequirementId, event_type);
-  console.log("Price before re-evaluation email : " + JSON.stringify(results))
+  logger.debug("Price before re-evaluation email : " + JSON.stringify(results))
   // // Check if the total is zero
   if (!results || results.final_price === 0) {
-    console.log("⚠️ Total is 0. Re-evaluating email for basic/pre-requisite services..." + emailContent);
+    logger.debug("⚠️ Total is 0. Re-evaluating email for basic/pre-requisite services...");
 
     // Call AI again with the "Discovery Prompt"
     const suggestedRequirements = await aiService.callConsultantAI(tenantId, emailContent);
-    console.log("AI-suggested requirements based on email content:", JSON.stringify(suggestedRequirements));
+    logger.debug("AI-suggested requirements based on email content:", JSON.stringify(suggestedRequirements));
     // Update the database with these new requirements
     await leadRequirementValueRepository.saveRequirementValues(tenantId, leadRequirementId, suggestedRequirements);
 
     // Recalculate with the new services
     const newResults = await calculateFinalPrice(tenantId, leadRequirementId, event_type);
-    console.log("New price calculated after re-evaluation of email : " + JSON.stringify(newResults))
+    logger.debug("New price calculated after re-evaluation of email : " + JSON.stringify(newResults))
     if (newResults && results) {
       const combinedRawBreakdown = [
         ...(results.breakdown || []),

@@ -1,9 +1,10 @@
 // utils/pdfGenerator.js
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
+const logger = require('./logger');
 
 async function generatePDF(data, outputPath) {
-  console.log("generatePDF called with data:", data);
+  logger.debug("generatePDF called", { outputPath });
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 50 });
     const stream = fs.createWriteStream(outputPath);
@@ -49,7 +50,7 @@ async function generatePDF(data, outputPath) {
     // LITE Row
     const liteRow = doc.y;
     doc.text("LITE", col1, liteRow);
-    console.log("data.mainEventGuestLitePrice : " + data.mainEventGuestLitePrice);
+    logger.debug("data.mainEventGuestLitePrice : " + data.mainEventGuestLitePrice);
     doc.text(data.mainEventGuestLitePrice.toLocaleString(), col2, liteRow);
     doc.text(data.cateringGuestLitePrice.toLocaleString(), col3, liteRow);
     doc.text(data.functionHallGuestLitePrice.toLocaleString(), col4, liteRow);

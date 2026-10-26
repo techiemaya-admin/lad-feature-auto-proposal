@@ -2,6 +2,7 @@ const conceptRepository = require('../repositories/concept.repository');
 const conceptLocationRepository = require('../repositories/concept-location.repository');
 const conceptPricingMatrixRepository = require('../repositories/concept-pricing-matrix.repository');
 const locationRepository = require('../repositories/location.repository');
+const logger = require('../../../utils/logger');
 
 async function createConcept(tenantId, data) {
   if (!data.name) {
@@ -58,7 +59,7 @@ async function addPricing(tenantId, conceptId, data) {
 
 // concept.service.js - Add these methods
 async function updateConcept(tenantId, id, data) {
-  console.log(`Updating concept ${id} for tenant ${tenantId} with data:`, data);
+  logger.debug(`Updating concept ${id} for tenant ${tenantId} with data:`, data);
   const concept = await getConceptById(tenantId, id); // Reuse your existing check
   return conceptRepository.update(tenantId, id, data);
 }

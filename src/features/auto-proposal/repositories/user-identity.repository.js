@@ -1,4 +1,15 @@
 const AppDataSource = require("../../../config/data-source");
+const { encryptToken, decryptToken } = require("../../../utils/token-crypto");
+
+/** OAuth tokens are encrypted at rest; callers always receive plaintext tokens. */
+function withDecryptedTokens(row) {
+  if (!row) return row;
+  return {
+    ...row,
+    access_token: decryptToken(row.access_token),
+    refresh_token: decryptToken(row.refresh_token),
+  };
+}
 
 class UserIdentityRepository {
 
@@ -13,7 +24,7 @@ class UserIdentityRepository {
     const values = [providerUserId];
 
     const result = await AppDataSource.query(sql, values);
-    return result[0] || null;
+    return withDecryptedTokens(result[0]) || null;
   }
 
 
@@ -47,7 +58,7 @@ class UserIdentityRepository {
     const values = [provider, providerUserId];
 
     const result = await AppDataSource.query(sql, values);
-    return result[0] || null;
+    return withDecryptedTokens(result[0]) || null;
   }
 
   /**
@@ -95,7 +106,7 @@ class UserIdentityRepository {
     const values = [provider];
 
     const result = await AppDataSource.query(sql, values);
-    return result.length > 0 ? result[0] : null;
+    return result.length > 0 ? withDecryptedTokens(result[0]) : null;
   }
 
 
@@ -112,7 +123,7 @@ class UserIdentityRepository {
     `;
     const values = [tenantId, provider];
     const result = await AppDataSource.query(sql, values);
-    return result.length > 0 ? result[0] : null;
+    return result.length > 0 ? withDecryptedTokens(result[0]) : null;
   }
 
   async findByUserIdAndProvider(userId, provider) {
@@ -127,7 +138,7 @@ class UserIdentityRepository {
     const values = [userId, provider];
 
     const result = await AppDataSource.query(sql, values);
-    return result.length > 0 ? result[0] : null;
+    return result.length > 0 ? withDecryptedTokens(result[0]) : null;
   }
 
   // Backwards compatibility alias for existing callers
@@ -158,8 +169,8 @@ class UserIdentityRepository {
       data.userId,
       'gmail',
       data.email,
-      data.accessToken,
-      data.refreshToken,
+      encryptToken(data.accessToken),
+      encryptToken(data.refreshToken),
       data.expiryDate,
       JSON.stringify(data.providerData)
     ];
@@ -187,9 +198,9 @@ class UserIdentityRepository {
       WHERE user_id = $4 AND provider = $5;
     `;
     return await AppDataSource.query(query, [
-      tokenDetails.accessToken,
+      encryptToken(tokenDetails.accessToken),
       tokenDetails.expiryDate,
-      tokenDetails.refreshToken || null,
+      encryptToken(tokenDetails.refreshToken) || null,
       userId,
       provider
     ]);
@@ -206,9 +217,9 @@ class UserIdentityRepository {
       WHERE provider_user_id = $4 AND provider = $5;
     `;
     return await AppDataSource.query(query, [
-      tokenDetails.accessToken,
+      encryptToken(tokenDetails.accessToken),
       tokenDetails.expiryDate,
-      tokenDetails.refreshToken || null,
+      encryptToken(tokenDetails.refreshToken) || null,
       providerUserId,
       provider
     ]);

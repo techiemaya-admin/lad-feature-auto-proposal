@@ -1,4 +1,5 @@
 const service = require('../services/quotation-email-template.service');
+const { clientMessage } = require('../../../utils/http-errors');
 const leadService = require('../services/lead.service');
 const tenantService = require('../services/tenant.service');
 const tenantProfileRepository = require('../repositories/tenant-profile.repository');
@@ -11,7 +12,7 @@ exports.create = async (req, res) => {
     res.status(201).json(data);
   } catch (err) {
     logger.error('Error in create template:', err);
-    res.status(400).json({ error: err.message });
+    res.status(400).json({ error: clientMessage(err) });
   }
 };
 
@@ -22,7 +23,7 @@ exports.list = async (req, res) => {
     res.json(data);
   } catch (err) {
     logger.error('Error in list templates:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: clientMessage(err) });
   }
 };
 
@@ -94,7 +95,7 @@ exports.listViaAuth = async (req, res) => {
     res.status(200).json({ data: templatesMap });
   } catch (err) {
     logger.error('Error in listViaAuth templates:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: clientMessage(err) });
   }
 };
 
@@ -105,7 +106,7 @@ exports.getById = async (req, res) => {
     res.json(data);
   } catch (err) {
     logger.error('Error in getById template:', err);
-    res.status(404).json({ error: err.message });
+    res.status(404).json({ error: clientMessage(err) });
   }
 };
 
@@ -116,7 +117,7 @@ exports.update = async (req, res) => {
     res.json(data);
   } catch (err) {
     logger.error('Error in update template:', err);
-    res.status(400).json({ error: err.message });
+    res.status(400).json({ error: clientMessage(err) });
   }
 };
 
@@ -127,7 +128,7 @@ exports.remove = async (req, res) => {
     res.status(204).send();
   } catch (err) {
     logger.error('Error in remove template:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: clientMessage(err) });
   }
 };
 
@@ -138,6 +139,6 @@ exports.makeDefault = async (req, res) => {
     res.status(200).json({ message: "Default template updated", data: result });
   } catch (error) {
     logger.error('Error in makeDefault template:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: clientMessage(error) });
   }
 };

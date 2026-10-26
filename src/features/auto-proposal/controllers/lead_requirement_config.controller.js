@@ -29,7 +29,8 @@ exports.update = async (req, res, next) => {
       ...req.body,
       tenant_id: req.tenantId || req.body.tenant_id,
     };
-    const data = await repo.update(req.params.id, payload);
+    const data = await repo.update(req.params.id, payload, req.tenantId);
+    if (!data) return res.status(404).json({ error: "Field not found" });
     res.json(data);
   } catch (err) {
     next(err);

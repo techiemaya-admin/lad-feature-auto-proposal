@@ -24,6 +24,7 @@
     "docxtemplater-image-module-free": "^1.1.1",
     "dotenv": "^16.6.1",
     "express": "^4.22.3",
+    "express-rate-limit": "^8.7.1",
     "google-auth-library": "^10.9.1",
     "googleapis": "^171.4.0",
     "jsonwebtoken": "^9.0.3",

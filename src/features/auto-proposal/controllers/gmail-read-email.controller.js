@@ -1,4 +1,5 @@
 const gmailService = require("../services/gmail-read-email.service");
+const { clientMessage } = require('../../../utils/http-errors');
 const leadRepo = require("../repositories/lead.repository");
 const logger = require('../../../utils/logger');
 
@@ -17,7 +18,7 @@ async function startWatch(req, res) {
     return res.json(result?.data || result);
   } catch (err) {
     logger.error("Error starting Gmail watch:", err);
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: clientMessage(err) });
   }
 }
 
@@ -118,9 +119,9 @@ async function testprompt(req, res) {
       }
     }
 
-    logger.debug("Testing AI prompt in controller:", { prompt: body, tenantId, leadId: leadData.id });
+    logger.debug("Testing AI prompt in controller", { promptLength: String(body).length, tenantId, leadId: leadData.id });
     const { leadRequirementDetails, values } = await gmailService.createLeadRequirementViaPrompt(body, leadData.id, tenantId);
-    logger.debug("Lead requirement details:", leadRequirementDetails);
+    logger.debug("Lead requirement created", { leadRequirementId: leadRequirementDetails && leadRequirementDetails.id });
     logger.debug("Saved requirement values:", values);
     const draft = await gmailService.createProposalDraft(leadRequirementDetails, leadData, body);
 
@@ -134,7 +135,7 @@ async function testprompt(req, res) {
     });
   } catch (error) {
     logger.error("Error in testprompt:", error);
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: clientMessage(error) });
   }
 }
 
